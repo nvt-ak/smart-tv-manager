@@ -10,6 +10,20 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+### Added
+
+- **Smart Clean** (tab Quản lý ứng dụng): gợi ý offline [`data/clean_heuristics.json`](data/clean_heuristics.json), tùy chọn phân tích **OpenAI API key** (lưu `~/.smarttv-manager/settings.json`), chọn và **vô hiệu hóa hàng loạt** qua lớp `safety`.
+- UI Smart Clean: Debloat Advisor (titlebar, AI card, metric pills, package cards, footer ADB) theo mock; `smart-clean.css`.
+
+### Changed
+
+- Smart Clean: ô API key và tìm kiếm package — một lớp viền; loại trừ input/button Smart Clean khỏi style global trong `main.css` (tránh viền lồng).
+
+### Fixed
+
+- Khởi động nhanh hơn: mở thẳng `index.html` + overlay boot (không splash riêng), `list_devices('cache'|'port'|'adb')` — lần đầu không chặn pywebview bằng ADB; tải phiên bản app trì hoãn (tối đa 20 gói).
+- ADB Wi‑Fi: `PackageManager` dùng timeout/reconnect (tới 45s cho `pm list packages`), gộp 3 lệnh list trong một shell; timeout → xóa cache kết nối và báo lỗi tiếng Việt thay vì traceback `TcpTimeoutException`.
+
 ---
 
 ## [1.0.0] - 2026-10-24

@@ -10,11 +10,25 @@ function getApi() {
   return window.pywebview.api;
 }
 
+function hideAppBoot() {
+  const el = document.getElementById('appBoot');
+  if (!el) return;
+  el.classList.add('app-boot--out');
+  window.setTimeout(() => el.remove(), 220);
+}
+
 function bootApp() {
   initDevGuide();
-  refreshList().catch((err) => {
-    setStatus(String(err.message || err));
-  });
+  refreshList('cache')
+    .catch((err) => {
+      setStatus(String(err.message || err));
+    })
+    .finally(() => {
+      requestAnimationFrame(() => hideAppBoot());
+    });
+  window.setTimeout(() => {
+    refreshList('port').catch(() => {});
+  }, 350);
 }
 
 function waitForPywebviewAndBoot() {
@@ -179,7 +193,7 @@ async function updateRemoteDeviceHeader() {
   }
   const badge = document.getElementById('remoteOnlineBadge');
   try {
-    const devices = await getApi().list_devices();
+    const devices = await getApi().list_devices('port');
     const row = devices.find((d) => d.host === activeDevice.host);
     if (row) activeDevice.online = row.online;
   } catch {
@@ -353,7 +367,7 @@ async function updateAppsDeviceHeader() {
   if (appsTargetMeta) appsTargetMeta.textContent = `${activeDevice.host}:${activeDevice.port}`;
   const badge = document.getElementById('appsOnlineBadge');
   try {
-    const devices = await getApi().list_devices();
+    const devices = await getApi().list_devices('port');
     const row = devices.find((d) => d.host === activeDevice.host);
     if (row) activeDevice.online = row.online;
   } catch {
@@ -487,6 +501,35 @@ function renderApps() {
   updateAppsSelectionUi();
 }
 
+let appsVersionSyncTimer = null;
+
+function scheduleAppsVersionSync() {
+  if (appsVersionSyncTimer) clearTimeout(appsVersionSyncTimer);
+  appsVersionSyncTimer = setTimeout(() => {
+    appsVersionSyncTimer = null;
+    syncAppsVersions().catch(() => {});
+  }, 2000);
+}
+
+async function syncAppsVersions(max = 20) {
+  if (!activeDevice || !appsCache.length || !window.pywebview?.api?.get_apps_info) return;
+  const toFetch = appsCache.slice(0, max).map((a) => a.package);
+  if (!toFetch.length) return;
+  setAppsStatus(`Đang lấy phiên bản (${toFetch.length} gói đầu, chậm trên Wi‑Fi)...`);
+  const info = await getApi().get_apps_info(activeDevice.host, activeDevice.port, toFetch);
+  for (const [pkg, data] of Object.entries(info || {})) {
+    const i = appsCache.findIndex((a) => a.package === pkg);
+    if (i >= 0) {
+      if (data.version) appsCache[i].version = data.version;
+      if (data.version_code) appsCache[i].version_code = data.version_code;
+    }
+  }
+  updateAppsLauncherBanner();
+  renderApps();
+  setAppsStatus(`Đã tải ${appsCache.length} package`);
+  setTimeout(() => setAppsStatus(''), 1200);
+}
+
 async function loadApps() {
   if (!activeDevice) return;
   await updateAppsDeviceHeader();
@@ -503,26 +546,9 @@ async function loadApps() {
     updateAppsFilterLabels();
     updateAppsLauncherBanner();
     renderApps();
-    setAppsStatus(`Đã tải ${appsCache.length} package. Đang lấy phiên bản...`);
-    try {
-      const toFetch = appsCache.slice(0, 100).map((a) => a.package);
-      if (toFetch.length && window.pywebview?.api?.get_apps_info) {
-        const info = await getApi().get_apps_info(activeDevice.host, activeDevice.port, toFetch);
-        for (const [pkg, data] of Object.entries(info || {})) {
-          const i = appsCache.findIndex((a) => a.package === pkg);
-          if (i >= 0) {
-            if (data.version) appsCache[i].version = data.version;
-            if (data.version_code) appsCache[i].version_code = data.version_code;
-          }
-        }
-        updateAppsLauncherBanner();
-        renderApps();
-      }
-    } catch {
-      /* ignore */
-    }
     logAppsConsole('pm list packages', `Đồng bộ ${appsCache.length} gói`, 'log-ok');
     setAppsStatus(`Đã tải ${appsCache.length} package`);
+    scheduleAppsVersionSync();
     setTimeout(() => setAppsStatus(''), 1500);
   } catch (err) {
     setAppsStatus(`Lỗi tải danh sách: ${err}`);
@@ -645,6 +671,408 @@ if (appsHomeThemeBtn) {
   });
 }
 
+const SMART_CLEAN_TIER_LABEL = {
+  recommend: 'Nên tắt',
+  review: 'Cân nhắc',
+  skip: 'Giữ',
+  blocked: 'Khóa',
+};
+
+const SMART_CLEAN_APP_KIND = {
+  user: 'User app',
+  system: 'System app',
+  disabled: 'Đã vô hiệu hóa',
+};
+
+function smartCleanPkgBadge(s) {
+  const tier = s.tier || 'skip';
+  if (tier === 'recommend') {
+    const pkg = (s.package || '').toLowerCase();
+    if (/partner|ads|customizer|promo|bloat/.test(pkg)) return 'NÊN TẮT (BLOATWARE)';
+    return 'NÊN TẮT (RECOMMENDED)';
+  }
+  if (tier === 'review') return 'CÂN NHẮC (WARNING)';
+  return '';
+}
+
+function smartCleanPkgKind(s) {
+  const pkg = (s.package || '').toLowerCase();
+  if (/partner|ads|customizer|promo/.test(pkg)) return 'OEM Quảng cáo';
+  if (s.type === 'system') return 'System / Daemon';
+  if (s.type === 'user') return 'User App';
+  return SMART_CLEAN_APP_KIND[s.type] || s.type || 'Package';
+}
+
+let smartCleanSuggestions = [];
+let smartCleanTierFilter = 'all';
+let smartCleanSearchQuery = '';
+let smartCleanScanMode = 'offline';
+let smartCleanDismissed = new Set();
+
+const smartCleanModal = document.getElementById('smartCleanModal');
+const smartCleanList = document.getElementById('smartCleanList');
+const smartCleanStatus = document.getElementById('smartCleanStatus');
+const smartCleanSummary = document.getElementById('smartCleanSummary');
+const smartCleanApplyBtn = document.getElementById('smartCleanApply');
+const smartCleanAiWarn = document.getElementById('smartCleanAiWarn');
+const smartCleanOnlyActionable = document.getElementById('smartCleanOnlyActionable');
+const smartCleanKeyHint = document.getElementById('smartCleanKeyHint');
+const smartCleanSelectedCount = document.getElementById('smartCleanSelectedCount');
+const smartCleanSearch = document.getElementById('smartCleanSearch');
+
+function setSmartCleanStatus(msg) {
+  if (smartCleanStatus) smartCleanStatus.textContent = msg || '';
+}
+
+function syncSmartCleanDeviceBadge() {
+  const nameEl = document.getElementById('smartCleanDeviceName');
+  const hostEl = document.getElementById('smartCleanDeviceHost');
+  if (nameEl) nameEl.textContent = activeDevice?.name || 'Chưa chọn TV';
+  if (hostEl) {
+    hostEl.textContent = activeDevice
+      ? `${activeDevice.host}:${activeDevice.port || 5555}`
+      : '—';
+  }
+}
+
+function setSmartCleanScanMode(mode) {
+  smartCleanScanMode = mode === 'ai' ? 'ai' : 'offline';
+  document.getElementById('smartCleanModeOffline')?.classList.toggle('is-active', smartCleanScanMode === 'offline');
+  document.getElementById('smartCleanModeAi')?.classList.toggle('is-active', smartCleanScanMode === 'ai');
+}
+
+function getSmartCleanFilteredRows() {
+  let rows = smartCleanSuggestions.slice();
+  if (smartCleanOnlyActionable?.checked) {
+    rows = rows.filter((s) => s.tier === 'recommend' || s.tier === 'review');
+  }
+  if (smartCleanTierFilter !== 'all') {
+    rows = rows.filter((s) => s.tier === smartCleanTierFilter);
+  }
+  const q = (smartCleanSearchQuery || '').trim().toLowerCase();
+  if (q) rows = rows.filter((s) => (s.package || '').toLowerCase().includes(q));
+  if (smartCleanDismissed.size) {
+    rows = rows.filter((s) => !smartCleanDismissed.has(s.package));
+  }
+  return rows;
+}
+
+function updateSmartCleanApplyBtn() {
+  if (!smartCleanApplyBtn || !smartCleanList) return;
+  const n = smartCleanList.querySelectorAll('.smart-clean-check:checked').length;
+  smartCleanApplyBtn.disabled = n === 0;
+  if (smartCleanSelectedCount) smartCleanSelectedCount.textContent = String(n);
+}
+
+function renderSmartCleanList() {
+  if (!smartCleanList) return;
+  const rows = getSmartCleanFilteredRows();
+  if (!rows.length) {
+    smartCleanList.innerHTML =
+      '<p class="smart-clean-empty">Chưa có gói phù hợp — chọn chế độ quét hoặc nới bộ lọc.</p>';
+    updateSmartCleanApplyBtn();
+    return;
+  }
+  smartCleanList.innerHTML = rows
+    .map((s) => {
+      const tier = s.tier || 'skip';
+      const canCheck = s.can_disable && s.enabled && tier !== 'blocked' && tier !== 'skip';
+      const checked = canCheck && s.selected ? 'checked' : '';
+      const disabled = canCheck ? '' : 'disabled';
+      const iconTier = tier === 'recommend' ? 'danger' : tier === 'review' ? 'warn' : 'warn';
+      const icon =
+        tier === 'recommend'
+          ? 'delete'
+          : tier === 'review'
+            ? 'warning'
+            : 'apps';
+      const badgeText = smartCleanPkgBadge(s);
+      const badge = badgeText
+        ? `<span class="smart-clean-pkg-badge smart-clean-pkg-badge--${tier}">${escapeHtml(badgeText)}</span>`
+        : '';
+      const kind = smartCleanPkgKind(s);
+      const reason = `${s.reason || ''}${s.source === 'ai' ? ' · AI' : ''}`;
+      let secondaryBtn = '';
+      if (tier === 'recommend' && canCheck) {
+        secondaryBtn = `<button type="button" class="smart-clean-pkg-btn smart-clean-pkg-btn--danger" data-act="disable-one" data-pkg="${escapeAttr(s.package)}">Vô hiệu ngay</button>`;
+      } else if (tier === 'review') {
+        secondaryBtn = `<button type="button" class="smart-clean-pkg-btn smart-clean-pkg-btn--skip" data-act="skip" data-pkg="${escapeAttr(s.package)}">Bỏ qua</button>`;
+      }
+      return `<article class="smart-clean-pkg-card" data-tier="${tier}" data-pkg="${escapeAttr(s.package)}">
+        <div class="smart-clean-pkg-main">
+          <input type="checkbox" class="smart-clean-check" data-pkg="${escapeAttr(s.package)}" ${checked} ${disabled} aria-label="Chọn ${escapeAttr(s.package)}">
+          <div class="smart-clean-pkg-icon smart-clean-pkg-icon--${iconTier}">
+            <span class="material-symbols-outlined">${icon}</span>
+          </div>
+          <div class="smart-clean-pkg-body">
+            <div class="smart-clean-pkg-head">
+              <span class="smart-clean-pkg-name">${escapeHtml(s.package)}</span>
+              ${badge}
+              <span class="smart-clean-pkg-kind">${escapeHtml(kind)}</span>
+            </div>
+            <p class="smart-clean-pkg-reason">${escapeHtml(reason)}</p>
+          </div>
+        </div>
+        <div class="smart-clean-pkg-actions">
+          <button type="button" class="smart-clean-pkg-btn smart-clean-pkg-btn--ghost" data-act="detail" data-pkg="${escapeAttr(s.package)}">Chi tiết</button>
+          ${secondaryBtn}
+        </div>
+      </article>`;
+    })
+    .join('');
+  updateSmartCleanApplyBtn();
+}
+
+function computeSmartCleanCounts() {
+  const c = { recommend: 0, review: 0, skip: 0, blocked: 0 };
+  smartCleanSuggestions.forEach((s) => {
+    const t = s.tier || 'skip';
+    if (Object.prototype.hasOwnProperty.call(c, t)) c[t] += 1;
+    else c.skip += 1;
+  });
+  return c;
+}
+
+function renderSmartCleanSummary(counts) {
+  if (!smartCleanSummary) return;
+  const total = smartCleanSuggestions.length;
+  const c = counts || computeSmartCleanCounts();
+  const pills = [
+    ['all', 'Tất cả', total, 'metric--all', null, false],
+    ['recommend', 'Nên tắt', c.recommend ?? 0, 'metric--danger', '#f43f5e', true],
+    ['review', 'Cân nhắc', c.review ?? 0, 'metric--warn', '#fbbf24', true],
+    ['skip', 'Giữ', c.skip ?? 0, 'metric--ok', '#34d399', true],
+    ['blocked', 'Khóa', c.blocked ?? 0, 'metric--muted', '#64748b', false],
+  ];
+  smartCleanSummary.innerHTML = pills
+    .map(([key, label, n, cls, dotColor, withPkg]) => {
+      const active = smartCleanTierFilter === key ? ' is-active' : '';
+      const dot = dotColor
+        ? `<span class="smart-clean-metric-dot" style="background:${dotColor}"></span>`
+        : '';
+      const countHtml = withPkg
+        ? `<strong>${n}</strong> gói`
+        : `<strong>${n}</strong>`;
+      return `<button type="button" class="smart-clean-metric ${cls}${active}" data-tier-filter="${key}">${dot}${escapeHtml(label)}: ${countHtml}</button>`;
+    })
+    .join('');
+}
+
+async function refreshSmartCleanSettingsHint() {
+  try {
+    const s = await getApi().get_app_settings();
+    if (smartCleanKeyHint) {
+      if (s.openai_configured) {
+        smartCleanKeyHint.hidden = false;
+        smartCleanKeyHint.textContent = 'Đã lưu key';
+      } else {
+        smartCleanKeyHint.hidden = true;
+        smartCleanKeyHint.textContent = '';
+      }
+    }
+  } catch {
+    if (smartCleanKeyHint) smartCleanKeyHint.hidden = true;
+  }
+}
+
+async function runSmartCleanAnalyze(useAi) {
+  if (!activeDevice) {
+    showAppsToast('Chọn thiết bị trước', 'info');
+    return;
+  }
+  if (!appsCache.length) {
+    setAppsStatus('Đang tải danh sách app...');
+    await loadApps();
+  }
+  setSmartCleanScanMode(useAi ? 'ai' : 'offline');
+  setSmartCleanStatus(useAi ? 'Đang quét (Offline DB + OpenAI)...' : 'Đang quét Offline DB...');
+  if (smartCleanAiWarn) {
+    smartCleanAiWarn.hidden = true;
+    smartCleanAiWarn.textContent = '';
+  }
+  const modeOffline = document.getElementById('smartCleanModeOffline');
+  const modeAi = document.getElementById('smartCleanModeAi');
+  modeOffline?.classList.toggle('loading', !useAi);
+  modeAi?.classList.toggle('loading', useAi);
+  try {
+    const res = await getApi().smart_clean_suggest(activeDevice.host, activeDevice.port, useAi);
+    smartCleanSuggestions = res.suggestions || [];
+    smartCleanDismissed = new Set();
+    renderSmartCleanSummary(res.counts);
+    renderSmartCleanList();
+    const rec = res.counts?.recommend ?? 0;
+    setSmartCleanStatus(`Hoàn tất — ${rec} gói «Nên tắt».`);
+    if (res.ai_error && smartCleanAiWarn) {
+      smartCleanAiWarn.hidden = false;
+      smartCleanAiWarn.textContent = res.ai_error;
+    }
+  } catch (err) {
+    setSmartCleanStatus(`Lỗi: ${err}`);
+  } finally {
+    modeOffline?.classList.remove('loading');
+    modeAi?.classList.remove('loading');
+  }
+}
+
+function openSmartCleanModal() {
+  if (!activeDevice) {
+    showAppsToast('Chọn thiết bị và tải app trước', 'info');
+    return;
+  }
+  syncSmartCleanDeviceBadge();
+  if (smartCleanModal) smartCleanModal.hidden = false;
+  document.body.classList.add('smart-clean-modal-open');
+  refreshSmartCleanSettingsHint();
+  requestAnimationFrame(() => {
+    smartCleanList?.scrollTo(0, 0);
+  });
+  if (!smartCleanSuggestions.length) {
+    runSmartCleanAnalyze(smartCleanScanMode === 'ai');
+  } else {
+    renderSmartCleanSummary(computeSmartCleanCounts());
+    renderSmartCleanList();
+  }
+}
+
+function closeSmartCleanModal() {
+  if (smartCleanModal) smartCleanModal.hidden = true;
+  document.body.classList.remove('smart-clean-modal-open');
+}
+
+async function smartCleanDisablePackages(pkgs, { closeOnSuccess = false } = {}) {
+  if (!activeDevice || !pkgs.length) return;
+  setButtonLoading(smartCleanApplyBtn, true);
+  setSmartCleanStatus('Đang vô hiệu hóa qua ADB...');
+  try {
+    const res = await getApi().smart_clean_apply(activeDevice.host, activeDevice.port, pkgs);
+    logAppsConsole('smart_clean_apply', `${res.ok_count}/${pkgs.length} ok`, res.fail_count ? 'log-err' : 'log-ok');
+    (res.results || []).forEach((r) => {
+      if (!r.ok) logAppsConsole(`pm disable-user ${r.package}`, r.error || 'fail', 'log-err');
+    });
+    showAppsToast(`Đã tắt ${res.ok_count}/${pkgs.length} app`, res.fail_count ? 'warning' : 'check_circle');
+    smartCleanSuggestions = [];
+    await loadApps();
+    if (closeOnSuccess) closeSmartCleanModal();
+    else runSmartCleanAnalyze(smartCleanScanMode === 'ai');
+  } catch (err) {
+    setSmartCleanStatus(`Lỗi: ${err}`);
+  } finally {
+    setButtonLoading(smartCleanApplyBtn, false);
+  }
+}
+
+const smartCleanBtn = document.getElementById('smartCleanBtn');
+smartCleanBtn?.addEventListener('click', () => openSmartCleanModal());
+
+document.getElementById('smartCleanClose')?.addEventListener('click', () => closeSmartCleanModal());
+
+smartCleanModal?.addEventListener('click', (e) => {
+  if (e.target === smartCleanModal) closeSmartCleanModal();
+});
+
+document.getElementById('smartCleanModeOffline')?.addEventListener('click', () => runSmartCleanAnalyze(false));
+document.getElementById('smartCleanModeAi')?.addEventListener('click', () => runSmartCleanAnalyze(true));
+
+smartCleanOnlyActionable?.addEventListener('change', () => renderSmartCleanList());
+
+smartCleanSearch?.addEventListener('input', () => {
+  smartCleanSearchQuery = smartCleanSearch.value;
+  renderSmartCleanList();
+});
+
+smartCleanSummary?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-tier-filter]');
+  if (!btn) return;
+  smartCleanTierFilter = btn.dataset.tierFilter || 'all';
+  renderSmartCleanSummary();
+  renderSmartCleanList();
+});
+
+smartCleanList?.addEventListener('change', (e) => {
+  if (e.target.classList.contains('smart-clean-check')) updateSmartCleanApplyBtn();
+});
+
+smartCleanList?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-act]');
+  if (!btn || !activeDevice) return;
+  const pkg = btn.dataset.pkg;
+  const act = btn.dataset.act;
+  if (act === 'detail') {
+    const row = smartCleanSuggestions.find((s) => s.package === pkg);
+    alert(`${pkg}\n\n${row?.reason || 'Không có mô tả thêm.'}`);
+    return;
+  }
+  if (act === 'disable-one') {
+    if (!confirm(`Vô hiệu hóa ${pkg}?`)) return;
+    await smartCleanDisablePackages([pkg]);
+    return;
+  }
+  if (act === 'skip' && pkg) {
+    smartCleanDismissed.add(pkg);
+    renderSmartCleanList();
+  }
+});
+
+document.getElementById('smartCleanSelectRecommend')?.addEventListener('click', () => {
+  smartCleanList?.querySelectorAll('.smart-clean-pkg-card[data-tier="recommend"]').forEach((card) => {
+    const cb = card.querySelector('.smart-clean-check');
+    if (cb && !cb.disabled) cb.checked = true;
+  });
+  updateSmartCleanApplyBtn();
+});
+
+document.getElementById('smartCleanSaveKey')?.addEventListener('click', async () => {
+  const input = document.getElementById('smartCleanApiKey');
+  const key = input?.value?.trim() || '';
+  try {
+    await getApi().save_app_settings(key || null);
+    if (input) input.value = '';
+    await refreshSmartCleanSettingsHint();
+    showAppsToast(key ? 'Đã lưu API key cục bộ' : 'Đã xóa API key', 'key');
+  } catch (err) {
+    showAppsToast(String(err), 'error');
+  }
+});
+
+document.getElementById('smartCleanTestPing')?.addEventListener('click', async () => {
+  const input = document.getElementById('smartCleanApiKey');
+  const key = input?.value?.trim();
+  if (key) await getApi().save_app_settings(key);
+  try {
+    await getApi().test_openai_connection();
+    showAppsToast('OpenAI OK', 'cloud_done');
+    await refreshSmartCleanSettingsHint();
+    if (input) input.value = '';
+  } catch (err) {
+    showAppsToast(String(err), 'error');
+  }
+});
+
+document.getElementById('smartCleanToggleKey')?.addEventListener('click', () => {
+  const input = document.getElementById('smartCleanApiKey');
+  if (!input) return;
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+});
+
+document.getElementById('smartCleanBackupBtn')?.addEventListener('click', () => {
+  showAppsToast('Sao lưu profile debloat — sắp có (UC-05)', 'save');
+});
+
+smartCleanApplyBtn?.addEventListener('click', async () => {
+  if (!activeDevice || !smartCleanList) return;
+  const pkgs = [...smartCleanList.querySelectorAll('.smart-clean-check:checked')].map((cb) => cb.dataset.pkg);
+  if (!pkgs.length) return;
+  if (
+    !confirm(
+      `Vô hiệu hóa ${pkgs.length} app đã chọn?\n\nBạn có thể bật lại từng app trong tab Quản lý ứng dụng.`,
+    )
+  ) {
+    return;
+  }
+  await smartCleanDisablePackages(pkgs, { closeOnSuccess: true });
+});
+
 if (appsList) {
   appsList.addEventListener('click', async (e) => {
     const btn = e.target.closest('button');
@@ -738,9 +1166,9 @@ function deviceCardActions(d, featured) {
     </button>`;
 }
 
-async function refreshList() {
+async function refreshList(check = 'adb') {
   try {
-    const devices = await getApi().list_devices();
+    const devices = await getApi().list_devices(check);
     listEl.innerHTML = '';
     updateAppChrome(devices.length);
     if (!devices.length) {
@@ -998,8 +1426,8 @@ if (backToAppsFromApk) {
 
 refreshBtn.addEventListener('click', async () => {
   setButtonLoading(refreshBtn, true, 'Đang làm mới...');
-  setStatus('Đang cập nhật trạng thái thiết bị...');
-  await refreshList();
+  setStatus('Đang cập nhật trạng thái thiết bị (ADB)...');
+  await refreshList('adb');
   setStatus('Đã cập nhật trạng thái');
   setTimeout(() => setStatus(''), 1500);
   setButtonLoading(refreshBtn, false);

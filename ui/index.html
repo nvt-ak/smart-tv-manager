@@ -8,6 +8,23 @@
     html { color-scheme: dark; background: #0b0e14; }
     body { margin: 0; background: #0b0e14; color: #e1e2eb; }
     [hidden] { display: none !important; }
+    .app-boot {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: radial-gradient(ellipse at top, #101b2f 0%, #07090e 55%, #050608 100%);
+      color: #94a3b8;
+      font: 500 14px/1.4 system-ui, -apple-system, sans-serif;
+    }
+    .app-boot-title { margin: 0; font-size: 18px; font-weight: 700; color: #e2e8f0; }
+    .app-boot-hint { margin: 0; font-size: 13px; opacity: 0.85; }
+    .app-boot-icon { border-radius: 22px; box-shadow: 0 0 40px rgba(0, 240, 255, 0.15); }
+    .app-boot--out { opacity: 0; transition: opacity 0.2s ease; pointer-events: none; }
   </style>
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/app-icon-180.png">
@@ -18,6 +35,11 @@
   <link rel="stylesheet" href="css/main.css">
 </head>
 <body class="app-shell">
+  <div id="appBoot" class="app-boot" role="status" aria-live="polite" aria-label="Đang khởi động">
+    <img class="app-boot-icon" src="assets/app-icon.png" width="88" height="88" alt="">
+    <p class="app-boot-title">SmartTV Manager</p>
+    <p class="app-boot-hint">Đang nạp giao diện…</p>
+  </div>
 
   <header class="app-header">
     <div class="app-header-inner">
@@ -381,6 +403,10 @@
             </div>
           </div>
           <div class="apps-device-actions">
+            <button type="button" id="smartCleanBtn" class="btn btn--accent">
+              <span class="material-symbols-outlined">mop</span>
+              Smart Clean
+            </button>
             <button type="button" id="refreshAppsBtn" class="btn btn--surface">
               <span class="material-symbols-outlined">cached</span>
               Tải lại danh sách
@@ -489,6 +515,155 @@
         </div>
       </div>
     </section>
+
+    <div id="smartCleanModal" class="home-modal-backdrop smart-clean-modal" hidden>
+      <div class="smart-clean-window" role="dialog" aria-labelledby="smartCleanTitle" aria-modal="true">
+        <header class="smart-clean-titlebar">
+          <div class="smart-clean-traffic">
+            <button type="button" id="smartCleanClose" class="smart-clean-dot smart-clean-dot--red" aria-label="Đóng"></button>
+            <span class="smart-clean-dot smart-clean-dot--amber" aria-hidden="true"></span>
+            <span class="smart-clean-dot smart-clean-dot--green" aria-hidden="true"></span>
+            <span class="smart-clean-titlebar-tag">ADB CONSOLE // DEBLOAT ADVISOR v1.0</span>
+          </div>
+          <div class="smart-clean-titlebar-center">
+            <span class="material-symbols-outlined">live_tv</span>
+            <span>SmartTV Manager</span>
+            <span class="smart-clean-titlebar-sep">•</span>
+            <span class="smart-clean-titlebar-muted">Trợ lý Phân tích Gói &amp; Debloat Tự động</span>
+          </div>
+          <div class="smart-clean-device-badge">
+            <span class="smart-clean-device-dot" aria-hidden="true"></span>
+            <span id="smartCleanDeviceName">—</span>
+            <span class="smart-clean-device-sep">|</span>
+            <span id="smartCleanDeviceHost" class="smart-clean-device-host">—</span>
+          </div>
+        </header>
+
+        <div class="smart-clean-workspace">
+          <section class="smart-clean-ai-card">
+            <div class="smart-clean-ai-glow" aria-hidden="true"></div>
+            <div class="smart-clean-ai-top">
+              <div class="smart-clean-ai-heading">
+                <div class="smart-clean-ai-icon">
+                  <span class="material-symbols-outlined">bolt</span>
+                </div>
+                <div>
+                  <div class="smart-clean-ai-title-row">
+                    <h2 id="smartCleanTitle" class="smart-clean-ai-title">Gợi ý AI &amp; tối ưu thông minh</h2>
+                    <span class="smart-clean-gpt-badge">GPT-4O READY</span>
+                  </div>
+                  <p class="smart-clean-ai-lead">
+                    Phân tích tự động danh sách package trên Android TV để đề xuất gỡ bỏ hoặc vô hiệu hóa ứng dụng rác, bloatware giúp TV chạy mượt mà hơn.
+                  </p>
+                </div>
+              </div>
+              <div class="smart-clean-security">
+                <span class="smart-clean-security-label">Bảo mật:</span>
+                <span class="smart-clean-security-pill">
+                  <span class="material-symbols-outlined">verified_user</span>
+                  Zero-Cloud Leak (Gửi trực tiếp)
+                </span>
+              </div>
+            </div>
+
+            <div class="smart-clean-key-block">
+              <div class="smart-clean-key-field">
+                <span class="material-symbols-outlined smart-clean-key-icon">key</span>
+                <input id="smartCleanApiKey" class="smart-clean-key-input" type="password" placeholder="Nhập OpenAI API Key (sk-…) để dùng GPT-4o deep scan…" autocomplete="off">
+                <div class="smart-clean-key-actions">
+                  <span id="smartCleanKeyHint" class="smart-clean-key-saved" hidden>Đã lưu key</span>
+                  <button type="button" id="smartCleanToggleKey" class="smart-clean-key-eye" title="Ẩn/hiện key" aria-label="Ẩn/hiện key">
+                    <span class="material-symbols-outlined">visibility</span>
+                  </button>
+                </div>
+              </div>
+              <button type="button" id="smartCleanSaveKey" class="smart-clean-key-side-btn">
+                <span class="material-symbols-outlined">check</span>
+                Lưu Key
+              </button>
+              <button type="button" id="smartCleanTestPing" class="smart-clean-key-side-btn smart-clean-key-side-btn--muted">
+                Test Ping
+              </button>
+            </div>
+
+            <div class="smart-clean-mode-grid">
+              <button type="button" id="smartCleanModeOffline" class="smart-clean-mode is-active" data-mode="offline">
+                <div class="smart-clean-mode-main">
+                  <div class="smart-clean-mode-icon smart-clean-mode-icon--cyan">
+                    <span class="material-symbols-outlined">bolt</span>
+                  </div>
+                  <div>
+                    <div class="smart-clean-mode-title">Gợi ý nhanh (Offline DB)</div>
+                    <div class="smart-clean-mode-desc">Heuristic Engine tích hợp sẵn (TCL, Xiaomi, Sony, Casper)</div>
+                  </div>
+                </div>
+                <span class="smart-clean-mode-badge">KÍCH HOẠT</span>
+              </button>
+              <button type="button" id="smartCleanModeAi" class="smart-clean-mode" data-mode="ai">
+                <div class="smart-clean-mode-main">
+                  <div class="smart-clean-mode-icon smart-clean-mode-icon--purple">
+                    <span class="material-symbols-outlined">auto_awesome</span>
+                  </div>
+                  <div>
+                    <div class="smart-clean-mode-title">Phân tích sâu với AI (OpenAI)</div>
+                    <div class="smart-clean-mode-desc">Phân loại theo ngữ cảnh TV &amp; đánh giá rủi ro crash hệ thống</div>
+                  </div>
+                </div>
+                <span class="smart-clean-mode-tag">GPT-4o</span>
+              </button>
+            </div>
+            <button type="button" id="smartCleanAnalyzeLocal" class="sr-only" tabindex="-1" aria-hidden="true">Scan offline</button>
+            <button type="button" id="smartCleanAnalyzeAi" class="sr-only" tabindex="-1" aria-hidden="true">Scan AI</button>
+          </section>
+
+          <section class="smart-clean-toolbar">
+            <div class="smart-clean-metrics-row">
+              <div class="smart-clean-metrics-label">
+                <span class="material-symbols-outlined">bar_chart</span>
+                Tổng quan:
+              </div>
+              <div id="smartCleanSummary" class="smart-clean-metrics"></div>
+            </div>
+            <div class="smart-clean-search-row">
+              <div class="smart-clean-search-wrap">
+                <span class="material-symbols-outlined">search</span>
+                <input id="smartCleanSearch" type="search" class="smart-clean-search" placeholder="Tìm kiếm theo tên package…" autocomplete="off">
+              </div>
+              <label class="smart-clean-filter-toggle">
+                <input type="checkbox" id="smartCleanOnlyActionable" checked>
+                <span>Chỉ hiện «Nên tắt» &amp; «Cân nhắc»</span>
+              </label>
+            </div>
+            <p id="smartCleanStatus" class="smart-clean-status" role="status" aria-live="polite"></p>
+            <p id="smartCleanAiWarn" class="smart-clean-warn" hidden></p>
+          </section>
+
+          <div id="smartCleanList" class="smart-clean-packages"></div>
+        </div>
+
+        <footer class="smart-clean-footer">
+          <div class="smart-clean-footer-left">
+            <p class="smart-clean-footer-count">
+              <strong id="smartCleanSelectedCount">0</strong> gói được chọn để vô hiệu hóa
+            </p>
+            <button type="button" id="smartCleanBackupBtn" class="smart-clean-action-btn smart-clean-action-btn--surface smart-clean-action-btn--compact">
+              <span class="material-symbols-outlined">save</span>
+              Sao lưu Profile (Backup)
+            </button>
+          </div>
+          <div class="smart-clean-footer-actions">
+            <button type="button" id="smartCleanSelectRecommend" class="smart-clean-action-btn smart-clean-action-btn--surface smart-clean-action-btn--foot">
+              <span class="material-symbols-outlined">done_all</span>
+              Chọn tất cả «Nên tắt»
+            </button>
+            <button type="button" id="smartCleanApply" class="smart-clean-action-btn smart-clean-action-btn--primary smart-clean-action-btn--foot" disabled>
+              <span class="material-symbols-outlined">delete_sweep</span>
+              <span class="smart-clean-apply-label">Vô hiệu hóa đã chọn (ADB Disable)</span>
+            </button>
+          </div>
+        </footer>
+      </div>
+    </div>
 
     <!-- APK -->
     <section id="tab-apk" class="tab-pane">

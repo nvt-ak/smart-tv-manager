@@ -1,0 +1,52 @@
+{
+  "description": "Heuristic gợi ý vô hiệu hóa app TV — luôn qua safety.can_disable trước khi apply. Bổ sung theo model / cleanyourtv upstream.",
+  "recommend_exact": [
+    "com.facebook.katana",
+    "com.facebook.system",
+    "com.instagram.android",
+    "com.spotify.tv.android",
+    "com.linkedin.android"
+  ],
+  "recommend_substrings": [
+    { "match": "com.tcl.appmarket2", "reason": "Cửa hàng / quảng cáo TCL — thường không cần nếu không cài app từ đó." },
+    { "match": "com.tcl.browser", "reason": "Trình duyệt TCL đi kèm — có thể tắt nếu không dùng." },
+    { "match": "com.google.android.youtube.tvkids", "reason": "YouTube Kids — tắt nếu không có trẻ em dùng TV." },
+    { "match": "com.google.android.apps.youtube.music", "reason": "YouTube Music TV — tắt nếu không nghe nhạc trên TV." },
+    { "match": ".demo.", "reason": "App demo / sample thường an toàn tắt." },
+    { "match": ".stub.", "reason": "Stub package OEM — thường không cần." },
+    { "match": "analytics", "reason": "Gói analytics / telemetry OEM." },
+    { "match": "com.amazon.avod", "reason": "Amazon Prime Video — tắt nếu không dùng dịch vụ Amazon." }
+  ],
+  "review_substrings": [
+    { "match": "com.google.android.gms", "reason": "Google Play Services — tắt có thể làm hỏng app Google / đăng nhập." },
+    { "match": "com.google.android.katniss", "reason": "Google Search / Assistant trên TV." },
+    { "match": "com.android.tv.launcher", "reason": "Launcher Google TV — chỉ tắt khi đã có launcher thay thế (Gathin, v.v.)." },
+    { "match": "com.google.android.tvlauncher", "reason": "Launcher Google TV — cần launcher khác trước khi tắt." },
+    { "match": "com.tcl.", "reason": "Gói TCL — xem từng app; một số liên quan điều khiển / cập nhật." },
+    { "match": "com.sony.", "reason": "Gói Sony Bravia — có thể ảnh hưởng remote / HDMI." },
+    { "match": "com.mi.", "reason": "Gói Xiaomi — patchwall / dịch vụ MI." },
+    { "match": "casper", "reason": "Gói Casper TV — kiểm tra trước khi tắt." }
+  ],
+  "keep_substrings": [
+    "com.gathin.tvhome",
+    "com.netflix",
+    "com.android.systemui",
+    "com.android.settings",
+    "com.android.tv.settings",
+    "com.google.android.tv",
+    "com.google.android.apps.tv"
+  ],
+  "by_manufacturer": {
+    "TCL": {
+      "recommend_exact": [
+        "com.tcl.tvweishi",
+        "com.tcl.tvweishi.global"
+      ]
+    },
+    "SONY": {
+      "review_exact": [
+        "com.sony.dtv.screensaver"
+      ]
+    }
+  }
+}

@@ -18,6 +18,8 @@ from app_brand import user_data_dir
 
 PORT = 5555
 CONNECT_TIMEOUT = 8.0
+# `pm list packages` on a TV over Wi‑Fi can exceed 8s when the link is busy.
+SHELL_HEAVY_TIMEOUT = 45.0
 # Wi‑Fi ADB on TVs is often << 1 MB/s; 30s is too tight even for ~150 KB wallpapers.
 PUSH_TIMEOUT_MIN = 90.0
 PUSH_TIMEOUT_MAX = 600.0
@@ -173,6 +175,12 @@ def _port_open(host, port, timeout):
             return True
     except OSError:
         return False
+
+
+def port_reachable(host, port=PORT, timeout=None):
+    """Fast TCP check — does not authenticate ADB (use quick_check for that)."""
+    t = float(timeout if timeout is not None else SCAN_PORT_TIMEOUT)
+    return _port_open(host, int(port), t)
 
 
 def scan_subnet(progress=None):

@@ -1,5 +1,6 @@
 """SmartTV Manager: desktop app, lists TVs on the LAN and connects over ADB."""
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import webview
 
@@ -14,6 +15,9 @@ from core.apk_installer import ApkInstaller
 from core.launcher_detector import LauncherDetector
 from core.theme_manager import ThemeManager
 from core.cleanyourtv_themes import CleanyourtvThemes
+from core.clean_suggestions import CleanSuggestionEngine
+from core import ai_clean
+import settings_store
 import base64
 import json
 import os
@@ -33,6 +37,7 @@ class Api:
         self._apply_jobs = {}
         self._apply_jobs_lock = threading.Lock()
         self._dev_locks = {}
+        self._clean_engine = CleanSuggestionEngine()
 
     def _dev_op_lock(self, host, port=5555):
         key = f"{host}:{port}"
@@ -55,18 +60,20 @@ class Api:
             except Exception:
                 pass
 
+    def _ping_cached_dev(self, dev, timeout=None):
+        timeout = timeout if timeout is not None else adb_client.QUICK_CHECK_TIMEOUT
+        try:
+            adb_client.ensure_connected(dev, timeout=timeout)
+            return True
+        except Exception:
+            return False
+
     def _get_dev(self, host, port=5555):
         key = f"{host}:{port}"
         if key in self._dev_cache:
-            try:
-                self._dev_cache[key].shell("echo ok")
+            if self._ping_cached_dev(self._dev_cache[key]):
                 return self._dev_cache[key]
-            except Exception:
-                try:
-                    self._dev_cache[key].close()
-                except Exception:
-                    pass
-                self._dev_cache.pop(key, None)
+            self._drop_dev(host, port)
         dev = adb_client.connect(host, int(port))
         self._dev_cache[key] = dev
         return dev
@@ -74,32 +81,43 @@ class Api:
     def _get_pm(self, host, port=5555):
         key = f"{host}:{port}"
         if key in self._pm_cache:
-            try:
-                self._pm_cache[key].device.shell("echo ok")
+            if self._ping_cached_dev(self._pm_cache[key].device):
                 return self._pm_cache[key]
-            except Exception:
-                try:
-                    self._pm_cache[key].device.close()
-                except Exception:
-                    pass
-                self._pm_cache.pop(key, None)
+            self._drop_dev(host, port)
         dev = self._get_dev(host, port)
         pm = PackageManager(dev)
         self._pm_cache[key] = pm
         return pm
 
-    def list_devices(self):
+    def _adb_timeout_error(self, err) -> bool:
+        msg = str(err).lower()
+        return "timed out" in msg or "tcptimeout" in msg.replace("_", "")
+
+    def list_devices(self, check="adb"):
+        """List saved TVs. check: cache (instant) | port (TCP 5555) | adb (full handshake)."""
         devices = store.load()
-        updated = []
-        for d in devices:
+        if not devices:
+            return []
+
+        mode = (check or "adb").strip().lower()
+        if mode in ("cache", "false", "0", "no"):
+            return [dict(d) for d in devices]
+
+        def check_one(d):
             host = d["host"]
-            port = d.get("port", 5555)
-            online = adb_client.quick_check(host, port)
+            port = int(d.get("port", 5555))
+            if mode == "port":
+                online = adb_client.port_reachable(host, port)
+            else:
+                online = adb_client.quick_check(host, port)
             store.update_status(host, online=online)
             nd = dict(d)
             nd["online"] = online
-            updated.append(nd)
-        return updated
+            return nd
+
+        workers = min(8, len(devices))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return list(pool.map(check_one, devices))
 
     def scan(self):
         found = adb_client.scan_subnet()
@@ -151,9 +169,18 @@ class Api:
             raise Exception(str(e))
 
     def list_apps(self, host, port=5555):
-        pm = self._get_pm(host, port)
-        pkgs = pm.get_all_packages()
-        current_home = pm.get_current_home()
+        with self._dev_op_lock(host, port):
+            try:
+                pm = self._get_pm(host, port)
+                pkgs = pm.get_all_packages()
+                current_home = pm.get_current_home()
+            except Exception as e:
+                if self._adb_timeout_error(e):
+                    self._drop_dev(host, port)
+                raise Exception(
+                    f"ADB timeout hoặc TV không phản hồi ({host}:{port}). "
+                    f"Kiểm tra TV bật, cùng Wi‑Fi, và đã Allow debugging. Chi tiết: {e}"
+                ) from e
         # Mark types
         result = []
         user_set = set(pkgs.get("user", []))
@@ -179,13 +206,100 @@ class Api:
         result.sort(key=lambda x: (x["type"] != "user", x["type"] != "disabled", x["package"]))
         return {"apps": result, "current_home": current_home}
 
-    def get_apps_info(self, host, port=5555, packages=None):
+    def _device_props(self, pm: PackageManager) -> tuple:
+        try:
+            brand = (pm._shell("getprop ro.product.manufacturer") or "").strip()
+            model = (pm._shell("getprop ro.product.model") or "").strip()
+            return brand, model
+        except Exception:
+            return "", ""
+
+    def get_app_settings(self):
+        return settings_store.public_settings()
+
+    def save_app_settings(self, openai_api_key=None, openai_model=None):
+        if openai_api_key is not None:
+            settings_store.set_openai_api_key(openai_api_key)
+        if openai_model:
+            data = settings_store.load()
+            data["openai_model"] = str(openai_model).strip() or "gpt-4o-mini"
+            settings_store.save(data)
+        return settings_store.public_settings()
+
+    def test_openai_connection(self):
+        key = settings_store.get_openai_api_key()
+        if not key:
+            raise Exception("Chưa lưu OpenAI API key")
+        ai_clean.ping_openai(api_key=key)
+        return {"ok": True}
+
+    def smart_clean_suggest(self, host, port=5555, use_ai=False):
+        listed = self.list_apps(host, port)
+        apps = listed.get("apps") or []
         pm = self._get_pm(host, port)
+        manufacturer, model = self._device_props(pm)
+        suggestions = self._clean_engine.analyze(apps, manufacturer=manufacturer)
+        ai_error = None
+        if use_ai:
+            key = settings_store.get_openai_api_key()
+            if not key:
+                ai_error = "Chưa lưu OpenAI API key — dùng gợi ý nhanh (offline) hoặc dán key bên dưới."
+            else:
+                try:
+                    candidates = [
+                        s["package"]
+                        for s in suggestions
+                        if s.get("enabled") and s.get("can_disable") and s.get("tier") != "blocked"
+                    ]
+                    pub = settings_store.public_settings()
+                    ai_rows = ai_clean.suggest_with_openai(
+                        api_key=key,
+                        model=pub.get("openai_model") or "gpt-4o-mini",
+                        manufacturer=manufacturer,
+                        model_name=model,
+                        packages=candidates,
+                    )
+                    suggestions = self._clean_engine.merge_ai(suggestions, ai_rows)
+                except Exception as e:
+                    ai_error = str(e)
+        counts = {"recommend": 0, "review": 0, "skip": 0, "blocked": 0}
+        for s in suggestions:
+            counts[s.get("tier") or "skip"] = counts.get(s.get("tier") or "skip", 0) + 1
+        return {
+            "suggestions": suggestions,
+            "manufacturer": manufacturer,
+            "model": model,
+            "current_home": listed.get("current_home"),
+            "counts": counts,
+            "ai_error": ai_error,
+        }
+
+    def smart_clean_apply(self, host, port=5555, packages=None):
+        pkgs = [p for p in (packages or []) if p]
+        if not pkgs:
+            raise Exception("Không có package nào để vô hiệu hóa")
+        results = []
+        for pkg in pkgs:
+            try:
+                self.app_action(host, port, "disable", pkg)
+                results.append({"package": pkg, "ok": True})
+            except Exception as e:
+                results.append({"package": pkg, "ok": False, "error": str(e)})
+        ok = sum(1 for r in results if r.get("ok"))
+        return {"results": results, "ok_count": ok, "fail_count": len(results) - ok}
+
+    def get_apps_info(self, host, port=5555, packages=None):
         if not packages:
             return {}
         pkgs = [p for p in packages if p]
-        info = pm.get_packages_info(pkgs, limit=60)
-        return info
+        with self._dev_op_lock(host, port):
+            try:
+                pm = self._get_pm(host, port)
+                return pm.get_packages_info(pkgs, limit=20)
+            except Exception as e:
+                if self._adb_timeout_error(e):
+                    self._drop_dev(host, port)
+                raise Exception(f"Không đọc được thông tin app: {e}") from e
 
     def app_action(self, host, port=5555, action="", package=""):
         pm = self._get_pm(host, port)
@@ -512,7 +626,7 @@ class Api:
 if __name__ == "__main__":
     api = Api()
     root = paths.app_root()
-    ui_path = os.path.join(root, "ui", "splash.html")
+    ui_path = os.path.join(root, "ui", "index.html")
     icon_path = os.path.join(root, "ui", "assets", "app-icon.png")
     if os.name == "nt":
         ico = os.path.join(root, "assets", "app-icon.ico")

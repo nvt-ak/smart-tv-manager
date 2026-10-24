@@ -4,6 +4,7 @@
 @import url("devices.css");
 @import url("remote.css");
 @import url("apps.css");
+@import url("smart-clean.css");
 @import url("apk.css");
 @import url("home.css");
 
@@ -41,7 +42,7 @@
   margin-bottom: var(--space-sm);
 }
 
-input:not(.field-input):not(.home-search-input):not(.remote-text-input):not(.remote-keycode-input):not([type="file"]) {
+input:not(.field-input):not(.home-search-input):not(.remote-text-input):not(.remote-keycode-input):not(.smart-clean-key-input):not(.smart-clean-search):not(.smart-clean-check):not([type="file"]):not([type="checkbox"]):not([type="radio"]) {
   flex: 1;
   background: var(--color-surface-container);
   border: 1px solid var(--hairline);
@@ -51,12 +52,12 @@ input:not(.field-input):not(.home-search-input):not(.remote-text-input):not(.rem
   font: var(--text-body-md);
 }
 
-input:focus {
+input:not(.smart-clean-key-input):not(.smart-clean-search):focus {
   outline: none;
   border-color: var(--accent-hairline);
 }
 
-button:not(.btn):not(.nav-tab):not(.dpad):not(.rbtn):not(.app-act):not(.filter-tab):not(.apps-search-clear):not(.remote-key):not(.remote-app-btn) {
+button:not(.btn):not(.nav-tab):not(.dpad):not(.rbtn):not(.app-act):not(.filter-tab):not(.apps-search-clear):not(.remote-key):not(.remote-app-btn):not([class*="smart-clean-"]) {
   background: transparent;
   border: 1px solid var(--accent-hairline);
   color: var(--color-primary-fixed-dim);
@@ -71,7 +72,7 @@ button:not(.btn):not(.nav-tab):not(.dpad):not(.rbtn):not(.app-act):not(.filter-t
   gap: var(--space-xs);
 }
 
-button:not(.btn):not(.nav-tab):not(.dpad):not(.rbtn):not(.app-act):not(.filter-tab):not(.apps-search-clear):not(.remote-key):not(.remote-app-btn):hover:not(:disabled):not(.loading) {
+button:not(.btn):not(.nav-tab):not(.dpad):not(.rbtn):not(.app-act):not(.filter-tab):not(.apps-search-clear):not(.remote-key):not(.remote-app-btn):not([class*="smart-clean-"]):hover:not(:disabled):not(.loading) {
   background: rgba(0, 240, 255, 0.1);
   border-color: var(--color-primary-container);
   color: var(--color-primary);

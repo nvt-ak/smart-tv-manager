@@ -8,8 +8,8 @@
     { pct: 100, msg: 'Khởi tạo thành công! Đang vào màn hình chính...' },
   ];
 
-  const MIN_SPLASH_MS = 2400;
-  const STEP_MS = 520;
+  const MIN_SPLASH_MS = 900;
+  const STEP_MS = 320;
 
   const bar = document.getElementById('splashProgressBar');
   const percentEl = document.getElementById('splashPercent');
