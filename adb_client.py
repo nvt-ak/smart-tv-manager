@@ -16,8 +16,11 @@ from adb_shell.auth.sign_pythonrsa import PythonRSASigner
 
 PORT = 5555
 CONNECT_TIMEOUT = 8.0
-PUSH_TIMEOUT_MIN = 30.0
-PUSH_TIMEOUT_MAX = 300.0
+# Wi‑Fi ADB on TVs is often << 1 MB/s; 30s is too tight even for ~150 KB wallpapers.
+PUSH_TIMEOUT_MIN = 90.0
+PUSH_TIMEOUT_MAX = 600.0
+# Assumed minimum throughput when scaling timeouts (bytes per second).
+PUSH_ASSUMED_BPS = 48 * 1024
 SCAN_PORT_TIMEOUT = 0.3
 QUICK_CHECK_TIMEOUT = 2.5
 
@@ -26,10 +29,9 @@ def transfer_timeout_s(size_bytes: int) -> float:
     """Wi‑Fi ADB: scale timeout for push/shell that moves ~size_bytes."""
     if size_bytes <= 0:
         return PUSH_TIMEOUT_MIN
-    return min(
-        PUSH_TIMEOUT_MAX,
-        max(PUSH_TIMEOUT_MIN, 20.0 + size_bytes / (512 * 1024)),
-    )
+    # Base slack for TV shell/filesync + transfer at assumed slow Wi‑Fi.
+    needed = 45.0 + (size_bytes / PUSH_ASSUMED_BPS) + 25.0
+    return min(PUSH_TIMEOUT_MAX, max(PUSH_TIMEOUT_MIN, needed))
 
 
 push_timeout_s = transfer_timeout_s  # backwards-compatible alias
@@ -42,6 +44,24 @@ def reconnect(device, timeout=CONNECT_TIMEOUT):
     except Exception:
         pass
     device.connect(rsa_keys=[get_signer()], auth_timeout_s=timeout)
+    if not device.available:
+        raise Exception("Không kết nối lại được ADB tới TV (connect thất bại)")
+
+
+def ensure_connected(device, timeout=CONNECT_TIMEOUT):
+    """Raise if the device cannot accept shell/sync (reconnect when needed)."""
+    if getattr(device, "available", False):
+        try:
+            device.shell(
+                "echo ok",
+                transport_timeout_s=timeout,
+                read_timeout_s=timeout,
+                timeout_s=timeout,
+            )
+            return
+        except Exception:
+            pass
+    reconnect(device, timeout=timeout)
 
 KEY_DIR = os.path.join(os.path.expanduser("~"), ".tv-remote-hub")
 KEY_PATH = os.path.join(KEY_DIR, "adbkey")

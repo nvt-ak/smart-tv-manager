@@ -15,12 +15,14 @@ implementation; this module ports its behaviour to adb-shell:
   * Home is restarted afterwards, restoring the accessibility services that
     Android drops when an app is force-stopped.
 """
+import base64
 import json
 import os
 import re
+import tempfile
 import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import adb_client
 from adb_shell.adb_device import AdbDeviceTcp
@@ -64,9 +66,18 @@ COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 
 
 class ThemeManager:
-    def __init__(self, device: AdbDeviceTcp):
+    def __init__(
+        self,
+        device: AdbDeviceTcp,
+        on_step: Optional[Callable[[str, str], None]] = None,
+    ):
         self.device = device
         self._provider_supported: Optional[bool] = None
+        self.on_step = on_step
+
+    def _step(self, phase: str, detail: str = "") -> None:
+        if self.on_step:
+            self.on_step(phase, detail)
 
     # ------------------------------------------------------------------ shell
 
@@ -77,6 +88,7 @@ class ThemeManager:
         last: Optional[Exception] = None
         for attempt in range(3):
             try:
+                adb_client.ensure_connected(self.device)
                 return (
                     self.device.shell(
                         cmd,
@@ -104,9 +116,15 @@ class ThemeManager:
         except OSError:
             size = 0
         timeout = adb_client.transfer_timeout_s(size)
+        size_kb = max(1, size // 1024)
         last: Optional[Exception] = None
         for attempt in range(3):
             try:
+                if attempt > 0:
+                    time.sleep(1.0)
+                    adb_client.reconnect(self.device, timeout=15.0)
+                else:
+                    adb_client.ensure_connected(self.device, timeout=15.0)
                 self.device.push(
                     local,
                     remote,
@@ -119,13 +137,18 @@ class ThemeManager:
                 msg = str(e).lower()
                 if attempt >= 2 or "timed out" not in msg:
                     break
-                try:
-                    adb_client.reconnect(self.device)
-                except Exception:
-                    pass
-                time.sleep(0.5)
+                self._step(
+                    "adb_push_retry",
+                    f"lần {attempt + 2}/3, timeout={int(timeout)}s",
+                )
+        hint = (
+            "ADB qua Wi‑Fi (port 5555) không kịp phản hồi — thường do TV/TV sleep, "
+            "Wi‑Fi yếu, hoặc phiên ADB treo. Thử: đánh thức TV, cùng mạng LAN với Mac, "
+            "Settings → Developer → tắt/bật Wireless debugging, rồi Connect lại trong app."
+        )
         raise Exception(
-            f"Không đẩy được {os.path.basename(local)} lên TV: {last}"
+            f"Không đẩy được {os.path.basename(local)} ({size_kb} KB, "
+            f"chờ tối đa {int(timeout)}s/lần, 3 lần): {last}. {hint}"
         )
 
     # --------------------------------------------------------------- provider
@@ -147,13 +170,27 @@ class ThemeManager:
 
     # ------------------------------------------------------------ device paths
 
+    def _read_overlay_text(self, rel: str) -> str:
+        """Read a text overlay via ThemeProvider, then direct path (Android 11+)."""
+        uri = f"{THEME_URI}/{rel}"
+        target = f"{HOME_DIR}/{rel}"
+        commands = (
+            f"content read --uri {uri} 2>/dev/null",
+            f"cat {target} 2>/dev/null",
+        )
+        for cmd in commands:
+            try:
+                out = self._shell(cmd)
+            except Exception:
+                continue
+            text = (out or "").strip()
+            if text and "Error" not in text[:40]:
+                return text
+        return ""
+
     def read_config(self) -> Dict[str, Any]:
         """Read the overlay currently on the TV ({} when there is none)."""
-        try:
-            out = self._shell(f"cat {HOME_DIR}/{CONFIG_NAME} 2>/dev/null")
-        except Exception:
-            return {}
-        text = (out or "").strip()
+        text = self._read_overlay_text(CONFIG_NAME)
         if not text:
             return {}
         try:
@@ -162,10 +199,49 @@ class ThemeManager:
             return {}
 
     def read_revision(self) -> str:
+        return self._read_overlay_text(REVISION_NAME).strip()
+
+    def read_wallpaper_preview_b64(self, max_bytes: int = 1_500_000) -> Optional[str]:
+        """Pull wallpaper.jpg from TV for UI preview (best-effort)."""
+        remote = f"{HOME_DIR}/{WALLPAPER_NAME}"
+        fd, local = tempfile.mkstemp(prefix="tvremotehub-wp-", suffix=".jpg")
+        os.close(fd)
+        timeout = adb_client.transfer_timeout_s(max_bytes)
+        staged = f"{STAGE_PREFIX}-preview-wall.jpg"
         try:
-            return self._shell(f"cat {HOME_DIR}/{REVISION_NAME} 2>/dev/null").strip()
+            self._shell(
+                f"rm -f {staged} 2>/dev/null; "
+                f"cp {remote} {staged} 2>/dev/null || cat {remote} > {staged} 2>/dev/null"
+            )
+            try:
+                self.device.pull(
+                    staged,
+                    local,
+                    transport_timeout_s=timeout,
+                    read_timeout_s=timeout,
+                )
+            except Exception:
+                self.device.pull(
+                    remote,
+                    local,
+                    transport_timeout_s=timeout,
+                    read_timeout_s=timeout,
+                )
+            self._shell(f"rm -f {staged} 2>/dev/null")
+            if not os.path.exists(local) or os.path.getsize(local) <= 0:
+                return None
+            size = os.path.getsize(local)
+            if size > max_bytes:
+                return None
+            with open(local, "rb") as f:
+                return base64.b64encode(f.read()).decode("ascii")
         except Exception:
-            return ""
+            return None
+        finally:
+            try:
+                os.unlink(local)
+            except OSError:
+                pass
 
     def list_wallpapers(self) -> List[str]:
         try:
@@ -181,11 +257,15 @@ class ThemeManager:
 
     # ---------------------------------------------------------------- backup
 
-    def backup_config(self, local_dir: str) -> Dict[str, Any]:
+    def backup_config(
+        self, local_dir: str, *, pull_assets: bool = True
+    ) -> Dict[str, Any]:
         """Save the current overlay (config + wallpaper names + revision) locally.
 
         A backup is mandatory before every write, so this never raises for a
         missing config: restoring "no config" is itself a valid backup.
+
+        pull_assets=False skips pulling wallpaper bytes (faster before apply).
         """
         stamp = time.strftime("%Y%m%d_%H%M%S")
         dest = os.path.join(local_dir, stamp)
@@ -208,29 +288,36 @@ class ThemeManager:
             "wallpaper_files": [],
         }
 
-        # Keep the actual wallpaper bytes when the shell can read them.
-        wp = os.path.join(dest, WALLPAPER_NAME)
-        try:
-            self.device.pull(f"{HOME_DIR}/{WALLPAPER_NAME}", wp)
-            if os.path.exists(wp) and os.path.getsize(wp) > 0:
-                manifest["wallpaper"] = WALLPAPER_NAME
-            else:
-                if os.path.exists(wp):
-                    os.unlink(wp)
-        except Exception:
-            pass
+        if pull_assets:
+            self._step("backup_pull_wallpaper", WALLPAPER_NAME)
+            wp = os.path.join(dest, WALLPAPER_NAME)
+            try:
+                self.device.pull(f"{HOME_DIR}/{WALLPAPER_NAME}", wp)
+                if os.path.exists(wp) and os.path.getsize(wp) > 0:
+                    manifest["wallpaper"] = WALLPAPER_NAME
+                else:
+                    if os.path.exists(wp):
+                        os.unlink(wp)
+            except Exception as exc:
+                self._step("backup_pull_skip", f"{WALLPAPER_NAME}: {exc}")
 
-        if wallpapers:
-            wp_dir = os.path.join(dest, COLLECTION)
-            os.makedirs(wp_dir, exist_ok=True)
-            for name in wallpapers:
-                target = os.path.join(wp_dir, name)
-                try:
-                    self.device.pull(f"{HOME_DIR}/{COLLECTION}/{name}", target)
-                    if os.path.exists(target) and os.path.getsize(target) > 0:
-                        manifest["wallpaper_files"].append(name)
-                except Exception:
-                    pass
+            if wallpapers:
+                wp_dir = os.path.join(dest, COLLECTION)
+                os.makedirs(wp_dir, exist_ok=True)
+                for name in wallpapers:
+                    self._step("backup_pull_collection", name)
+                    target = os.path.join(wp_dir, name)
+                    try:
+                        self.device.pull(f"{HOME_DIR}/{COLLECTION}/{name}", target)
+                        if os.path.exists(target) and os.path.getsize(target) > 0:
+                            manifest["wallpaper_files"].append(name)
+                    except Exception as exc:
+                        self._step("backup_pull_skip", f"{name}: {exc}")
+        else:
+            self._step(
+                "backup_skip_assets",
+                f"chỉ lưu config + tên {len(wallpapers)} wallpaper",
+            )
 
         with open(os.path.join(dest, "manifest.json"), "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2, ensure_ascii=False)
@@ -240,6 +327,8 @@ class ThemeManager:
 
     def restore_backup(self, backup_dir: str) -> Dict[str, Any]:
         """Restore a folder produced by backup_config()."""
+        self._step("restore_start", os.path.basename(backup_dir))
+        adb_client.reconnect(self.device, timeout=15.0)
         manifest_path = os.path.join(backup_dir, "manifest.json")
         if not os.path.exists(manifest_path):
             raise Exception("Bản sao lưu không hợp lệ (thiếu manifest.json)")
@@ -335,37 +424,55 @@ class ThemeManager:
 
     def apply_theme(self, theme: Dict[str, Any]) -> Dict[str, Any]:
         """Write config + wallpapers, bump the revision and restart Home."""
+        name = theme.get("name") or theme.get("id") or "theme"
+        self._step("validate", name)
         check = self.validate_theme(theme)
         if not check["ok"]:
             raise Exception("; ".join(check["errors"]))
 
+        self._step("mkdir", HOME_DIR)
         self._shell(f"mkdir -p {HOME_DIR} 2>/dev/null")
 
         config_path = os.path.join(theme["path"], CONFIG_NAME)
+        self._step("push", CONFIG_NAME)
         self._write_file(config_path, CONFIG_NAME)
 
         wallpaper = theme.get("wallpaper")
         if wallpaper and os.path.exists(wallpaper):
+            self._step("adb_fresh_sync", "reconnect trước khi đẩy wallpaper")
+            adb_client.reconnect(self.device, timeout=15.0)
+            size = os.path.getsize(wallpaper)
+            self._step("push", f"{WALLPAPER_NAME} ({size // 1024} KB)")
             self._write_file(wallpaper, WALLPAPER_NAME)
         else:
+            self._step("delete", WALLPAPER_NAME)
             self._delete_file(WALLPAPER_NAME)
 
+        self._step("clear_collection", COLLECTION)
         self._clear_collection()
         for local in theme.get("wallpapers") or []:
             if os.path.exists(local):
-                self._write_file(local, f"{COLLECTION}/{os.path.basename(local)}")
+                base = os.path.basename(local)
+                size = os.path.getsize(local)
+                self._step("push", f"{COLLECTION}/{base} ({size // 1024} KB)")
+                self._write_file(local, f"{COLLECTION}/{base}")
 
         captions = None
         for local in theme.get("wallpapers") or []:
             if os.path.basename(local).lower() == CAPTIONS_NAME:
                 captions = local
         if captions:
+            self._step("push", f"{COLLECTION}/{CAPTIONS_NAME}")
             self._write_file(captions, f"{COLLECTION}/{CAPTIONS_NAME}")
         else:
             self._delete_file(f"{COLLECTION}/{CAPTIONS_NAME}")
 
+        self._step("revision", REVISION_NAME)
         self._write_revision()
-        self.restart_launcher()
+        self._step("restart_launcher", PKG)
+        if not self.restart_launcher():
+            raise Exception("Không khởi động lại launcher (adb shell timeout hoặc lỗi am/settings)")
+        self._step("done", name)
         return {"ok": True, "warnings": check["warnings"]}
 
     def reset(self) -> Dict[str, Any]:
@@ -380,6 +487,28 @@ class ThemeManager:
 
     # -------------------------------------------------------------- internals
 
+    def _prepare_wallpaper_upload(self, local_path: str) -> Tuple[str, Optional[str]]:
+        """Return (path_for_push, temp_to_delete). May re-encode JPEG for Wi‑Fi ADB."""
+        if not local_path.lower().endswith((".jpg", ".jpeg")):
+            return local_path, None
+        try:
+            from PIL import Image  # type: ignore
+        except ImportError:
+            return local_path, None
+        try:
+            with Image.open(local_path) as im:
+                im = im.convert("RGB")
+                im.thumbnail((1920, 1080), Image.Resampling.LANCZOS)
+                fd, tmp = tempfile.mkstemp(prefix="tvremotehub-wp-", suffix=".jpg")
+                os.close(fd)
+                im.save(tmp, "JPEG", quality=84, optimize=True)
+            if os.path.getsize(tmp) < os.path.getsize(local_path):
+                return tmp, tmp
+            os.unlink(tmp)
+        except Exception:
+            pass
+        return local_path, None
+
     def _stage(self, local_path: str, rel: str) -> str:
         staged = STAGE_PREFIX + "-" + rel.replace("/", "-")
         self._push(local_path, staged)
@@ -387,31 +516,48 @@ class ThemeManager:
 
     def _write_file(self, local_path: str, rel: str) -> None:
         """Provider write first, `cp` fallback (mirrors theme.sh `put`)."""
+        push_path = local_path
+        temp_path = None
+        if rel == WALLPAPER_NAME:
+            push_path, temp_path = self._prepare_wallpaper_upload(local_path)
+            if temp_path:
+                self._step(
+                    "wallpaper_compress",
+                    f"{os.path.getsize(local_path) // 1024}→{os.path.getsize(push_path) // 1024} KB",
+                )
         try:
-            size = os.path.getsize(local_path)
-        except OSError:
-            size = 0
-        io_timeout = adb_client.transfer_timeout_s(size)
-        staged = self._stage(local_path, rel)
-        target = f"{HOME_DIR}/{rel}"
-        cmd = (
-            f"mkdir -p $(dirname {target}) 2>/dev/null; "
-            f"rm -f {target} 2>/dev/null; "
-            f"o=$(content write --uri {THEME_URI}/{rel} < {staged} 2>&1) && "
-            "case \"$o\" in *'Unsupported operation'*) false ;; esac "
-            f"|| cp {staged} {target} 2>/dev/null; "
-            f"rm -f {staged}; echo \"$o\""
-        )
-        out = self._shell(cmd, timeout_s=io_timeout).strip()
-        exists = self._shell(
-            f"[ -f {target} ] && echo yes || echo no", timeout_s=io_timeout
-        ).strip()
-        if "yes" not in exists:
-            hint = out[:240] if out else "content write và cp đều thất bại"
-            raise Exception(
-                f"Không ghi được {rel} lên TV (firmware chặn Android/data?): {hint}"
+            try:
+                size = os.path.getsize(push_path)
+            except OSError:
+                size = 0
+            io_timeout = adb_client.transfer_timeout_s(size)
+            self._step("adb_push", f"{rel} → {STAGE_PREFIX}")
+            staged = self._stage(push_path, rel)
+            target = f"{HOME_DIR}/{rel}"
+            self._step("adb_write", rel)
+            cmd = (
+                f"mkdir -p $(dirname {target}) 2>/dev/null; "
+                f"rm -f {target} 2>/dev/null; "
+                f"o=$(content write --uri {THEME_URI}/{rel} < {staged} 2>&1) && "
+                "case \"$o\" in *'Unsupported operation'*) false ;; esac "
+                f"|| cp {staged} {target} 2>/dev/null; "
+                f"rm -f {staged}; echo \"$o\""
             )
-        return out
+            out = self._shell(cmd, timeout_s=io_timeout).strip()
+            exists = self._shell(
+                f"[ -f {target} ] && echo yes || echo no", timeout_s=io_timeout
+            ).strip()
+            if "yes" not in exists:
+                hint = out[:240] if out else "content write và cp đều thất bại"
+                raise Exception(
+                    f"Không ghi được {rel} lên TV (firmware chặn Android/data?): {hint}"
+                )
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
 
     def _delete_file(self, rel: str) -> None:
         target = f"{HOME_DIR}/{rel}"

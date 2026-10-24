@@ -17,6 +17,11 @@ import base64
 import json
 import os
 import tempfile
+import threading
+import time
+import uuid
+
+THEME_APPLY_LOG = os.path.join(adb_client.KEY_DIR, "theme-apply.log")
 
 
 class Api:
@@ -24,6 +29,30 @@ class Api:
         self._pm_cache = {}
         self._dev_cache = {}
         self._themes = CleanyourtvThemes()
+        self._apply_jobs = {}
+        self._apply_jobs_lock = threading.Lock()
+        self._dev_locks = {}
+
+    def _dev_op_lock(self, host, port=5555):
+        key = f"{host}:{port}"
+        if key not in self._dev_locks:
+            self._dev_locks[key] = threading.Lock()
+        return self._dev_locks[key]
+
+    def _drop_dev(self, host, port=5555):
+        key = f"{host}:{port}"
+        dev = self._dev_cache.pop(key, None)
+        if dev:
+            try:
+                dev.close()
+            except Exception:
+                pass
+        pm = self._pm_cache.pop(key, None)
+        if pm:
+            try:
+                pm.device.close()
+            except Exception:
+                pass
 
     def _get_dev(self, host, port=5555):
         key = f"{host}:{port}"
@@ -324,14 +353,22 @@ class Api:
         tm = ThemeManager(dev)
         return {"ok": tm.restart_launcher()}
 
-    def current_launcher_theme(self, host, port=5555):
+    def current_launcher_theme(self, host, port=5555, include_wallpaper=True):
         dev = self._get_dev(host, port)
         tm = ThemeManager(dev)
+        config = tm.read_config()
+        revision = tm.read_revision()
+        wallpapers = tm.list_wallpapers()
+        wallpaper_b64 = None
+        if include_wallpaper:
+            wallpaper_b64 = tm.read_wallpaper_preview_b64()
         return {
-            "config": tm.read_config(),
-            "revision": tm.read_revision(),
-            "wallpapers": tm.list_wallpapers(),
+            "config": config,
+            "revision": revision,
+            "wallpapers": wallpapers,
             "provider": tm.provider_supported(),
+            "wallpaper_b64": wallpaper_b64,
+            "has_overlay": bool(config) or bool(revision) or bool(wallpaper_b64),
         }
 
     def list_gathin_themes(self):
@@ -360,28 +397,111 @@ class Api:
             })
         return result
 
-    def apply_gathin_theme(self, host, port=5555, theme_id=""):
+    def _append_theme_apply_log(self, job_id: str, phase: str, detail: str) -> None:
+        os.makedirs(adb_client.KEY_DIR, mode=0o700, exist_ok=True)
+        line = (
+            f"{time.strftime('%Y-%m-%d %H:%M:%S')} [{job_id[:8]}] {phase}"
+            + (f" | {detail}" if detail else "")
+            + "\n"
+        )
+        try:
+            with open(THEME_APPLY_LOG, "a", encoding="utf-8") as f:
+                f.write(line)
+        except Exception:
+            pass
+
+    def _apply_gathin_theme_impl(self, host, port, theme_id, job_id, steps):
+        def on_step(phase, detail=""):
+            entry = {"t": time.time(), "msg": phase, "detail": detail or ""}
+            steps.append(entry)
+            self._append_theme_apply_log(job_id, phase, detail or "")
+
         if not theme_id:
             raise Exception("Chưa chọn theme")
         themes = self._themes.list_themes()
         theme = next((t for t in themes if t["id"] == theme_id), None)
         if not theme:
             raise Exception("Không tìm thấy theme")
-        dev = self._get_dev(host, port)
-        tm = ThemeManager(dev)
-        # Backup is mandatory before the first write (roadmap safety rule).
-        backup = tm.backup_config(self._backup_root(host, port))
-        try:
-            result = tm.apply_theme(theme)
-        except Exception:
-            # Best effort: put the previous overlay back so Home is never left half-themed.
+
+        on_step("start", f"{theme.get('name') or theme_id} → {host}:{port}")
+        with self._dev_op_lock(host, port):
+            self._drop_dev(host, port)
+            on_step("adb_connect", f"{host}:{port}")
+            dev = adb_client.connect(host, int(port))
             try:
-                tm.restore_backup(backup["path"])
-            except Exception:
-                pass
-            raise
-        result["backup"] = backup
-        return result
+                adb_client.ensure_connected(dev)
+                tm = ThemeManager(dev, on_step=on_step)
+                backup_root = self._backup_root(host, port)
+                on_step("backup", "snapshot config (bỏ qua kéo wallpaper để nhanh hơn)")
+                backup = tm.backup_config(backup_root, pull_assets=False)
+                on_step("backup_done", backup.get("time") or "")
+                try:
+                    result = tm.apply_theme(theme)
+                except Exception as exc:
+                    on_step("error", str(exc))
+                    on_step("restore_backup", backup.get("path") or "")
+                    try:
+                        adb_client.reconnect(dev, timeout=15.0)
+                        tm.restore_backup(backup["path"])
+                        on_step("restore_ok", "")
+                    except Exception as restore_exc:
+                        on_step("restore_failed", str(restore_exc))
+                    raise exc
+                result["backup"] = backup
+                result["steps"] = list(steps)
+                result["log_path"] = THEME_APPLY_LOG
+                return result
+            finally:
+                try:
+                    dev.close()
+                except Exception:
+                    pass
+                self._drop_dev(host, port)
+
+    def apply_gathin_theme(self, host, port=5555, theme_id=""):
+        steps = []
+        job_id = uuid.uuid4().hex
+        return self._apply_gathin_theme_impl(host, port, theme_id, job_id, steps)
+
+    def apply_gathin_theme_async(self, host, port=5555, theme_id=""):
+        job_id = uuid.uuid4().hex
+        job = {
+            "id": job_id,
+            "status": "running",
+            "steps": [],
+            "error": None,
+            "result": None,
+            "log_path": THEME_APPLY_LOG,
+        }
+        with self._apply_jobs_lock:
+            self._apply_jobs[job_id] = job
+
+        def run():
+            try:
+                result = self._apply_gathin_theme_impl(
+                    host, port, theme_id, job_id, job["steps"]
+                )
+                job["result"] = result
+                job["status"] = "done"
+            except Exception as exc:
+                job["error"] = str(exc)
+                job["status"] = "failed"
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"job_id": job_id, "log_path": THEME_APPLY_LOG}
+
+    def apply_gathin_theme_job(self, job_id=""):
+        with self._apply_jobs_lock:
+            job = self._apply_jobs.get(job_id)
+            if not job:
+                return {"status": "unknown", "steps": [], "error": "Không tìm thấy job"}
+            return {
+                "status": job["status"],
+                "steps": list(job["steps"]),
+                "error": job["error"],
+                "result": job["result"],
+                "log_path": job.get("log_path"),
+            }
 
 
 if __name__ == "__main__":

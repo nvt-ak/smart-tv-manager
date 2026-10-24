@@ -665,6 +665,11 @@
         </div>
 
         <div id="homeStatus" class="status-line" role="status"></div>
+        <details id="homeApplyLogWrap" class="home-apply-log-wrap" hidden>
+          <summary>Nhật ký áp dụng theme</summary>
+          <p id="homeApplyLogHint" class="home-apply-log-hint"></p>
+          <pre id="homeApplyLog" class="home-apply-log" aria-live="polite"></pre>
+        </details>
 
         <div class="home-deck">
           <div class="home-panel home-panel--launcher glass-card">
@@ -757,9 +762,9 @@
                 <span class="material-symbols-outlined">file_upload</span>
                 Nhập JSON/ZIP
               </button>
-              <button type="button" id="homeLoadThemesBtn" class="btn btn--primary">
-                <span class="material-symbols-outlined">cloud_sync</span>
-                Tải danh sách theme
+              <button type="button" id="homeLoadThemesBtn" class="btn btn--surface" title="Tải lại thư viện theme từ disk">
+                <span class="material-symbols-outlined">refresh</span>
+                Tải lại theme
               </button>
             </div>
           </div>

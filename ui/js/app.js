@@ -125,6 +125,9 @@ const homeSetDefaultBtn = document.getElementById('homeSetDefaultBtn');
 const homeImportBtn = document.getElementById('homeImportBtn');
 const homeToast = document.getElementById('homeToast');
 const homeToastMsg = document.getElementById('homeToastMsg');
+const homeApplyLogWrap = document.getElementById('homeApplyLogWrap');
+const homeApplyLog = document.getElementById('homeApplyLog');
+const homeApplyLogHint = document.getElementById('homeApplyLogHint');
 
 let activeDevice = null;
 let keyThrottle = new Map();
@@ -202,6 +205,8 @@ function setActiveDevice(dev) {
   updateHomeChrome();
   updateApkChrome();
   updateDeviceCardHighlights();
+  const homePane = document.getElementById('tab-home');
+  if (homePane?.classList.contains('active')) activateHomeTab();
 }
 
 function updateDeviceCardHighlights() {
@@ -240,7 +245,7 @@ function switchTab(tab) {
     pane.classList.toggle('active', pane.id === `tab-${tab}`);
   });
   if (tab === 'remote' && activeDevice) updateRemoteDeviceHeader();
-  if (tab === 'home' && activeDevice) updateHomeChrome();
+  if (tab === 'home') activateHomeTab();
   if (tab === 'apk' && activeDevice) {
     updateApkChrome();
     refreshApkStorage();
@@ -990,14 +995,6 @@ if (backToAppsFromApk) {
   });
 }
 
-if (tabHomeBtn) {
-  tabHomeBtn.addEventListener('click', () => {
-    if (tabHomeBtn.disabled) return;
-    updateHomeChrome();
-    switchTab('home');
-  });
-}
-
 refreshBtn.addEventListener('click', async () => {
   setButtonLoading(refreshBtn, true, 'Đang làm mới...');
   setStatus('Đang cập nhật trạng thái thiết bị...');
@@ -1591,7 +1588,64 @@ function setHomeStatus(msg) {
   if (homeStatus) homeStatus.textContent = msg || '';
 }
 
+function formatApplyStepLine(step) {
+  const t = step.t
+    ? new Date(step.t * 1000).toLocaleTimeString('vi-VN', { hour12: false })
+    : '--:--:--';
+  const detail = step.detail ? ` — ${step.detail}` : '';
+  return `[${t}] ${step.msg}${detail}`;
+}
+
+function renderHomeApplyLog(steps, opts = {}) {
+  const { error = null, logPath = null, open = true } = opts;
+  if (!homeApplyLogWrap || !homeApplyLog) return;
+  const lines = (steps || []).map(formatApplyStepLine);
+  if (error) lines.push(`[LỖI] ${error}`);
+  homeApplyLog.textContent = lines.length ? lines.join('\n') : '';
+  if (homeApplyLogHint) {
+    homeApplyLogHint.textContent = logPath
+      ? `File log: ${logPath} (append mỗi lần áp dụng)`
+      : '';
+  }
+  homeApplyLogWrap.hidden = !lines.length;
+  if (open && lines.length) homeApplyLogWrap.open = true;
+  if (homeApplyLog) {
+    homeApplyLog.scrollTop = homeApplyLog.scrollHeight;
+  }
+  const last = steps && steps.length ? steps[steps.length - 1] : null;
+  if (last && !error) {
+    setHomeStatus(`${last.msg}${last.detail ? `: ${last.detail}` : ''}`);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollApplyThemeJob(jobId, btn) {
+  const logPathHint = null;
+  for (let i = 0; i < 600; i += 1) {
+    const st = await getApi().apply_gathin_theme_job(jobId);
+    renderHomeApplyLog(st.steps, {
+      error: st.status === 'failed' ? st.error : null,
+      logPath: st.log_path || logPathHint,
+    });
+    if (st.status === 'done') {
+      return st.result;
+    }
+    if (st.status === 'failed') {
+      throw new Error(st.error || 'Áp dụng theme thất bại');
+    }
+    if (st.status === 'unknown') {
+      throw new Error('Job áp dụng theme không còn tồn tại');
+    }
+    await sleep(400);
+  }
+  throw new Error('Hết thời gian chờ (quá 4 phút). Xem nhật ký bên dưới hoặc file log.');
+}
+
 let homeThemes = [];
+let homeThemesLoading = null;
 let previewThemeId = null;
 let homeActiveThemeId = null;
 let homeToastTimer = null;
@@ -1611,6 +1665,64 @@ function updateHomeChrome() {
   if (homeTarget) homeTarget.textContent = activeDevice.name;
   if (homeTargetMeta) homeTargetMeta.textContent = `(${activeDevice.host}:${activeDevice.port})`;
   updateHomeThemeCount();
+}
+
+async function activateHomeTab() {
+  if (!activeDevice) {
+    if (homeTarget) homeTarget.textContent = '—';
+    if (homeTargetMeta) homeTargetMeta.textContent = '—';
+    setHomeStatus('Chọn thiết bị để quản lý theme.');
+    return;
+  }
+  updateHomeChrome();
+  await loadHomeThemes();
+  await loadCurrentTheme();
+}
+
+async function loadHomeThemes(opts = {}) {
+  const force = !!opts.force;
+  const btn = opts.btn || null;
+  if (!force && homeThemes.length) {
+    renderHomeThemeGrid();
+    return;
+  }
+  if (homeThemesLoading && !force) {
+    return homeThemesLoading;
+  }
+
+  const run = async () => {
+    if (btn) setButtonLoading(btn, true, force ? 'Đang tải lại...' : 'Đang tải...');
+    setHomeStatus(
+      force ? 'Đang tải lại danh sách theme...' : 'Đang tải danh sách theme từ cleanyourtv...'
+    );
+    if (force && homeThemesGrid) homeThemesGrid.innerHTML = '';
+    try {
+      const themes = await getApi().list_gathin_themes();
+      homeThemes = themes || [];
+      if (!homeThemes.length) {
+        setHomeStatus('Không tìm thấy theme trong data/cleanyourtv/themes');
+        return;
+      }
+      updateHomeThemeCount();
+      renderHomeThemeGrid();
+      const invalid = homeThemes.filter((t) => (t.errors || []).length).length;
+      setHomeStatus(
+        force
+          ? `Đã tải lại ${homeThemes.length} theme${invalid ? ` (${invalid} không hợp lệ)` : ''}`
+          : `Đã tải ${homeThemes.length} theme${invalid ? ` (${invalid} không hợp lệ)` : ''}`
+      );
+      if (force) showHomeToast(`Đã tải lại ${homeThemes.length} theme`, 'refresh');
+    } catch (err) {
+      setHomeStatus(`Lỗi: ${err}`);
+    } finally {
+      if (btn) setButtonLoading(btn, false);
+    }
+  };
+
+  homeThemesLoading = run().finally(() => {
+    homeThemesLoading = null;
+  });
+  return homeThemesLoading;
 }
 
 function updateHomeThemeCount() {
@@ -1714,18 +1826,28 @@ function renderActiveThemePanel(cur, matchedTheme) {
 
   const resBadge = document.getElementById('homeActiveRes');
   if (thumb && placeholder) {
-    if (matchedTheme && matchedTheme.screenshot) {
-      thumb.src = `data:image/jpeg;base64,${matchedTheme.screenshot}`;
+    const tvWall = cur.wallpaper_b64;
+    const localShot = matchedTheme && matchedTheme.screenshot;
+    const previewB64 = tvWall || localShot;
+    if (previewB64) {
+      thumb.src = `data:image/jpeg;base64,${previewB64}`;
       thumb.hidden = false;
       placeholder.hidden = true;
       if (resBadge) {
-        resBadge.textContent = 'Preview theme';
+        resBadge.textContent = tvWall ? 'Wallpaper trên TV' : 'Preview thư viện';
         resBadge.classList.add('has-preview');
       }
     } else {
       thumb.removeAttribute('src');
       thumb.hidden = true;
       placeholder.hidden = false;
+      const hint = placeholder.querySelector('.home-active-empty-hint');
+      if (hint) {
+        hint.textContent =
+          keys.length || cur.has_overlay
+            ? 'Không lấy được ảnh từ TV — vẫn có config'
+            : 'Đồng bộ từ TV để xem preview';
+      }
       if (resBadge) {
         resBadge.textContent = keys.length ? 'Config trên TV' : 'Chưa có overlay';
         resBadge.classList.remove('has-preview');
@@ -1747,7 +1869,8 @@ function renderHomeThemeGrid() {
     return (t.name || '').toLowerCase().includes(q) || (t.id || '').toLowerCase().includes(q);
   });
   if (!list.length) {
-    homeThemesGrid.innerHTML = '<p class="home-gallery-desc">Không có theme — bấm «Tải danh sách theme».</p>';
+    homeThemesGrid.innerHTML =
+      '<p class="home-gallery-desc">Chưa có theme — đang tải hoặc thư mục data/cleanyourtv/themes trống.</p>';
     return;
   }
   for (const t of list) {
@@ -1809,6 +1932,7 @@ async function syncFromTv(btn) {
     return;
   }
   if (btn) setButtonLoading(btn, true, 'Đang đồng bộ...');
+  if (!homeThemes.length) await loadHomeThemes();
   await runHomeDetect(null);
   await loadCurrentTheme();
   await loadHomeBackups();
@@ -1822,7 +1946,7 @@ async function loadCurrentTheme(btn) {
     return;
   }
   if (btn) setButtonLoading(btn, true, 'Đang tải...');
-  setHomeStatus('Đang đọc theme hiện tại...');
+  setHomeStatus('Đang đọc theme và wallpaper từ TV...');
   try {
     const cur = await getApi().current_launcher_theme(activeDevice.host, activeDevice.port);
     const matched =
@@ -1831,7 +1955,16 @@ async function loadCurrentTheme(btn) {
       ) || null;
     renderActiveThemePanel(cur, matched);
     if (homeThemes.length) renderHomeThemeGrid();
-    setHomeStatus('Đã đọc theme hiện tại.');
+    const keyCount = Object.keys(cur.config || {}).length;
+    if (keyCount || cur.wallpaper_b64) {
+      setHomeStatus(
+        `Đã đồng bộ: ${keyCount} khoá config${cur.wallpaper_b64 ? ', có preview wallpaper' : ''}.`
+      );
+    } else if (cur.has_overlay) {
+      setHomeStatus('TV có overlay nhưng chưa đọc được config — thử bật ThemeProvider / đồng bộ lại.');
+    } else {
+      setHomeStatus('Chưa có theme overlay trên TV (launcher mặc định).');
+    }
   } catch (err) {
     setHomeStatus(`Lỗi đọc theme: ${err}`);
   }
@@ -1928,11 +2061,18 @@ async function applyTheme(id, btn) {
   if (!confirm(`Áp dụng theme "${theme.name}" lên ${activeDevice.name}?\n\nApp sẽ tự động sao lưu cấu hình hiện tại trước khi ghi.`)) return;
 
   if (btn) setButtonLoading(btn, true, 'Đang áp dụng...');
+  renderHomeApplyLog([], { open: true });
   setHomeStatus('Đang sao lưu và áp dụng theme...');
   try {
-    const res = await getApi().apply_gathin_theme(activeDevice.host, activeDevice.port, id);
+    const started = await getApi().apply_gathin_theme_async(
+      activeDevice.host,
+      activeDevice.port,
+      id
+    );
+    const res = await pollApplyThemeJob(started.job_id, btn);
     const backupTime = res.backup && res.backup.time ? res.backup.time : '-';
     const warns = (res.warnings || []).length ? ` (${res.warnings.join('; ')})` : '';
+    renderHomeApplyLog(res.steps || [], { logPath: res.log_path || started.log_path });
     if (btn) setButtonLoading(btn, false);
     closeThemeModal();
     setHomeStatus(`Đã áp dụng "${theme.name}". Backup: ${backupTime}${warns}`);
@@ -1943,8 +2083,9 @@ async function applyTheme(id, btn) {
     renderHomeThemeGrid();
   } catch (err) {
     if (btn) setButtonLoading(btn, false);
-    setHomeStatus(`Lỗi áp dụng: ${err}`);
-    alert(`Áp dụng thất bại: ${err}`);
+    const msg = String(err);
+    setHomeStatus(`Lỗi áp dụng: ${msg}`);
+    alert(`Áp dụng thất bại: ${msg}\n\nXem «Nhật ký áp dụng theme» hoặc ~/.tv-remote-hub/theme-apply.log`);
   }
 }
 
@@ -2081,27 +2222,8 @@ if (homeDiscoverBtn) {
 }
 
 if (homeLoadThemesBtn) {
-  homeLoadThemesBtn.addEventListener('click', async () => {
-    setButtonLoading(homeLoadThemesBtn, true, 'Đang tải...');
-    setHomeStatus('Đang tải danh sách theme từ cleanyourtv...');
-    if (homeThemesGrid) homeThemesGrid.innerHTML = '';
-    try {
-      const themes = await getApi().list_gathin_themes();
-      homeThemes = themes || [];
-      if (!homeThemes.length) {
-        setHomeStatus('Không tìm thấy theme trong data/cleanyourtv/themes');
-        setButtonLoading(homeLoadThemesBtn, false);
-        return;
-      }
-      updateHomeThemeCount();
-      renderHomeThemeGrid();
-      const invalid = homeThemes.filter((t) => (t.errors || []).length).length;
-      setHomeStatus(`Đã tải ${homeThemes.length} theme${invalid ? ` (${invalid} không hợp lệ)` : ''}`);
-      showHomeToast(`Đã tải ${homeThemes.length} theme`, 'cloud_sync');
-    } catch (err) {
-      setHomeStatus(`Lỗi: ${err}`);
-    }
-    setButtonLoading(homeLoadThemesBtn, false);
+  homeLoadThemesBtn.addEventListener('click', () => {
+    loadHomeThemes({ force: true, btn: homeLoadThemesBtn });
   });
 }
 
