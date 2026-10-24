@@ -1,0 +1,319 @@
+/* Application shell & responsive grids */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font: var(--text-body-md);
+  color: var(--color-on-surface);
+  background: var(--color-surface-container-lowest);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  overscroll-behavior: none;
+}
+
+.app-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  height: var(--header-h);
+  background: color-mix(in srgb, var(--color-surface-dim) 85%, transparent);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+}
+
+.app-header-inner {
+  height: 100%;
+  padding: 0 var(--gutter);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.traffic-lights {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.traffic-lights span {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.4);
+}
+
+.traffic-red {
+  background: #ff5f57;
+}
+.traffic-yellow {
+  background: #febc2e;
+}
+.traffic-green {
+  background: #28c840;
+}
+
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--color-primary-container), var(--color-secondary-container));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-surface-container-lowest);
+}
+
+.brand-title {
+  font: var(--text-headline-sm);
+  letter-spacing: -0.02em;
+}
+
+.brand-version {
+  font: var(--text-code-sm);
+  padding: 2px var(--space-xs);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface-variant);
+}
+
+.adb-pill {
+  display: none;
+  align-items: center;
+  gap: var(--space-xs);
+  font: var(--text-code-sm);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-tertiary-fixed);
+}
+
+@media (min-width: 900px) {
+  .adb-pill {
+    display: flex;
+  }
+}
+
+.adb-pill-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+}
+
+.adb-pill-dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-tertiary-fixed-dim);
+  animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.adb-pill-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-tertiary-container);
+}
+
+@keyframes ping {
+  75%,
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.app-nav {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--color-surface-container-low) 90%, transparent);
+}
+
+@media (min-width: 1024px) {
+  .app-nav {
+    display: flex;
+  }
+}
+
+.nav-tab {
+  border: none;
+  background: transparent;
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-lg);
+  font: var(--text-label-md);
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.nav-tab:hover:not(:disabled) {
+  color: var(--color-on-surface);
+}
+
+.nav-tab.active {
+  background: var(--color-surface-container-high);
+  color: var(--color-primary);
+  box-shadow: var(--glow-cyan);
+}
+
+.nav-tab:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.app-main {
+  flex: 1;
+  padding-top: var(--header-h);
+  padding-bottom: calc(var(--footer-h) + var(--space-lg));
+  overflow-x: hidden;
+}
+
+.workspace {
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: var(--space-xl) var(--margin);
+}
+
+.workspace-single {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--space-xl) var(--margin);
+}
+
+.page-header-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-2xl);
+}
+
+@media (min-width: 768px) {
+  .page-header-row {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+.dual-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-xl);
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .dual-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  }
+}
+
+.dual-grid-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  min-width: 0;
+}
+
+.dual-grid-aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  min-width: 0;
+}
+
+.stack-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: 0 var(--space-xs);
+}
+
+.section-title {
+  margin: 0;
+  font: var(--text-headline-md);
+}
+
+.app-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  height: var(--footer-h);
+  background: color-mix(in srgb, var(--color-surface-dim) 95%, transparent);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid var(--hairline);
+}
+
+.app-footer-inner {
+  height: 100%;
+  padding: 0 var(--gutter);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  font: var(--text-code-sm);
+  color: var(--color-on-surface-variant);
+  overflow: hidden;
+}
+
+.footer-sep {
+  color: var(--color-outline-variant);
+}
+
+.tab-pane {
+  display: none;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+/* Page shells use display:flex — must not sit on the same node as .tab-pane (would override hidden state). */
+.tab-pane:not(.active) .remote-page,
+.tab-pane:not(.active) .home-page,
+.tab-pane:not(.active) .apk-page,
+.tab-pane:not(.active) .apps-page {
+  display: none;
+}

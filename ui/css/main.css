@@ -1,0 +1,94 @@
+@import url("tokens.css");
+@import url("components.css");
+@import url("layout.css");
+@import url("devices.css");
+@import url("remote.css");
+@import url("apps.css");
+@import url("apk.css");
+@import url("home.css");
+
+/* Legacy tab panels — shared panel styling (other screens) */
+.panel {
+  background: var(--color-surface-container-low);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xl);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-md);
+  gap: var(--space-md);
+}
+
+.panel-header h2,
+.panel h2 {
+  margin: 0;
+  font: var(--text-headline-sm);
+}
+
+.hint {
+  font: var(--text-body-sm);
+  color: var(--color-on-surface-variant);
+}
+
+.row {
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+input:not(.field-input):not(.home-search-input):not(.remote-text-input):not(.remote-keycode-input):not([type="file"]) {
+  flex: 1;
+  background: var(--color-surface-container);
+  border: 1px solid var(--hairline);
+  color: var(--color-on-surface);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  font: var(--text-body-md);
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--accent-hairline);
+}
+
+button:not(.btn):not(.nav-tab):not(.dpad):not(.rbtn):not(.app-act):not(.filter-tab):not(.apps-search-clear):not(.remote-key):not(.remote-app-btn) {
+  background: transparent;
+  border: 1px solid var(--accent-hairline);
+  color: var(--color-primary-fixed-dim);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font: var(--text-label-md);
+  transition: background 0.15s ease, opacity 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+}
+
+button:not(.btn):not(.nav-tab):not(.dpad):not(.rbtn):not(.app-act):not(.filter-tab):not(.apps-search-clear):not(.remote-key):not(.remote-app-btn):hover:not(:disabled):not(.loading) {
+  background: rgba(0, 240, 255, 0.1);
+  border-color: var(--color-primary-container);
+  color: var(--color-primary);
+}
+
+button.secondary:not(.btn) {
+  background: var(--color-surface-container-high);
+  color: var(--color-on-surface);
+}
+
+button.secondary:not(.btn):hover:not(:disabled):not(.loading) {
+  background: var(--color-surface-bright);
+}
+
+.status {
+  font: var(--text-body-sm);
+  color: var(--color-on-surface-variant);
+  min-height: 1.125rem;
+  margin: var(--space-sm) 0;
+}

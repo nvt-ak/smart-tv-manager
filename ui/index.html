@@ -1,0 +1,833 @@
+<!doctype html>
+<html class="dark" lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TV Remote Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body class="app-shell">
+
+  <header class="app-header">
+    <div class="app-header-inner">
+      <div class="app-brand">
+        <div class="traffic-lights" aria-hidden="true">
+          <span class="traffic-red"></span>
+          <span class="traffic-yellow"></span>
+          <span class="traffic-green"></span>
+        </div>
+        <div class="brand-mark" aria-hidden="true">
+          <span class="material-symbols-outlined">live_tv</span>
+        </div>
+        <span class="brand-title">TV Remote Hub</span>
+        <span class="brand-version">v2.4</span>
+        <div class="adb-pill">
+          <span class="adb-pill-dot"></span>
+          <span>ADB Ready</span>
+        </div>
+      </div>
+
+      <nav class="app-nav" aria-label="Điều hướng chính">
+        <button type="button" class="nav-tab tab-btn active" data-tab="devices">Thiết bị</button>
+        <button type="button" class="nav-tab tab-btn" data-tab="remote" id="tabRemoteBtn" disabled>Điều khiển ảo</button>
+        <button type="button" class="nav-tab tab-btn" data-tab="apps" id="tabAppsBtn" disabled>Quản lý ứng dụng</button>
+        <button type="button" class="nav-tab tab-btn" data-tab="apk" id="tabApkBtn" disabled>Cài đặt APK</button>
+        <button type="button" class="nav-tab tab-btn" data-tab="home" id="tabHomeBtn" disabled>Home &amp; Theme</button>
+      </nav>
+
+      <div class="header-tools">
+        <button type="button" id="refreshBtn" class="btn btn--icon" title="Làm mới trạng thái">
+          <span class="material-symbols-outlined">sync</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main">
+
+    <!-- DEVICES -->
+    <section id="tab-devices" class="tab-pane active">
+      <div class="workspace">
+        <header class="page-header-row">
+          <div>
+            <div class="page-eyebrow">
+              <span class="page-eyebrow-dot"></span>
+              <span>Discovery &amp; ADB Console</span>
+            </div>
+            <h1 class="page-title">Quản lý thiết bị Android TV</h1>
+            <p class="page-desc">Quét mạng LAN và điều khiển thiết bị qua giao thức không dây ADB (Port 5555)</p>
+          </div>
+          <div style="display:flex;gap:var(--space-sm);flex-wrap:wrap;">
+            <button type="button" id="scanQuickBtn" class="btn btn--surface">
+              <span class="material-symbols-outlined">radar</span>
+              Quét mạng tự động
+            </button>
+          </div>
+        </header>
+
+        <div class="dual-grid">
+          <div class="dual-grid-main">
+
+            <section class="glass-card discovery-panel">
+              <div class="discovery-head">
+                <div class="discovery-title-row">
+                  <div class="discovery-icon">
+                    <span class="material-symbols-outlined">cell_tower</span>
+                  </div>
+                  <h2 class="section-title" style="margin:0;">Kết nối nhanh &amp; Quét mạng LAN</h2>
+                </div>
+              </div>
+
+              <div class="connect-row">
+                <div class="field-input-wrap">
+                  <span class="material-symbols-outlined field-icon">router</span>
+                  <input id="manualHost" class="field-input" type="text" placeholder="192.168.1.x hoặc 192.168.1.x:5555" autocomplete="off">
+                </div>
+                <button type="button" id="addBtn" class="btn btn--primary">
+                  <span class="material-symbols-outlined">bolt</span>
+                  Thêm &amp; Kết nối
+                </button>
+              </div>
+
+              <div class="scan-tile">
+                <div class="scan-tile-glow"></div>
+                <div class="scan-tile-body">
+                  <div class="scan-radar">
+                    <span class="material-symbols-outlined">wifi_tethering</span>
+                  </div>
+                  <div>
+                    <div class="section-title" style="font-size:14px;margin:0;">Quét toàn mạng (Cổng ADB 5555)</div>
+                    <p class="device-meta" style="margin-top:4px;">Quét các mạng /24 trên máy này</p>
+                  </div>
+                </div>
+                <button type="button" id="scanBtn" class="btn btn--surface">
+                  <span class="material-symbols-outlined">sync</span>
+                  Bắt đầu quét
+                </button>
+              </div>
+
+              <div id="status" class="status-line" role="status"></div>
+              <div id="scanResults" class="scan-results"></div>
+
+              <div class="discovery-options">
+                <label class="toggle-switch">
+                  <input type="checkbox" checked disabled>
+                  <span class="toggle-track"></span>
+                  <span>Tự động cập nhật trạng thái khi làm mới</span>
+                </label>
+              </div>
+            </section>
+
+            <section class="stack-section">
+              <div class="section-head">
+                <div style="display:flex;align-items:center;gap:var(--space-sm);">
+                  <h2 class="section-title">Thiết bị đang hoạt động</h2>
+                  <span id="deviceSavedCount" class="badge badge--count">0 Đã lưu</span>
+                </div>
+                <span class="hint">Nhấp «Mở Remote ảo» để điều khiển</span>
+              </div>
+              <ul id="deviceList" class="device-roster"></ul>
+            </section>
+          </div>
+
+          <aside class="dual-grid-aside">
+            <section class="glass-card quick-remote">
+              <div class="quick-remote-head">
+                <span class="section-title" style="font-size:14px;margin:0;">Điều khiển tức thì</span>
+                <span id="quickRemoteTarget" class="quick-remote-target">—</span>
+              </div>
+              <div class="quick-remote-pad">
+                <button type="button" class="dpad up" data-key="19" title="Up"><span class="material-symbols-outlined">keyboard_arrow_up</span></button>
+                <button type="button" class="dpad down" data-key="20" title="Down"><span class="material-symbols-outlined">keyboard_arrow_down</span></button>
+                <button type="button" class="dpad left" data-key="21" title="Left"><span class="material-symbols-outlined">keyboard_arrow_left</span></button>
+                <button type="button" class="dpad right" data-key="22" title="Right"><span class="material-symbols-outlined">keyboard_arrow_right</span></button>
+                <button type="button" class="dpad ok" data-key="23" title="OK">OK</button>
+              </div>
+              <div class="quick-remote-keys">
+                <button type="button" class="rbtn" data-key="4" title="Back"><span class="material-symbols-outlined">arrow_back</span>Back</button>
+                <button type="button" class="rbtn" data-key="3" title="Home"><span class="material-symbols-outlined">home</span>Home</button>
+                <button type="button" class="rbtn" data-key="25" title="Vol -"><span class="material-symbols-outlined">volume_down</span>Vol -</button>
+                <button type="button" class="rbtn" data-key="24" title="Vol +"><span class="material-symbols-outlined">volume_up</span>Vol +</button>
+              </div>
+            </section>
+
+            <section class="glass-card terminal-panel">
+              <div class="terminal-head">
+                <div style="display:flex;align-items:center;gap:var(--space-xs);">
+                  <span class="material-symbols-outlined" style="font-size:16px;color:var(--color-primary-fixed-dim);">terminal</span>
+                  <span class="section-title" style="font-size:13px;margin:0;">ADB Shell Live Logs</span>
+                </div>
+                <button type="button" id="clearLogsBtn" class="btn btn--ghost" style="padding:2px 8px;font-size:11px;">Clear</button>
+              </div>
+              <div id="terminal-body" class="terminal-log"></div>
+              <div class="terminal-input-row">
+                <span>#</span>
+                <input type="text" id="terminalInput" placeholder="Nhập lệnh adb shell... (sắp có)" disabled>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- REMOTE -->
+    <section id="tab-remote" class="tab-pane">
+      <div class="workspace remote-page">
+        <div class="remote-status-bar">
+          <div class="remote-status-main">
+            <div class="remote-status-icon">
+              <span class="material-symbols-outlined">tv_remote</span>
+              <span class="live-dot" id="remoteLiveDot"></span>
+            </div>
+            <div>
+              <div style="display:flex;align-items:center;gap:var(--space-xs);flex-wrap:wrap;">
+                <span id="remoteTarget" class="target-name">—</span>
+                <span id="remoteOnlineBadge" class="badge badge--offline">Offline</span>
+              </div>
+              <span id="remoteTargetMeta" class="device-meta">—</span>
+            </div>
+          </div>
+          <div class="remote-status-actions">
+            <button type="button" id="remoteWakeBtn" class="btn btn--ghost">
+              <span class="material-symbols-outlined">wb_sunny</span>
+              Đánh thức
+            </button>
+            <button type="button" id="backToDevices" class="btn btn--ghost">Quay lại</button>
+          </div>
+        </div>
+        <div id="remoteStatus" class="status-line" role="status"></div>
+
+        <div class="remote-grid">
+          <div class="remote-shell">
+            <div class="remote-body">
+              <div class="remote-body-notch"></div>
+              <div class="remote-top-cluster">
+                <button type="button" class="remote-key remote-key--round-lg remote-key--power" data-key="26" title="Power">
+                  <span class="material-symbols-outlined">power_settings_new</span>
+                </button>
+                <button type="button" class="remote-key remote-key--round" data-key="178" title="Input">
+                  <span class="material-symbols-outlined">input</span>
+                </button>
+                <button type="button" class="remote-key remote-key--round" data-key="164" title="Mute">
+                  <span class="material-symbols-outlined">volume_off</span>
+                </button>
+                <button type="button" class="remote-key remote-key--round" data-key="176" title="Settings">
+                  <span class="material-symbols-outlined">settings</span>
+                </button>
+              </div>
+              <div class="remote-dpad-ring">
+                <button type="button" class="remote-key remote-dpad-up" data-key="19" title="Up"><span class="material-symbols-outlined">arrow_drop_up</span></button>
+                <button type="button" class="remote-key remote-dpad-down" data-key="20" title="Down"><span class="material-symbols-outlined">arrow_drop_down</span></button>
+                <button type="button" class="remote-key remote-dpad-left" data-key="21" title="Left"><span class="material-symbols-outlined">arrow_left</span></button>
+                <button type="button" class="remote-key remote-dpad-right" data-key="22" title="Right"><span class="material-symbols-outlined">arrow_right</span></button>
+                <button type="button" class="remote-key remote-dpad-ok" data-key="23" title="OK">OK</button>
+              </div>
+              <div class="remote-nav-row">
+                <button type="button" class="remote-key remote-nav-key" data-key="4" title="Back"><span class="material-symbols-outlined">undo</span>Trở về</button>
+                <button type="button" class="remote-key remote-nav-key" data-key="3" title="Home"><span class="material-symbols-outlined">home</span>Home</button>
+                <button type="button" class="remote-key remote-nav-key" data-key="82" title="Menu"><span class="material-symbols-outlined">menu</span>Menu</button>
+              </div>
+              <div class="remote-rocker-grid">
+                <div class="remote-rocker">
+                  <button type="button" class="remote-key" data-key="24" title="Vol +"><span class="material-symbols-outlined">add</span></button>
+                  <span class="remote-rocker-label">VOL</span>
+                  <button type="button" class="remote-key" data-key="25" title="Vol -"><span class="material-symbols-outlined">remove</span></button>
+                </div>
+                <div class="remote-rocker">
+                  <button type="button" class="remote-key" data-key="166" title="CH +"><span class="material-symbols-outlined">keyboard_arrow_up</span></button>
+                  <span class="remote-rocker-label">CH</span>
+                  <button type="button" class="remote-key" data-key="167" title="CH -"><span class="material-symbols-outlined">keyboard_arrow_down</span></button>
+                </div>
+              </div>
+              <div class="remote-app-grid">
+                <button type="button" class="remote-app-btn" data-pkg="com.netflix.ninja" style="color:#E50914;">NETFLIX</button>
+                <button type="button" class="remote-app-btn" data-pkg="com.google.android.youtube.tv" style="color:#fff;">YouTube</button>
+                <button type="button" class="remote-app-btn" data-pkg="com.amazon.amazonvideo.livingroom" style="color:#00A8E1;">prime video</button>
+                <button type="button" class="remote-app-btn" data-pkg="com.disney.disneyplus" style="color:#fff;">Disney+</button>
+              </div>
+              <div class="remote-body-footer">TV Remote Hub • ADB</div>
+            </div>
+          </div>
+
+          <div class="remote-side">
+            <div class="remote-module">
+              <div class="remote-module-head">
+                <div>
+                  <h3 class="remote-module-title">Nhập văn bản nhanh vào TV</h3>
+                  <p class="remote-module-desc">Gõ trên máy tính → `adb shell input text`</p>
+                </div>
+              </div>
+              <form id="remoteTextForm" class="remote-text-row">
+                <div class="remote-text-input-wrap">
+                  <input id="remoteTextInput" class="remote-text-input" type="text" placeholder="Tên phim, link YouTube..." autocomplete="off">
+                  <button type="button" id="remoteTextClear" class="remote-text-clear" title="Xóa"><span class="material-symbols-outlined" style="font-size:16px;">close</span></button>
+                </div>
+                <button type="submit" class="btn btn--primary">
+                  <span class="material-symbols-outlined">send</span>
+                  Gửi đến TV
+                </button>
+              </form>
+              <div class="remote-preset-row">
+                <span>Mẫu:</span>
+                <button type="button" class="remote-preset-tag" data-preset="4K HDR Demo">4K HDR Demo</button>
+                <button type="button" class="remote-preset-tag" data-preset="Lofi Chill">Lofi Chill</button>
+                <button type="button" id="remotePasteBtn" class="remote-preset-tag">Dán clipboard</button>
+              </div>
+            </div>
+
+            <div class="remote-module">
+              <h3 class="remote-module-title">Bàn di chuột ảo</h3>
+              <p class="remote-module-desc">Double-click = OK • Kéo = swipe (demo)</p>
+              <div id="remoteTrackpad" class="remote-trackpad">
+                <div class="remote-trackpad-grid"></div>
+                <div class="remote-trackpad-hint"><span class="material-symbols-outlined">drag_pan</span>Rê trong vùng này</div>
+                <div id="remoteTrackpadDot" class="remote-trackpad-dot"></div>
+              </div>
+              <div class="remote-nav-row" style="grid-template-columns:repeat(3,1fr);">
+                <button type="button" id="remoteMouseLeft" class="btn btn--surface">Chuột Trái</button>
+                <button type="button" id="remoteMouseScroll" class="btn btn--surface">Cuộn</button>
+                <button type="button" id="remoteMouseBack" class="btn btn--surface">Back</button>
+              </div>
+            </div>
+
+            <div class="remote-module">
+              <h3 class="remote-module-title">Lối tắt ADB</h3>
+              <div class="remote-tool-grid">
+                <button type="button" class="remote-tool-card" id="remoteScreencapBtn"><span class="material-symbols-outlined">screenshot_monitor</span>Chụp màn hình</button>
+                <button type="button" class="remote-tool-card" id="remoteDevBtn"><span class="material-symbols-outlined">developer_mode</span>Dev options</button>
+                <button type="button" class="remote-tool-card" id="remoteRebootBtn"><span class="material-symbols-outlined">restart_alt</span>Khởi động lại</button>
+                <button type="button" class="remote-tool-card" data-key="85" title="Play/Pause"><span class="material-symbols-outlined">play_pause</span>Play/Pause</button>
+              </div>
+              <div class="remote-keycode-row">
+                <span class="apps-stat-label" style="text-transform:none;">Keycode</span>
+                <input id="remoteCustomKeycode" class="remote-keycode-input" type="number" placeholder="85">
+                <button type="button" id="remoteSendKeycodeBtn" class="btn btn--surface">Gửi</button>
+              </div>
+            </div>
+
+            <div class="remote-log">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span class="apps-stat-label" style="text-transform:uppercase;">ADB stream</span>
+                <button type="button" id="remoteClearLog" class="btn btn--ghost" style="padding:2px 8px;font-size:10px;">Xóa log</button>
+              </div>
+              <div id="remoteAdbLog" class="remote-log-body"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="remoteToast" class="remote-toast" role="status">
+          <span class="material-symbols-outlined" id="remoteToastIcon">check_circle</span>
+          <span id="remoteToastMsg"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- APPS -->
+    <section id="tab-apps" class="tab-pane">
+      <div class="workspace apps-page">
+        <div class="apps-device-bar glass-card">
+          <div class="apps-device-bar-glow"></div>
+          <div class="apps-device-main">
+            <div class="apps-device-id">
+              <div class="apps-device-icon"><span class="material-symbols-outlined">tv</span></div>
+              <div>
+                <div style="display:flex;align-items:center;gap:var(--space-sm);flex-wrap:wrap;">
+                  <span id="appsTarget" class="apps-stat-value" style="font-size:17px;">—</span>
+                  <span id="appsTargetMeta" class="apps-host-chip">—</span>
+                  <span id="appsOnlineBadge" class="badge badge--offline">Offline</span>
+                </div>
+                <span id="appsDeviceSub" class="device-meta">Chọn thiết bị từ tab Thiết bị</span>
+              </div>
+            </div>
+            <div class="apps-stats-row">
+              <div>
+                <div class="apps-stat-label">Tổng ứng dụng</div>
+                <div class="apps-stat-value" id="appsTotalStat">0</div>
+                <div class="apps-stat-sub" id="appsTypeBreakdown">(0 user / 0 sys)</div>
+              </div>
+              <div>
+                <div class="apps-stat-label">Đã vô hiệu hóa</div>
+                <div class="apps-stat-value" id="appsDisabledStat" style="color:var(--color-primary-fixed-dim);">0</div>
+              </div>
+            </div>
+          </div>
+          <div class="apps-device-actions">
+            <button type="button" id="refreshAppsBtn" class="btn btn--surface">
+              <span class="material-symbols-outlined">cached</span>
+              Tải lại danh sách
+              <span class="apps-stat-sub">(pm list)</span>
+            </button>
+            <button type="button" id="appsLogcatBtn" class="btn btn--surface" title="Sắp có">
+              <span class="material-symbols-outlined">terminal</span>
+              Logcat
+            </button>
+            <button type="button" id="backToDevicesFromApps" class="btn btn--ghost">Quay lại</button>
+          </div>
+        </div>
+
+        <div class="apps-launcher-bar">
+          <div style="display:flex;align-items:center;gap:var(--space-md);min-width:0;">
+            <div class="discovery-icon"><span class="material-symbols-outlined">home_app_logo</span></div>
+            <div style="min-width:0;">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-xs);">
+                <span class="apps-stat-label">Home / Launcher hiện tại</span>
+                <span id="appsLauncherName" class="app-row-title">—</span>
+                <span id="appsLauncherVer" class="apps-host-chip"></span>
+              </div>
+              <div id="appsHomeInfo" class="device-meta" style="margin-top:4px;">Chưa tải</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:var(--space-xs);">
+            <button type="button" id="appsLauncherPickBtn" class="btn btn--surface">
+              <span class="material-symbols-outlined">swap_horiz</span>
+              Đổi Launcher
+            </button>
+            <button type="button" id="appsHomeThemeBtn" class="btn btn--surface">
+              <span class="material-symbols-outlined">tune</span>
+              Home &amp; Theme
+            </button>
+          </div>
+        </div>
+
+        <div class="apps-toolbar-row">
+          <div class="apps-search-wrap">
+            <span class="material-symbols-outlined field-icon">search</span>
+            <input id="appSearch" class="field-input apps-search-input" type="search" placeholder="Tìm theo package... (netflix, youtube, tvhome)" autocomplete="off">
+            <button type="button" id="appsSearchClear" class="apps-search-clear" title="Xóa tìm kiếm">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+          <div class="apps-filter-tabs" id="appsFilterTabs" role="tablist">
+            <button type="button" class="filter-tab active" data-filter="all">Tất cả (0)</button>
+            <button type="button" class="filter-tab" data-filter="user">Người dùng (0)</button>
+            <button type="button" class="filter-tab" data-filter="disabled">Đã vô hiệu hóa (0)</button>
+            <button type="button" class="filter-tab" data-filter="system">Hệ thống (0)</button>
+          </div>
+        </div>
+
+        <div id="appsBatchBar" class="apps-batch-bar">
+          <div style="display:flex;align-items:center;gap:var(--space-md);">
+            <span class="material-symbols-outlined" style="color:var(--color-primary);">checklist</span>
+            <span>Đã chọn: <strong id="appsSelectedCount">0</strong> ứng dụng</span>
+            <button type="button" id="appsClearSelection" class="btn btn--ghost" style="padding:2px 8px;">Bỏ chọn</button>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:var(--space-xs);">
+            <button type="button" class="btn btn--surface" data-batch="force_stop">Dừng đồng loạt</button>
+            <button type="button" class="btn btn--surface" data-batch="disable">Vô hiệu hóa</button>
+          </div>
+        </div>
+
+        <div id="appsStatus" class="status-line" role="status"></div>
+
+        <div class="apps-grid glass-card">
+          <div class="apps-grid-header">
+            <div style="display:flex;align-items:center;gap:var(--space-sm);">
+              <input type="checkbox" id="appsMasterCheckbox" title="Chọn tất cả">
+              <span>#</span>
+            </div>
+            <span>Tên &amp; Package ID</span>
+            <span>Trạng thái</span>
+            <span>Phiên bản</span>
+            <span style="text-align:right;">Thao tác ADB</span>
+          </div>
+          <div id="appsList" class="apps-grid-body"></div>
+          <div id="appsNoResults" class="apps-empty">
+            <span class="material-symbols-outlined" style="font-size:48px;color:var(--color-outline);">search_off</span>
+            <p class="page-title" style="font-size:17px;">Không tìm thấy ứng dụng</p>
+            <p class="page-desc">Đổi bộ lọc hoặc xóa từ khóa tìm kiếm.</p>
+            <button type="button" id="appsEmptyClear" class="btn btn--surface">Xóa bộ lọc</button>
+          </div>
+          <div class="apps-grid-footer">
+            <span id="appsSyncMeta">Lệnh: pm list packages</span>
+            <span>Hiển thị <strong id="appsVisibleCount">0</strong> / <span id="appsFooterTotal">0</span> gói</span>
+          </div>
+        </div>
+
+        <div class="apps-console">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:var(--space-xs);">
+              <span class="material-symbols-outlined" style="font-size:18px;color:var(--color-primary-fixed-dim);">terminal</span>
+              <span class="apps-stat-label" style="text-transform:none;letter-spacing:0;">ADB Command Stream</span>
+            </div>
+            <button type="button" id="appsClearConsole" class="btn btn--ghost" style="padding:2px 8px;font-size:11px;">Clear</button>
+          </div>
+          <div id="appsTerminalOutput" class="apps-console-body"></div>
+        </div>
+
+        <div id="appsToast" class="apps-toast" role="status">
+          <span class="material-symbols-outlined" id="appsToastIcon">check_circle</span>
+          <span id="appsToastMsg"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- APK -->
+    <section id="tab-apk" class="tab-pane">
+      <div class="workspace apk-page">
+        <header class="apk-header">
+          <div class="apk-header-main">
+            <div class="apk-header-icon">
+              <span class="material-symbols-outlined">system_update_alt</span>
+            </div>
+            <div>
+              <div class="apk-header-title-row">
+                <h1 class="apk-header-title">Cài đặt APK</h1>
+                <span class="apk-header-chip">ADB Sideload v2</span>
+              </div>
+              <p class="apk-header-sub">
+                Thiết bị đích:
+                <strong id="apkTarget" class="target-name">—</strong>
+                <span id="apkTargetMeta" class="device-meta">—</span>
+              </p>
+            </div>
+          </div>
+          <div class="apk-header-actions">
+            <div id="apkStorageChip" class="apk-storage-chip">
+              <span class="material-symbols-outlined" style="font-size:18px;color:var(--color-primary-fixed-dim);">sd_card</span>
+              <div>
+                <span class="apps-stat-label" style="text-transform:none;">Bộ nhớ khả dụng</span>
+                <span id="apkStorageText" class="font-code-sm">—</span>
+              </div>
+            </div>
+            <button type="button" id="backToAppsFromApk" class="btn btn--surface">
+              <span class="material-symbols-outlined">apps</span>
+              Danh sách ứng dụng
+            </button>
+            <button type="button" id="backToDevicesFromApk" class="btn btn--ghost">
+              <span class="material-symbols-outlined">arrow_back</span>
+              Quay lại
+            </button>
+          </div>
+        </header>
+
+        <div class="apk-drop-shell">
+          <div class="apk-dropzone" id="apkDropzone">
+            <div class="apk-dropzone-icon-wrap">
+              <div class="apk-dropzone-icon">
+                <span class="material-symbols-outlined">upload_file</span>
+              </div>
+              <span class="apk-dropzone-android material-symbols-outlined" style="font-size:16px;">android</span>
+            </div>
+            <h2 class="apk-dropzone-title">Kéo &amp; thả <span class="accent">.APK</span> hoặc <span class="accent">.XAPK</span></h2>
+            <p class="apk-dropzone-desc">Phân tích chữ ký, so sánh phiên bản trên TV và cài qua ADB (hiện chỉ .apk).</p>
+            <div class="apk-dropzone-actions">
+              <button type="button" id="apkSelectBtn" class="btn btn--primary">
+                <span class="material-symbols-outlined">folder_open</span>
+                Duyệt tệp từ máy tính
+              </button>
+            </div>
+            <input type="file" id="apkFileInput" accept=".apk,.xapk,.apks" hidden>
+            <div class="apk-feature-badges">
+              <span class="apk-feature-badge"><span class="material-symbols-outlined" style="font-size:16px;">verified</span>Kiểm tra chữ ký</span>
+              <span class="apk-feature-badge"><span class="material-symbols-outlined" style="font-size:16px;">dynamic_feed</span>So sánh bản cài</span>
+              <span class="apk-feature-badge"><span class="material-symbols-outlined" style="font-size:16px;">memory</span>XAPK — sắp có</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="apkStatus" class="status-line" role="status"></div>
+
+        <div class="apk-workspace">
+          <div id="apkInspector" class="apk-inspector" hidden>
+            <div class="apk-inspector-head">
+              <div class="apk-inspector-head-left">
+                <span class="apk-pulse-dot" id="apkPulseDot"></span>
+                <span class="font-headline-md">Phân tích Package</span>
+              </div>
+              <span id="apkReadyBadge" class="apk-ready-badge">
+                <span class="material-symbols-outlined" style="font-size:14px;">bolt</span>
+                Sẵn sàng cài đặt
+              </span>
+            </div>
+            <div class="apk-manifest">
+              <div class="apk-manifest-top">
+                <div class="apk-manifest-icon"><span class="material-symbols-outlined">tv_gen</span></div>
+                <div class="apk-manifest-main">
+                  <div class="apk-file-row">
+                    <h3 id="apkFileName" class="apk-file-name">—</h3>
+                    <span id="apkFileSize" class="apk-file-size">—</span>
+                  </div>
+                  <p id="apkPackageName" class="apk-package-name">—</p>
+                  <div id="apkMetaLine" class="apk-meta-line"></div>
+                </div>
+              </div>
+              <div class="apk-perm-block">
+                <span class="apk-perm-label">Quyền yêu cầu</span>
+                <div id="apkPermTags" class="apk-perm-tags"></div>
+              </div>
+              <div id="apkWarnList" class="apk-warn-list"></div>
+            </div>
+            <div id="apkProgressBlock" class="apk-progress-block" hidden>
+              <div class="apk-progress-top">
+                <span id="apkProgressLabel"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">sync</span> Đang truyền…</span>
+                <span id="apkProgressPct">0%</span>
+              </div>
+              <div class="apk-progress-bar"><div id="apkProgressFill" class="apk-progress-fill"></div></div>
+              <div class="apk-progress-foot">
+                <span id="apkProgressEta">—</span>
+                <span id="apkProgressCmd">pm install …</span>
+              </div>
+            </div>
+            <div class="apk-flag-grid">
+              <label class="apk-flag"><input type="checkbox" id="apkFlagReinstall" checked> Cài đè (-r)</label>
+              <label class="apk-flag"><input type="checkbox" id="apkFlagDowngrade"> Hạ cấp (-d)</label>
+              <label class="apk-flag"><input type="checkbox" id="apkFlagGrant"> Cấp quyền (-g)</label>
+            </div>
+            <div class="apk-action-row">
+              <div class="apk-action-primary">
+                <button type="button" id="apkInstallBtn" class="btn btn--primary" disabled>
+                  <span class="material-symbols-outlined">system_security_update_good</span>
+                  Cài đặt lên TV
+                </button>
+                <label class="apk-flag" style="border-style:dashed;">
+                  <input type="checkbox" id="apkOpenAfter"> Tự mở sau khi cài
+                </label>
+              </div>
+              <button type="button" id="apkClearBtn" class="btn btn--danger-ghost" disabled>
+                <span class="material-symbols-outlined">delete_outline</span>
+                Xóa tệp
+              </button>
+            </div>
+          </div>
+
+          <aside class="apk-side">
+            <div id="apkSideEmpty" class="apk-side-empty">Chọn APK để xem lịch sử cài và tương thích TV.</div>
+            <div id="apkSidePanel" class="apk-side" hidden>
+              <div class="apk-side-card">
+                <div class="apk-side-head">
+                  <h3 class="apk-side-title"><span class="material-symbols-outlined">manage_history</span>Lịch sử gần đây</h3>
+                  <button type="button" id="apkClearHistoryBtn" class="btn btn--ghost" style="padding:2px 8px;font-size:11px;">Xóa</button>
+                </div>
+                <div id="apkHistoryList" class="apk-history-list"></div>
+              </div>
+              <div class="apk-side-card">
+                <div class="apk-side-head">
+                  <span class="apk-side-title"><span class="material-symbols-outlined" style="color:var(--color-tertiary-fixed);">shield_with_heart</span>Tương thích Android TV</span>
+                  <span id="apkCompatScore" class="apk-compat-score">—</span>
+                </div>
+                <div class="apk-compat-grid">
+                  <div class="apk-compat-cell"><span>Leanback</span><span id="apkCompatLeanback" class="apk-compat-value">—</span></div>
+                  <div class="apk-compat-cell"><span>D-Pad / TV</span><span id="apkCompatDpad" class="apk-compat-value">—</span></div>
+                  <div class="apk-compat-cell"><span>Play Protect</span><span id="apkCompatProtect" class="apk-compat-value">—</span></div>
+                  <div class="apk-compat-cell"><span>Target SDK</span><span id="apkCompatSdk" class="apk-compat-value">—</span></div>
+                </div>
+                <div class="apk-hint-box">
+                  <span class="material-symbols-outlined">terminal</span>
+                  <div>
+                    <p style="margin:0;color:var(--color-on-surface);font-weight:600;">Mẹo sideload</p>
+                    <p style="margin:4px 0 0;">Lỗi <code style="color:var(--color-secondary-fixed);">INSTALL_FAILED_ALREADY_EXISTS</code> → bật «Cài đè (-r)».</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+        <div id="apkInfo" class="apk-info" hidden aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <!-- HOME/THEME -->
+    <section id="tab-home" class="tab-pane">
+      <div class="workspace home-page">
+        <div class="home-ribbon glass-card">
+          <div class="home-ribbon-main">
+            <div class="home-ribbon-icon">
+              <span class="material-symbols-outlined">tv_options_edit_channels</span>
+            </div>
+            <div>
+              <div class="home-ribbon-title-row">
+                <span class="home-ribbon-title">Home / Theme Engine</span>
+                <span class="home-pkg-chip">gathin.tvhome</span>
+              </div>
+              <p class="home-ribbon-sub">
+                Thiết bị: <strong id="homeTarget" class="target-name">—</strong>
+                <span id="homeTargetMeta" class="device-meta">—</span>
+                · <span id="homeThemeCount">0 theme</span> sẵn có
+              </p>
+            </div>
+          </div>
+          <div class="home-ribbon-actions">
+            <button type="button" id="homeReloadBtn" class="btn btn--surface">
+              <span class="material-symbols-outlined">sync</span>
+              Đồng bộ từ TV
+            </button>
+            <button type="button" id="backToDevicesFromHome" class="btn btn--ghost">
+              <span class="material-symbols-outlined">arrow_back</span>
+              Quay lại
+            </button>
+          </div>
+        </div>
+
+        <div id="homeStatus" class="status-line" role="status"></div>
+
+        <div class="home-deck">
+          <div class="home-panel home-panel--launcher glass-card">
+            <div class="home-panel-head">
+              <div class="home-panel-head-left">
+                <span class="material-symbols-outlined home-panel-icon">widgets</span>
+                <h2 class="home-panel-title">Phát hiện Launcher</h2>
+              </div>
+              <span id="homeDetectBadge" class="home-adb-badge">Chưa kiểm tra</span>
+            </div>
+            <div id="homeDetectInfo" class="home-kpi-list">
+              <div class="home-kpi-row"><span class="home-kpi-label">Package</span><span id="homeKpiPackage" class="home-kpi-value">—</span></div>
+              <div class="home-kpi-row"><span class="home-kpi-label">Trạng thái cài</span><span id="homeKpiInstalled" class="home-kpi-value">—</span></div>
+              <div class="home-kpi-row"><span class="home-kpi-label">Home mặc định</span><span id="homeKpiDefault" class="home-kpi-value">—</span></div>
+              <div class="home-kpi-row"><span class="home-kpi-label">Tương thích ROM</span><span id="homeKpiCompat" class="home-kpi-value">—</span></div>
+            </div>
+            <div class="home-panel-actions">
+              <button type="button" id="homeDetectBtn" class="btn btn--surface">
+                <span class="material-symbols-outlined">rule</span>
+                Kiểm tra lại
+              </button>
+              <button type="button" id="homeSetDefaultBtn" class="btn btn--primary">
+                <span class="material-symbols-outlined">home</span>
+                Đặt làm Home mặc định
+              </button>
+            </div>
+          </div>
+
+          <div class="home-panel home-panel--active glass-card">
+            <div class="home-panel-head">
+              <div class="home-panel-head-left">
+                <span class="material-symbols-outlined home-panel-icon home-panel-icon--secondary">palette</span>
+                <h2 class="home-panel-title">Theme đang áp dụng</h2>
+              </div>
+              <span id="homeActiveUpdated" class="home-meta-chip">Chưa đồng bộ</span>
+            </div>
+            <div class="home-active-body">
+              <div class="home-active-preview">
+                <img id="homeActiveThumb" class="home-active-thumb" alt="" hidden>
+                <div id="homeActiveThumbPlaceholder" class="home-active-thumb home-active-thumb--empty">
+                  <span class="material-symbols-outlined">live_tv</span>
+                  <span class="home-active-empty-hint">Đồng bộ để xem preview</span>
+                </div>
+                <span id="homeActiveRes" class="home-active-res">Chưa đồng bộ</span>
+              </div>
+              <div class="home-active-meta">
+                <span class="home-active-label">Tên chủ đề</span>
+                <h3 id="homeActiveTitle" class="home-active-title">—</h3>
+                <p id="homeActiveDesc" class="home-active-desc">Đồng bộ từ TV để xem cấu hình hiện tại.</p>
+                <div id="homeCurrentInfo" hidden></div>
+                <div class="home-active-stats">
+                  <div class="home-stat-row"><span>Wallpaper</span><span id="homeActiveWall">—</span></div>
+                  <div class="home-stat-row"><span>Revision</span><span id="homeActiveRevision" class="home-stat-mono">—</span></div>
+                  <div class="home-stat-row"><span>Ghi config</span><span id="homeActiveProvider">—</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="home-panel-actions home-panel-actions--wrap">
+              <button type="button" id="homeRestartBtn" class="btn btn--surface">
+                <span class="material-symbols-outlined">restart_alt</span>
+                Khởi động lại Home
+              </button>
+              <button type="button" id="homeBackupBtn" class="btn btn--surface">
+                <span class="material-symbols-outlined">save</span>
+                Sao lưu cấu hình
+              </button>
+              <button type="button" id="homeResetThemeBtn" class="btn btn--danger-ghost">
+                <span class="material-symbols-outlined">restore</span>
+                Về mặc định
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="home-gallery glass-card">
+          <div class="home-gallery-head">
+            <div>
+              <div class="home-gallery-title-row">
+                <h2 class="home-gallery-title">Thư viện Theme Gallery</h2>
+                <span class="home-store-chip">cleanyourtv Store</span>
+              </div>
+              <p class="home-gallery-desc">Áp dụng theme tự động sao lưu snapshot cấu hình trước khi ghi lên TV.</p>
+            </div>
+            <div class="home-gallery-toolbar">
+              <div class="home-search-wrap">
+                <span class="material-symbols-outlined home-search-icon">search</span>
+                <input id="homeSearchInput" class="home-search-input" type="search" placeholder="Tìm tên theme..." autocomplete="off">
+              </div>
+              <button type="button" id="homeImportBtn" class="btn btn--surface" title="Sắp có">
+                <span class="material-symbols-outlined">file_upload</span>
+                Nhập JSON/ZIP
+              </button>
+              <button type="button" id="homeLoadThemesBtn" class="btn btn--primary">
+                <span class="material-symbols-outlined">cloud_sync</span>
+                Tải danh sách theme
+              </button>
+            </div>
+          </div>
+          <div id="homeThemesGrid" class="home-theme-grid"></div>
+          <div class="home-adb-foot">
+            <span class="material-symbols-outlined">terminal</span>
+            <span id="homeAdbHint">adb shell — ThemeProvider / sdcard overlay</span>
+          </div>
+        </div>
+
+        <details class="home-advanced glass-card">
+          <summary>Sao lưu, khôi phục &amp; khám phá config</summary>
+          <div class="home-advanced-body">
+            <div class="home-advanced-actions">
+              <button type="button" id="homeLoadBackupsBtn" class="btn btn--surface">Tải danh sách backup</button>
+              <button type="button" id="homeDiscoverBtn" class="btn btn--surface">Tìm vị trí config</button>
+            </div>
+            <ul id="homeBackupsList" class="home-backup-list"></ul>
+            <pre id="homeDiscoverOut" class="home-pre"></pre>
+          </div>
+        </details>
+
+        <div id="homeToast" class="home-toast" role="status">
+          <span class="material-symbols-outlined" id="homeToastIcon">check_circle</span>
+          <span id="homeToastMsg"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="app-footer-inner">
+      <div style="display:flex;align-items:center;gap:var(--space-md);min-width:0;overflow:hidden;">
+        <span><span style="color:var(--color-tertiary-fixed);">ADB</span> · Python adb-shell</span>
+        <span class="footer-sep">|</span>
+        <span id="footerActiveDevice">Chưa chọn thiết bị</span>
+      </div>
+      <div id="footerMeta">TV Remote Hub</div>
+    </div>
+  </footer>
+
+  <div id="themeModal" class="home-modal-backdrop" hidden>
+    <div class="home-modal" role="dialog" aria-labelledby="themeModalTitle">
+      <div class="home-modal-head">
+        <div class="home-modal-head-text">
+          <span class="material-symbols-outlined">tv</span>
+          <div>
+            <h3 id="themeModalTitle">Theme</h3>
+            <p id="themeModalDesc" class="home-modal-desc">Xem trước theme</p>
+          </div>
+        </div>
+        <button type="button" id="themeModalClose" class="btn btn--ghost" aria-label="Đóng">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="home-modal-body">
+        <img id="themeModalImg" class="home-modal-shot" alt="">
+        <div id="themeModalMeta" class="home-modal-meta"></div>
+        <pre id="themeModalConfig" class="home-pre home-pre--modal"></pre>
+      </div>
+      <div class="home-modal-foot">
+        <button type="button" id="themeModalCancel" class="btn btn--surface">Đóng</button>
+        <button type="button" id="themeModalApply" class="btn btn--primary">
+          <span class="material-symbols-outlined">check_circle</span>
+          Áp dụng theme này
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

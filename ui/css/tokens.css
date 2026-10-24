@@ -1,0 +1,108 @@
+/**
+ * Aether design tokens — shared across all screens.
+ * Source: DESIGN.md / Aether ADB Console
+ */
+:root {
+  /* Surfaces */
+  --color-surface: #10131a;
+  --color-surface-dim: #10131a;
+  --color-surface-bright: #363940;
+  --color-surface-container-lowest: #0b0e14;
+  --color-surface-container-low: #191c22;
+  --color-surface-container: #1d2026;
+  --color-surface-container-high: #272a31;
+  --color-surface-container-highest: #32353c;
+  --color-surface-variant: #32353c;
+
+  /* Content */
+  --color-on-surface: #e1e2eb;
+  --color-on-surface-variant: #b9cacb;
+  --color-on-background: #e1e2eb;
+  --color-outline: #849495;
+  --color-outline-variant: #3b494b;
+
+  /* Accents */
+  --color-primary: #dbfcff;
+  --color-on-primary: #00363a;
+  --color-primary-container: #00f0ff;
+  --color-on-primary-container: #006970;
+  --color-primary-fixed: #7df4ff;
+  --color-primary-fixed-dim: #00dbe9;
+
+  --color-secondary: #c0c1ff;
+  --color-secondary-container: #3131c0;
+  --color-secondary-fixed: #e1e0ff;
+  --color-secondary-fixed-dim: #c0c1ff;
+
+  --color-tertiary: #d8ffe7;
+  --color-tertiary-container: #65f2b5;
+  --color-tertiary-fixed: #6ffbbe;
+  --color-tertiary-fixed-dim: #4edea3;
+
+  --color-error: #ffb4ab;
+  --color-error-container: #93000a;
+  --color-warning: #f59e0b;
+  --color-danger-neon: #f43f5e;
+
+  /* Glass & strokes */
+  --glass-card: rgba(18, 23, 34, 0.72);
+  --glass-toolbar: rgba(28, 35, 51, 0.75);
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-strong: rgba(255, 255, 255, 0.12);
+  --accent-hairline: rgba(0, 240, 255, 0.35);
+  --glow-cyan: 0 0 16px -2px rgba(0, 240, 255, 0.25);
+
+  /* Typography */
+  --font-display: "Geist", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --text-display-lg: 700 32px/40px var(--font-display);
+  --text-headline-lg: 600 22px/28px var(--font-display);
+  --text-headline-md: 600 17px/24px var(--font-display);
+  --text-headline-sm: 600 14px/20px var(--font-display);
+  --text-body-lg: 400 15px/22px var(--font-body);
+  --text-body-md: 400 13px/18px var(--font-body);
+  --text-body-sm: 400 12px/16px var(--font-body);
+  --text-label-md: 600 12px/16px var(--font-body);
+  --text-code-md: 500 12px/16px var(--font-mono);
+  --text-code-sm: 400 11px/14px var(--font-mono);
+
+  /* Spacing */
+  --space-2xs: 0.125rem;
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 0.75rem;
+  --space-lg: 1rem;
+  --space-xl: 1.5rem;
+  --space-2xl: 2rem;
+  --space-3xl: 2.5rem;
+  --gutter: 1rem;
+  --margin: 1.5rem;
+
+  /* Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-full: 9999px;
+
+  /* Shell */
+  --header-h: 3rem;
+  --footer-h: 2rem;
+
+  /* Legacy aliases (other tab CSS) */
+  --bg: var(--color-surface-container-lowest);
+  --panel: var(--color-surface-container-low);
+  --panel-border: var(--hairline);
+  --text: var(--color-on-surface);
+  --subtext: var(--color-on-surface-variant);
+  --primary: var(--color-primary-container);
+  --primary-hover: var(--color-primary-fixed);
+  --secondary: var(--color-surface-container-high);
+  --secondary-hover: var(--color-surface-bright);
+  --success: var(--color-tertiary-fixed-dim);
+  --danger: var(--color-danger-neon);
+  --warning: var(--color-warning);
+}
