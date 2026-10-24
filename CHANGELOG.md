@@ -11,6 +11,10 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 ## [Unreleased]
 
 ### Added
+- Widget giá vàng (đủ mục API vang.today) và giá xăng dầu (đủ mục Petrolimex) dạng thẻ kính mờ kiểu iPhone, vẽ thẳng vào wallpaper khi áp dụng theme / «Áp dụng lên TV» (cần `pillow`, font Inter trong `assets/fonts`).
+- Xem trước ảnh nền kèm widget trong tab Theme.
+
+### Added
 
 - Tab **Home & Theme**: panel **Widget tuỳ chọn** — tên, vàng, xăng dầu; lưu cấu hình và **Áp dụng lên TV** qua `config.json` CleanYourTV (`greeting_name`, `show_stats`, module cards).
 - Thoát app: đóng mọi phiên ADB TCP đang cache (`shutdown` khi đóng cửa sổ).

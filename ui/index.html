@@ -1062,17 +1062,24 @@
             <label><input type="checkbox" id="homeWidgetShowStats"> CPU / RAM / bộ nhớ</label>
             <label><input type="checkbox" id="homeWidgetShowAppNames"> Tên dưới mọi icon app</label>
             <label><input type="checkbox" id="homeWidgetModuleCards" checked> Module cards</label>
+            <label><input type="checkbox" id="homeWidgetWallpaper" checked> Vẽ widget vàng/xăng vào ảnh nền</label>
+            <label>Theme nền: <select id="homeWidgetTheme" class="field-input"></select></label>
           </div>
           <div class="home-widgets-preview">
             <span class="apps-stat-label">Xem trước trên TV</span>
             <p id="homeWidgetPreviewGreeting" class="home-widgets-preview-greeting">GOOD MORNING, —</p>
             <ul id="homeWidgetPreviewList" class="home-widgets-preview-list"></ul>
             <p id="homeWidgetPreviewNote" class="home-widgets-preview-note"></p>
+            <img id="homeWidgetImg" class="home-widget-img" alt="Xem trước widget trên ảnh nền" hidden>
           </div>
           <div class="home-panel-actions home-panel-actions--wrap">
             <button type="button" id="homeWidgetPreviewBtn" class="btn btn--surface">
               <span class="material-symbols-outlined">visibility</span>
               Xem trước dữ liệu
+            </button>
+            <button type="button" id="homeWidgetImgBtn" class="btn btn--surface">
+              <span class="material-symbols-outlined">image</span>
+              Xem trước ảnh nền
             </button>
             <button type="button" id="homeWidgetSaveBtn" class="btn btn--surface">
               <span class="material-symbols-outlined">save</span>

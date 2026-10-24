@@ -2846,6 +2846,7 @@ function readHomeWidgetsFormPayload() {
     show_system_stats: document.getElementById('homeWidgetShowStats')?.checked ?? false,
     always_show_app_names: document.getElementById('homeWidgetShowAppNames')?.checked ?? false,
     module_cards: document.getElementById('homeWidgetModuleCards')?.checked ?? true,
+    widget_wallpaper: document.getElementById('homeWidgetWallpaper')?.checked ?? true,
   };
 }
 
@@ -2871,6 +2872,7 @@ function fillHomeWidgetsForm(cfg) {
   set('homeWidgetShowStats', c.show_system_stats);
   set('homeWidgetShowAppNames', c.always_show_app_names);
   set('homeWidgetModuleCards', c.module_cards !== false);
+  set('homeWidgetWallpaper', c.widget_wallpaper !== false);
 }
 
 function renderHomeWidgetsPreview(prev) {
@@ -2913,13 +2915,61 @@ async function loadHomeWidgetsUi() {
 const homeWidgetPreviewBtn = document.getElementById('homeWidgetPreviewBtn');
 const homeWidgetSaveBtn = document.getElementById('homeWidgetSaveBtn');
 const homeWidgetApplyBtn = document.getElementById('homeWidgetApplyBtn');
+const homeWidgetImgBtn = document.getElementById('homeWidgetImgBtn');
+function widgetThemeId() {
+  const sel = document.getElementById('homeWidgetTheme');
+  return (sel && sel.value) || homeActiveThemeId || '';
+}
+
+function populateWidgetThemeSelect() {
+  const sel = document.getElementById('homeWidgetTheme');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '';
+  const valid = (homeThemes || []).filter((t) => !(t.errors || []).length);
+  valid.forEach((t) => {
+    const o = document.createElement('option');
+    o.value = t.id;
+    o.textContent = t.name || t.id;
+    sel.appendChild(o);
+  });
+  const want = [prev, homeActiveThemeId].find((id) => id && valid.some((t) => t.id === id));
+  if (want) sel.value = want;
+}
+
+async function refreshWidgetImagePreview() {
+  const r = await getApi().preview_widget_wallpaper(widgetThemeId(), readHomeWidgetsFormPayload());
+  const img = document.getElementById('homeWidgetImg');
+  if (img) {
+    img.src = `data:image/jpeg;base64,${r.image_b64}`;
+    img.hidden = false;
+  }
+  const errs = Object.values(r.errors || {});
+  const where = r.theme_name
+    ? `theme «${r.theme_name}»${r.wallpaper_count > 1 ? ` (ảnh 1/${r.wallpaper_count})` : ''}${r.has_wallpaper ? '' : ' — theme không có ảnh nền, dùng nền mặc định'}`
+    : 'chưa chọn theme — dùng nền mặc định';
+  const cnt = `Vàng ${r.gold_shown}/${r.gold_total} mục, xăng dầu ${r.fuel_shown}/${r.fuel_total} mục`;
+  setHomeStatus(`Xem trước trên ${where}. ${cnt}.${errs.length ? ' Thiếu dữ liệu: ' + errs.join('; ') : ''}`);
+}
+if (homeWidgetImgBtn) {
+  homeWidgetImgBtn.addEventListener('click', async () => {
+    setButtonLoading(homeWidgetImgBtn, true, 'Đang vẽ…');
+    try {
+      await refreshWidgetImagePreview();
+    } catch (err) {
+      setHomeStatus(`Lỗi xem trước ảnh nền: ${err}`);
+    }
+    setButtonLoading(homeWidgetImgBtn, false);
+  });
+}
 if (homeWidgetPreviewBtn) {
   homeWidgetPreviewBtn.addEventListener('click', async () => {
     setButtonLoading(homeWidgetPreviewBtn, true, 'Đang tải…');
     try {
       const prev = await getApi().preview_home_widgets(readHomeWidgetsFormPayload());
       renderHomeWidgetsPreview(prev);
-      setHomeStatus('Đã cập nhật xem trước widget.');
+      if (document.getElementById('homeWidgetWallpaper')?.checked) await refreshWidgetImagePreview();
+      else setHomeStatus('Đã cập nhật xem trước widget.');
     } catch (err) {
       setHomeStatus(`Lỗi xem trước: ${err}`);
     }
@@ -2949,7 +2999,8 @@ if (homeWidgetApplyBtn) {
     setButtonLoading(homeWidgetApplyBtn, true, 'Đang áp dụng…');
     try {
       await getApi().save_home_widgets_settings(readHomeWidgetsFormPayload());
-      const res = await getApi().apply_home_widgets_to_tv(activeDevice.host, activeDevice.port, true);
+      setHomeStatus('Đang lấy giá và vẽ widget lên ảnh nền…');
+      const res = await getApi().apply_home_widgets_to_tv(activeDevice.host, activeDevice.port, true, widgetThemeId());
       showHomeToast('Đã ghi widget lên TV — Home khởi động lại', 'cast');
       setHomeStatus(
         res.greeting_name
@@ -3019,7 +3070,10 @@ function updateHomeThemeCount() {
 function stableThemeJson(obj) {
   if (!obj || typeof obj !== 'object') return '{}';
   const sorted = {};
+  // Keys the Widget Home panel overwrites must not break "which theme is active".
+  const widgetKeys = ['greeting_name', 'show_stats', 'always_show_names', 'module_cards'];
   Object.keys(obj)
+    .filter((k) => !widgetKeys.includes(k))
     .sort()
     .forEach((k) => {
       sorted[k] = obj[k];
@@ -3157,6 +3211,7 @@ function renderActiveThemePanel(cur, matchedTheme) {
 }
 
 function renderHomeThemeGrid() {
+  populateWidgetThemeSelect();
   if (!homeThemesGrid) return;
   const q = (homeSearchInput?.value || '').trim().toLowerCase();
   homeThemesGrid.innerHTML = '';
@@ -3257,7 +3312,10 @@ async function loadCurrentTheme(btn, opts = {}) {
       if (!homeThemes.length && homeThemesLoading) await homeThemesLoading;
       if (!activeDevice || `${activeDevice.host}:${activeDevice.port}` !== key) return;
       const stableCfg = stableThemeJson(cur.config || {});
-      const matched = homeThemes.find((t) => stableThemeJson(t.config || {}) === stableCfg) || null;
+      const matched =
+        homeThemes.find((t) => stableThemeJson(t.config || {}) === stableCfg) ||
+        homeThemes.find((t) => t.id === cur.last_theme_id) ||
+        null;
       const cachedWall =
         !opts.forceWallpaper && homeWallCache.key === key && homeWallCache.revision === (cur.revision || '')
           ? homeWallCache.b64
@@ -3395,7 +3453,7 @@ async function applyTheme(id, btn) {
   }
   const widgetsOn = document.getElementById('homeWidgetsEnabled')?.checked;
   const widgetHint = widgetsOn
-    ? '\n\nWidget Home đang bật — sẽ gộp vào config của theme.'
+    ? '\n\nWidget Home đang bật — sẽ gộp vào config và vẽ bảng giá vàng/xăng vào ảnh nền.'
     : '';
   if (
     !confirm(
@@ -3406,6 +3464,11 @@ async function applyTheme(id, btn) {
   }
 
   if (btn) setButtonLoading(btn, true, 'Đang áp dụng...');
+  try {
+    if (widgetsOn) await getApi().save_home_widgets_settings(readHomeWidgetsFormPayload());
+  } catch {
+    /* dùng cấu hình đã lưu */
+  }
   renderHomeApplyLog([], { open: true });
   setHomeStatus('Đang sao lưu và áp dụng theme...');
   try {

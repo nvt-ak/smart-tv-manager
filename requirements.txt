@@ -6,3 +6,6 @@ cryptography>=46.0.7
 
 # Phase 3: APK Installer
 androguard>=3.4.0
+
+# Widget vàng/xăng vẽ vào wallpaper
+pillow>=10.0

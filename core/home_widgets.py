@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import base64
 import json
+import time
+from datetime import datetime, timedelta, timezone
 import ssl
 import urllib.error
 import urllib.parse
@@ -23,6 +25,7 @@ DEFAULT_WIDGETS: Dict[str, Any] = {
     "show_system_stats": False,
     "always_show_app_names": False,
     "module_cards": True,
+    "widget_wallpaper": True,
     "fuel_zone": 1,
     "fuel_ron95": "",
     "fuel_diesel": "",
@@ -86,6 +89,7 @@ def normalize_widgets(raw: Any) -> Dict[str, Any]:
         "show_system_stats",
         "always_show_app_names",
         "module_cards",
+        "widget_wallpaper",
     ):
         out[b] = bool(out.get(b))
     out["display_name"] = str(out.get("display_name") or "").strip()
@@ -372,6 +376,141 @@ def fetch_fuel(
     return None, err
 
 
+_GOLD_NAME_VI = {
+    "World Gold (XAU/USD)": "Vàng thế giới",
+    "PNJ Hanoi": "PNJ Hà Nội",
+    "PNJ 24K": "PNJ 24K",
+    "DOJI Jewelry": "DOJI",
+    "DOJI Hanoi": "DOJI Hà Nội",
+    "DOJI HCM": "DOJI TP.HCM",
+    "Bao Tin 9999": "Bảo Tín 9999",
+    "Bao Tin SJC": "Bảo Tín SJC",
+    "SJC Ring": "SJC nhẫn",
+    "SJC 9999": "SJC 9999",
+    "VN Gold SJC": "SJC (VNGold)",
+    "Viettin SJC": "Viettin SJC",
+}
+_VN_TZ = timezone(timedelta(hours=7))
+
+
+def _num(v: Any) -> Optional[float]:
+    try:
+        return None if v is None else float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def fetch_gold_all() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Mọi mục giá vàng vang.today trả về: mua, bán, thay đổi (không lọc)."""
+    try:
+        data = _http_json(VANG_TODAY_PRICES_URL)
+        if not (data or {}).get("success"):
+            raise RuntimeError("vang.today trả success=false")
+        prices = (data or {}).get("prices") or {}
+        items: List[Dict[str, Any]] = []
+        world: Optional[Dict[str, Any]] = None
+        for code, row in prices.items():
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name") or code).strip()
+            item = {
+                "code": code,
+                "name": _GOLD_NAME_VI.get(name, name),
+                "api_name": name,
+                "buy": _num(row.get("buy")),
+                "sell": _num(row.get("sell")),
+                "change_buy": _num(row.get("change_buy")),
+                "change_sell": _num(row.get("change_sell")),
+                "currency": str(row.get("currency") or "VND").upper(),
+            }
+            if item["currency"] == "VND":
+                items.append(item)
+            else:
+                world = world or item
+        if not items and not world:
+            return None, "vang.today không có mục giá nào"
+        d, t = str((data or {}).get("date") or ""), str((data or {}).get("time") or "")
+        try:
+            d = datetime.strptime(d, "%Y-%m-%d").strftime("%d/%m/%Y")
+        except ValueError:
+            pass
+        return {"updated": f"{t} {d}".strip(), "items": items, "world": world}, None
+    except Exception as e:
+        return None, f"Không lấy giá vàng (vang.today): {e}"
+
+
+def _iso_to_vn(text: Any) -> Optional[datetime]:
+    try:
+        return datetime.fromisoformat(str(text).replace("Z", "+00:00")).astimezone(_VN_TZ)
+    except (TypeError, ValueError):
+        return None
+
+
+def fetch_fuel_all(zone: int = 1) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Mọi mặt hàng xăng dầu Petrolimex (vùng 1 và 2); dự phòng VietFuel."""
+    zone = 2 if zone == 2 else 1
+    err_msgs: List[str] = []
+    try:
+        rows = _fetch_petrolimex_fuel_items()
+        items: List[Dict[str, Any]] = []
+        latest: Optional[datetime] = None
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            p1, p2 = _num(row.get("Zone1Price")), _num(row.get("Zone2Price"))
+            title = _fuel_row_title(row).strip()
+            if not title or (p1 is None and p2 is None):
+                continue
+            items.append({"name": title, "price_z1": p1, "price_z2": p2,
+                          "price": p2 if zone == 2 else p1})
+            lm = _iso_to_vn(row.get("LastModified"))
+            if lm and (latest is None or lm > latest):
+                latest = lm
+        if items:
+            return {"zone": zone, "source": "Petrolimex", "items": items,
+                    "updated": latest.strftime("%H:%M %d/%m/%Y") if latest else ""}, None
+        err_msgs.append("Petrolimex trả danh sách rỗng")
+    except Exception as e:
+        err_msgs.append(str(e))
+    try:
+        data = _http_json(VIETFUEL_PRICES_URL)
+        if not (data or {}).get("success"):
+            raise RuntimeError("VietFuel trả success=false")
+        items = []
+        for row in (data or {}).get("data") or []:
+            if not isinstance(row, dict):
+                continue
+            p1, p2 = _vietfuel_zone_price(row, 1), _vietfuel_zone_price(row, 2)
+            name = _fuel_row_title(row).strip()
+            if name and (p1 is not None or p2 is not None):
+                items.append({"name": name, "price_z1": p1, "price_z2": p2,
+                              "price": p2 if zone == 2 else p1})
+        if items:
+            meta = (data or {}).get("meta") or {}
+            return {"zone": zone, "source": "VietFuel", "items": items,
+                    "updated": str(meta.get("priceDateDisplay") or meta.get("priceDate") or "")}, None
+        err_msgs.append("VietFuel trả danh sách rỗng")
+    except Exception as e:
+        err_msgs.append(str(e))
+    return None, "Không lấy giá xăng dầu: " + " · ".join(err_msgs)
+
+
+def widgets_data(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Dữ liệu đầy đủ cho widget (vàng + xăng dầu), kèm lỗi theo nguồn."""
+    cfg = normalize_widgets(cfg)
+    out: Dict[str, Any] = {"gold": None, "fuel": None, "errors": {},
+                           "generated": datetime.now(_VN_TZ).strftime("%H:%M %d/%m/%Y")}
+    if cfg["show_gold"]:
+        out["gold"], err = fetch_gold_all()
+        if err:
+            out["errors"]["gold"] = err
+    if cfg["show_fuel"]:
+        out["fuel"], err = fetch_fuel_all(int(cfg.get("fuel_zone") or 1))
+        if err:
+            out["errors"]["fuel"] = err
+    return out
+
+
 def build_board_lines(cfg: Dict[str, Any]) -> Tuple[List[str], Dict[str, str]]:
     """Return display lines and per-source errors."""
     cfg = normalize_widgets(cfg)
@@ -449,9 +588,18 @@ def board_payload(cfg: Dict[str, Any], board_lines: Optional[List[str]] = None) 
     }
 
 
+def wallpaper_mode(cfg: Dict[str, Any]) -> bool:
+    """True when gold/fuel are drawn into the wallpaper instead of the greeting text."""
+    cfg = normalize_widgets(cfg)
+    return bool(cfg["enabled"] and cfg["widget_wallpaper"] and (cfg["show_gold"] or cfg["show_fuel"]))
+
+
 def preview(cfg: Dict[str, Any]) -> Dict[str, Any]:
     cfg = normalize_widgets(cfg)
-    board_lines, errors = build_board_lines(cfg)
+    if wallpaper_mode(cfg):
+        board_lines, errors = [], {}
+    else:
+        board_lines, errors = build_board_lines(cfg)
     patch = launcher_config_patch(cfg, board_lines=board_lines)
     return {
         "board_lines": board_lines,
@@ -459,6 +607,8 @@ def preview(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "launcher_patch": {k: v for k, v in patch.items() if v is not None},
         "errors": errors,
         "note": (
-            "Trên TV (CleanYourTV): ticker hiện gộp vào dòng chào (`greeting_name`)."
+            "Giá vàng / xăng dầu được vẽ vào ảnh nền (xem ảnh bên dưới); dòng chào chỉ giữ tên."
+            if wallpaper_mode(cfg)
+            else "Trên TV (CleanYourTV): ticker hiện gộp vào dòng chào (`greeting_name`)."
         ),
     }

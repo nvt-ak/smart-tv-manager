@@ -22,6 +22,7 @@ def analysis_bundle(extra_datas=None):
     datas = [
         ("ui", "ui"),
         ("data", "data"),
+        ("assets", "assets"),
     ]
     if extra_datas:
         datas.extend(extra_datas)

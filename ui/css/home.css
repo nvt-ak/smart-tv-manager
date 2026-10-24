@@ -981,3 +981,7 @@
   -webkit-user-select: text;
   cursor: text;
 }
+
+.home-widget-img { width: 100%; max-width: 640px; margin-top: 10px; border-radius: 12px; display: block; }
+
+.home-widget-img { width: 100%; max-width: 640px; margin-top: 10px; border-radius: 12px; display: block; }

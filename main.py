@@ -19,6 +19,7 @@ from core.clean_suggestions import CleanSuggestionEngine
 from core import ai_clean
 from core import home_widgets
 import settings_store
+import shutil
 import base64
 import json
 import os
@@ -724,6 +725,7 @@ class Api:
             state = tm.read_state()
             wallpaper_b64 = tm.read_wallpaper_preview_b64() if include_wallpaper else None
             state["wallpaper_b64"] = wallpaper_b64
+            state["last_theme_id"] = settings_store.load().get("last_theme_id") or ""
             state["has_overlay"] = (
                 bool(state["config"]) or bool(state["revision"]) or bool(wallpaper_b64)
             )
@@ -838,11 +840,52 @@ class Api:
         cfg = settings_store.get_home_widgets()
         if not cfg.get("enabled"):
             return None, None, None
-        prev = home_widgets.preview(cfg)
+        prev = home_widgets.preview(cfg)  # wallpaper mode: no ticker text, name only
         board_lines = prev.get("board_lines") or []
         patch = home_widgets.launcher_config_patch(cfg, board_lines=board_lines)
         sidecar = home_widgets.board_payload(cfg, board_lines=board_lines)
         return patch, sidecar, prev
+
+    def _wants_widget_wallpaper(self):
+        cfg = settings_store.get_home_widgets()
+        return bool(
+            cfg.get("enabled") and cfg.get("widget_wallpaper")
+            and (cfg.get("show_gold") or cfg.get("show_fuel"))
+        )
+
+    @staticmethod
+    def _composite_theme_widgets(theme, data, workdir):
+        """Copy of `theme` whose wallpaper(s) have the gold/fuel cards drawn on."""
+        from core import widget_render
+
+        out = dict(theme)
+        wp = theme.get("wallpaper")
+        has_collection = any(
+            str(p).lower().endswith((".jpg", ".jpeg", ".png"))
+            for p in theme.get("wallpapers") or []
+        )
+        if wp and os.path.exists(wp) or not has_collection:
+            dst = os.path.join(workdir, "wallpaper.jpg")
+            widget_render.render_to_file(wp if wp and os.path.exists(wp) else None, data, dst)
+            out["wallpaper"] = dst
+        if has_collection:
+            subdir = os.path.join(workdir, "wallpapers")
+            os.makedirs(subdir, exist_ok=True)
+            new_list = []
+            for p in theme.get("wallpapers") or []:
+                low = str(p).lower()
+                if low.endswith((".jpg", ".jpeg", ".png")) and os.path.exists(p):
+                    dst = os.path.join(subdir, os.path.basename(p))
+                    img = widget_render.render_widgets(p, data)
+                    if low.endswith(".png"):
+                        img.save(dst, "PNG", optimize=True)
+                    else:
+                        img.save(dst, "JPEG", quality=88, optimize=True)
+                    new_list.append(dst)
+                else:
+                    new_list.append(p)
+            out["wallpapers"] = new_list
+        return out
 
     def _append_theme_apply_log(self, job_id: str, phase: str, detail: str) -> None:
         os.makedirs(adb_client.KEY_DIR, mode=0o700, exist_ok=True)
@@ -871,6 +914,26 @@ class Api:
             raise Exception("Không tìm thấy theme")
 
         on_step("start", f"{theme.get('name') or theme_id} → {host}:{port}")
+        widget_tmp = None
+        if self._wants_widget_wallpaper():
+            try:
+                on_step("widgets_fetch", "lấy dữ liệu vàng / xăng dầu")
+                wdata = home_widgets.widgets_data(settings_store.get_home_widgets())
+                if wdata.get("gold") or wdata.get("fuel"):
+                    widget_tmp = tempfile.mkdtemp(prefix="stv-widgets-")
+                    on_step("widgets_render", "vẽ widget vào wallpaper")
+                    theme = self._composite_theme_widgets(theme, wdata, widget_tmp)
+                else:
+                    on_step("widgets_skip", "; ".join((wdata.get("errors") or {}).values()) or "không có dữ liệu")
+            except Exception as exc:
+                on_step("widgets_error", str(exc))
+        try:
+            return self._apply_gathin_theme_locked(host, port, theme, theme_id, on_step, steps)
+        finally:
+            if widget_tmp:
+                shutil.rmtree(widget_tmp, ignore_errors=True)
+
+    def _apply_gathin_theme_locked(self, host, port, theme, theme_id, on_step, steps):
         with self._dev_op_lock(host, port):
             self._drop_dev(host, port)
             on_step("adb_connect", f"{host}:{port}")
@@ -906,6 +969,12 @@ class Api:
                     except Exception as restore_exc:
                         on_step("restore_failed", str(restore_exc))
                     raise exc
+                try:
+                    data = settings_store.load()
+                    data["last_theme_id"] = theme_id
+                    settings_store.save(data)
+                except Exception:
+                    pass
                 result["backup"] = backup
                 result["steps"] = list(steps)
                 result["log_path"] = THEME_APPLY_LOG
@@ -978,10 +1047,69 @@ class Api:
             cfg = home_widgets.normalize_widgets({**cfg, **payload})
         return home_widgets.preview(cfg)
 
-    def apply_home_widgets_to_tv(self, host, port=5555, restart=True):
+    def preview_widget_wallpaper(self, theme_id="", payload=None):
+        """Exactly what the TV will show: the theme's wallpaper with the cards drawn on it."""
+        from core import widget_render
+
+        cfg = settings_store.get_home_widgets()
+        if isinstance(payload, dict) and payload:
+            cfg = home_widgets.normalize_widgets({**cfg, **payload})
+        data = home_widgets.widgets_data(cfg)
+        tid = theme_id or settings_store.load().get("last_theme_id") or ""
+        theme = next((t for t in self._themes.list_themes() if t["id"] == tid), None)
+        wp, n_wp, theme_name = None, 0, None
+        if theme:
+            theme_name = theme.get("name") or tid
+            imgs = [p for p in theme.get("wallpapers") or []
+                    if str(p).lower().endswith((".jpg", ".jpeg", ".png")) and os.path.exists(p)]
+            if theme.get("wallpaper") and os.path.exists(theme["wallpaper"]):
+                wp, n_wp = theme["wallpaper"], 1 + len(imgs)
+            elif imgs:
+                wp, n_wp = imgs[0], len(imgs)
+        gold_items = list((data.get("gold") or {}).get("items") or [])
+        fuel_items = list((data.get("fuel") or {}).get("items") or [])
+        return {
+            "image_b64": widget_render.render_preview_b64(wp, data, width=1280),
+            "errors": data.get("errors") or {},
+            "generated": data.get("generated"),
+            "theme_id": tid,
+            "theme_name": theme_name,
+            "wallpaper_count": n_wp,
+            "has_wallpaper": bool(wp),
+            "gold_total": len(gold_items),
+            "gold_shown": min(len(gold_items), widget_render.GOLD_MAX),
+            "fuel_total": len(fuel_items),
+            "fuel_shown": min(len(fuel_items), widget_render.FUEL_MAX),
+        }
+
+    def apply_home_widgets_to_tv(self, host, port=5555, restart=True, theme_id=""):
         patch, sidecar, prev = self._home_widgets_tv_bundle()
         if not patch:
             raise Exception("Bật «Widget Home» trước khi áp dụng lên TV")
+        last = theme_id or settings_store.load().get("last_theme_id")
+        if self._wants_widget_wallpaper():
+            if not last:
+                raise Exception(
+                    "Widget được vẽ vào ảnh nền nên cần chọn theme: bấm «Áp dụng» trên một theme "
+                    "(hoặc chọn theme đang dùng) rồi thử lại."
+                )
+            steps = []
+            res = self._apply_gathin_theme_impl(host, port, last, uuid.uuid4().hex, steps)
+            if not any(st.get("msg") == "widgets_render" for st in steps):
+                raise Exception(
+                    "Đã áp dụng theme nhưng KHÔNG vẽ được widget vào ảnh nền: "
+                    + "; ".join(f"{st.get('msg')}: {st.get('detail')}" for st in steps
+                                if str(st.get("msg", "")).startswith("widgets_"))
+                )
+            return {
+                "ok": True,
+                "greeting_name": patch.get("greeting_name"),
+                "board_lines": (prev or {}).get("board_lines") or [],
+                "errors": prev.get("errors") or {},
+                "wallpaper": True,
+                "theme_id": last,
+                "steps": res.get("steps"),
+            }
         board_lines = (prev or {}).get("board_lines") or []
         with self._dev_op_lock(host, port):
             dev = self._get_dev(host, port)
