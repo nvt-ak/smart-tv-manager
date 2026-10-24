@@ -17,6 +17,29 @@ def _parse_package_lines(out: str) -> List[str]:
     return packages
 
 
+def _pm_state_message_ok(out: str, *, enabling: bool) -> bool:
+    text = (out or "").strip().lower()
+    if not text:
+        return False
+    if "error:" in text or "exception" in text:
+        return False
+    if "new state:" in text:
+        return True
+    if enabling and "already enabled" in text:
+        return True
+    if not enabling and ("already disabled" in text or "disabled-user" in text):
+        return True
+    return False
+
+
+def _grep_package_in_pm_list(out: str, package: str) -> bool:
+    needle = f"package:{package}"
+    for line in (out or "").splitlines():
+        if line.strip() == needle:
+            return True
+    return False
+
+
 class PackageManager:
     def __init__(self, device: AdbDeviceTcp):
         self.device = device
@@ -52,20 +75,24 @@ class PackageManager:
         script = (
             "pm list packages; echo '---SPLIT---'; "
             "pm list packages -3; echo '---SPLIT---'; "
-            "pm list packages -d"
+            "pm list packages -e --user 0; echo '---SPLIT---'; "
+            "pm list packages -d --user 0"
         )
         out = self._shell(script, timeout=adb_client.SHELL_HEAVY_TIMEOUT)
         parts = out.split("---SPLIT---")
         all_raw = _parse_package_lines(parts[0] if parts else "")
         user = _parse_package_lines(parts[1] if len(parts) > 1 else "")
-        disabled = _parse_package_lines(parts[2] if len(parts) > 2 else "")
+        enabled = _parse_package_lines(parts[2] if len(parts) > 2 else "")
+        disabled_flag = _parse_package_lines(parts[3] if len(parts) > 3 else "")
         user_set = set(user)
-        all_pkgs = sorted(set(all_raw) | user_set | set(disabled))
+        enabled_set = set(enabled)
+        all_pkgs = sorted(set(all_raw) | user_set | enabled_set | set(disabled_flag))
+        disabled_set = (set(all_pkgs) - enabled_set) | set(disabled_flag)
         system = sorted(set(all_pkgs) - user_set)
         return {
             "user": sorted(user),
             "system": system,
-            "disabled": sorted(disabled),
+            "disabled": sorted(disabled_set),
             "all": all_pkgs,
         }
 
@@ -169,16 +196,39 @@ class PackageManager:
         except Exception as e:
             raise Exception(str(e))
 
+    def is_package_enabled(self, package: str) -> bool:
+        """One package only — avoid full `pm list -e` over Wi‑Fi."""
+        try:
+            out = self._shell(
+                f"pm list packages -e --user 0 {package} 2>&1",
+                timeout=adb_client.SHELL_DEFAULT_TIMEOUT,
+            )
+            return _grep_package_in_pm_list(out, package)
+        except Exception:
+            return True
+
     def enable(self, package: str) -> bool:
         try:
-            self._shell(adb_commands.enable_cmd(package))
-            return True
+            out = self._shell(adb_commands.enable_cmd(package))
+            if _pm_state_message_ok(out, enabling=True):
+                return True
+            if self.is_package_enabled(package):
+                return True
+            raise Exception(
+                (out or f"pm enable không đổi trạng thái {package}").strip()
+            )
         except Exception as e:
             raise Exception(str(e))
 
     def disable_user(self, package: str) -> bool:
         try:
-            self._shell(adb_commands.disable_user_cmd(package))
-            return True
+            out = self._shell(adb_commands.disable_user_cmd(package))
+            if _pm_state_message_ok(out, enabling=False):
+                return True
+            if not self.is_package_enabled(package):
+                return True
+            raise Exception(
+                (out or f"pm disable-user không đổi trạng thái {package}").strip()
+            )
         except Exception as e:
             raise Exception(str(e))

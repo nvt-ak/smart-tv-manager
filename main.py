@@ -37,6 +37,7 @@ class Api:
         self._apply_jobs = {}
         self._apply_jobs_lock = threading.Lock()
         self._dev_locks = {}
+        self._home_cache = {}
         self._clean_engine = CleanSuggestionEngine()
 
     def _dev_op_lock(self, host, port=5555):
@@ -77,6 +78,16 @@ class Api:
         dev = adb_client.connect(host, int(port))
         self._dev_cache[key] = dev
         return dev
+
+    def _cached_current_home(self, pm: PackageManager, host, port=5555, max_age=45.0):
+        key = f"{host}:{port}"
+        now = time.monotonic()
+        hit = self._home_cache.get(key)
+        if hit and (now - hit[0]) < max_age:
+            return hit[1]
+        home = pm.get_current_home()
+        self._home_cache[key] = (now, home)
+        return home
 
     def _get_pm(self, host, port=5555):
         key = f"{host}:{port}"
@@ -193,7 +204,7 @@ class Api:
             try:
                 pm = self._get_pm(host, port)
                 pkgs = pm.get_all_packages()
-                current_home = pm.get_current_home()
+                current_home = self._cached_current_home(pm, host, port)
             except Exception as e:
                 if self._adb_timeout_error(e):
                     self._drop_dev(host, port)
@@ -207,10 +218,10 @@ class Api:
         disabled_set = set(pkgs.get("disabled", []))
         for p in pkgs.get("all", []):
             ptype = "system"
-            if p in user_set:
-                ptype = "user"
-            elif p in disabled_set:
+            if p in disabled_set:
                 ptype = "disabled"
+            elif p in user_set:
+                ptype = "user"
             allowed, reason = safety.can_disable(p, current_home=current_home, is_only_home=False)
             result.append({
                 "package": p,
@@ -400,27 +411,33 @@ class Api:
                 raise Exception(f"Không đọc được thông tin app: {e}") from e
 
     def app_action(self, host, port=5555, action="", package=""):
-        pm = self._get_pm(host, port)
-        if action == "open":
-            pm.open_app(package)
-            return {"ok": True}
-        elif action == "force_stop":
-            pm.force_stop(package)
-            return {"ok": True}
-        elif action == "app_info":
-            pm.open_app_info(package)
-            return {"ok": True}
-        elif action == "enable":
-            pm.enable(package)
-            return {"ok": True}
-        elif action == "disable":
-            current_home = pm.get_current_home()
-            allowed, reason = safety.can_disable(package, current_home=current_home)
-            if not allowed:
-                raise Exception(reason)
-            pm.disable_user(package)
-            return {"ok": True}
-        raise Exception("Hành động không hợp lệ")
+        with self._dev_op_lock(host, port):
+            try:
+                pm = self._get_pm(host, port)
+                if action == "open":
+                    pm.open_app(package)
+                    return {"ok": True}
+                elif action == "force_stop":
+                    pm.force_stop(package)
+                    return {"ok": True}
+                elif action == "app_info":
+                    pm.open_app_info(package)
+                    return {"ok": True}
+                elif action == "enable":
+                    pm.enable(package)
+                    return {"ok": True, "enabled": True}
+                elif action == "disable":
+                    current_home = self._cached_current_home(pm, host, port)
+                    allowed, reason = safety.can_disable(package, current_home=current_home)
+                    if not allowed:
+                        raise Exception(reason)
+                    pm.disable_user(package)
+                    return {"ok": True, "enabled": False}
+                raise Exception("Hành động không hợp lệ")
+            except Exception as e:
+                if self._adb_timeout_error(e):
+                    self._drop_dev(host, port)
+                raise
 
     def analyze_apk(self, filename="", data_base64="", host=None, port=5555):
         if not filename or not data_base64:

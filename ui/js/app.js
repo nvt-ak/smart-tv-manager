@@ -502,6 +502,21 @@ function renderApps() {
 }
 
 let appsVersionSyncTimer = null;
+let appsDeferredReloadTimer = null;
+/** Tăng khi tải lại danh sách / hành động ADB — hủy đồng bộ phiên bản nền tránh render cache cũ. */
+let appsListSyncGen = 0;
+/** Hàng loạt / chuỗi disable-enable: `cancel` dừng sau gói hiện tại. */
+let appsAdbJob = null;
+
+const appsAdbCancelBtn = document.getElementById('appsAdbCancelBtn');
+
+function cancelAppsVersionSync() {
+  if (appsVersionSyncTimer) {
+    clearTimeout(appsVersionSyncTimer);
+    appsVersionSyncTimer = null;
+  }
+  appsListSyncGen += 1;
+}
 
 function scheduleAppsVersionSync() {
   if (appsVersionSyncTimer) clearTimeout(appsVersionSyncTimer);
@@ -509,6 +524,110 @@ function scheduleAppsVersionSync() {
     appsVersionSyncTimer = null;
     syncAppsVersions().catch(() => {});
   }, 2000);
+}
+
+function patchAppsCacheEnabled(pkg, enabled) {
+  const i = appsCache.findIndex((a) => a.package === pkg);
+  if (i < 0) return;
+  appsCache[i].enabled = enabled;
+  if (!enabled) appsCache[i].type = 'disabled';
+  else if (appsCache[i].type === 'disabled') appsCache[i].type = 'user';
+  updateAppsFilterLabels();
+  renderApps();
+}
+
+function setAppsAdbCancelVisible(show) {
+  if (!appsAdbCancelBtn) return;
+  if (show) appsAdbCancelBtn.removeAttribute('hidden');
+  else appsAdbCancelBtn.setAttribute('hidden', '');
+}
+
+function beginAppsAdbJob(kind) {
+  appsAdbJob = { kind, cancel: false };
+  setAppsAdbCancelVisible(true);
+}
+
+function requestCancelAppsAdbJob() {
+  if (!appsAdbJob) return;
+  appsAdbJob.cancel = true;
+  if (appsDeferredReloadTimer) {
+    clearTimeout(appsDeferredReloadTimer);
+    appsDeferredReloadTimer = null;
+  }
+  setAppsStatus('Đang dừng sau gói hiện tại…');
+  showAppsToast('Sẽ dừng sau gói ADB đang chạy trên TV', 'hourglass_empty');
+}
+
+function endAppsAdbJob() {
+  appsAdbJob = null;
+  setAppsAdbCancelVisible(false);
+}
+
+function scheduleDeferredAppsReload(delayMs = 1200) {
+  if (appsDeferredReloadTimer) clearTimeout(appsDeferredReloadTimer);
+  appsDeferredReloadTimer = setTimeout(() => {
+    appsDeferredReloadTimer = null;
+    if (appsAdbJob?.cancel) return;
+    loadApps().catch(() => {});
+  }, delayMs);
+}
+
+const APPS_ADB_ACTION_LABEL = {
+  disable: 'Vô hiệu hóa',
+  enable: 'Kích hoạt',
+  force_stop: 'Force stop',
+};
+
+/**
+ * Chạy cùng một hành động ADB trên nhiều gói (tuần tự). UI cập nhật ngay; `pm list` nền trễ.
+ * @returns {{ ok: number, fail: number, cancelled: boolean }}
+ */
+async function runAppsAdbOnPackages(action, pkgs) {
+  if (!activeDevice || !pkgs?.length) return { ok: 0, fail: 0, cancelled: false };
+  const label = APPS_ADB_ACTION_LABEL[action] || action;
+  beginAppsAdbJob(action);
+  cancelAppsVersionSync();
+  let ok = 0;
+  let fail = 0;
+  for (let i = 0; i < pkgs.length; i++) {
+    if (appsAdbJob?.cancel) break;
+    const pkg = pkgs[i];
+    setAppsStatus(
+      pkgs.length > 1
+        ? `${label} ${i + 1}/${pkgs.length} — ${friendlyPkgName(pkg)}…`
+        : `${label} ${pkg}… (TV/Wi‑Fi có thể mất 10–30s)`,
+    );
+    try {
+      await getApi().app_action(activeDevice.host, activeDevice.port, action, pkg);
+      if (action === 'disable') patchAppsCacheEnabled(pkg, false);
+      else if (action === 'enable') patchAppsCacheEnabled(pkg, true);
+      ok += 1;
+      if (action === 'disable') logAppsConsole(`pm disable-user ${pkg}`, 'ok');
+      else if (action === 'enable') logAppsConsole(`pm enable ${pkg}`, 'ok');
+      else if (action === 'force_stop') logAppsConsole(`am force-stop ${pkg}`, 'ok');
+    } catch (err) {
+      fail += 1;
+      logAppsConsole(action, `${pkg}: ${err}`, 'log-err');
+    }
+  }
+  const cancelled = Boolean(appsAdbJob?.cancel);
+  endAppsAdbJob();
+  if (action === 'disable' || action === 'enable') {
+    if (cancelled) {
+      setAppsStatus('Đã hủy — trạng thái trên màn hình đã cập nhật; bấm «Tải lại danh sách» để đồng bộ TV.');
+    } else {
+      setAppsStatus(`${label} xong (${ok} thành công${fail ? `, ${fail} lỗi` : ''}) — đang đồng bộ danh sách nền…`);
+      scheduleDeferredAppsReload();
+    }
+  } else if (!cancelled) {
+    setAppsStatus(`${label} xong (${ok}/${pkgs.length})`);
+    setTimeout(() => setAppsStatus(''), 2000);
+  }
+  return { ok, fail, cancelled };
+}
+
+if (appsAdbCancelBtn) {
+  appsAdbCancelBtn.addEventListener('click', () => requestCancelAppsAdbJob());
 }
 
 const APPS_VERSION_SYNC_MAX = 100;
@@ -526,6 +645,7 @@ function applyAppsInfoMap(info) {
 
 async function syncAppsVersions(maxTotal = APPS_VERSION_SYNC_MAX) {
   if (!activeDevice || !appsCache.length || !window.pywebview?.api?.get_apps_info) return;
+  const syncGen = appsListSyncGen;
   const missing = appsCache
     .filter((a) => !a.version && !a.version_code)
     .map((a) => a.package)
@@ -534,6 +654,7 @@ async function syncAppsVersions(maxTotal = APPS_VERSION_SYNC_MAX) {
 
   let done = 0;
   for (let i = 0; i < missing.length; i += APPS_VERSION_BATCH) {
+    if (syncGen !== appsListSyncGen) return;
     const batch = missing.slice(i, i + APPS_VERSION_BATCH);
     setAppsStatus(
       `Đang lấy phiên bản… ${done}/${missing.length} (Wi‑Fi ADB có thể chậm)`,
@@ -544,17 +665,25 @@ async function syncAppsVersions(maxTotal = APPS_VERSION_SYNC_MAX) {
       batch,
       APPS_VERSION_BATCH,
     );
+    if (syncGen !== appsListSyncGen) return;
     applyAppsInfoMap(info);
     done += batch.length;
     updateAppsLauncherBanner();
     renderApps();
   }
+  if (syncGen !== appsListSyncGen) return;
   setAppsStatus(`Đã đồng bộ phiên bản cho ${done}/${missing.length} gói (tối đa ${maxTotal})`);
   setTimeout(() => setAppsStatus(''), 2000);
 }
 
 async function loadApps() {
   if (!activeDevice) return;
+  if (appsDeferredReloadTimer) {
+    clearTimeout(appsDeferredReloadTimer);
+    appsDeferredReloadTimer = null;
+  }
+  cancelAppsVersionSync();
+  const loadGen = appsListSyncGen;
   await updateAppsDeviceHeader();
   setAppsStatus('Đang tải danh sách ứng dụng...');
   logAppsConsole(
@@ -564,6 +693,7 @@ async function loadApps() {
   if (appsList) appsList.innerHTML = '';
   try {
     const res = await getApi().list_apps(activeDevice.host, activeDevice.port);
+    if (loadGen !== appsListSyncGen) return;
     appsCache = res.apps || [];
     appsHome = res.current_home || null;
     updateAppsFilterLabels();
@@ -641,27 +771,27 @@ if (appsClearSelection) {
 if (appsBatchBar) {
   appsBatchBar.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-batch]');
-    if (!btn || !activeDevice) return;
+    if (!btn || !activeDevice || appsAdbJob) return;
     const action = btn.dataset.batch;
     const pkgs = [...appsList.querySelectorAll('.app-row-checkbox:checked')].map((cb) => cb.dataset.pkg);
     if (!pkgs.length) return;
-    setButtonLoading(btn, true);
-    for (const pkg of pkgs) {
-      try {
-        if (action === 'force_stop') {
-          await getApi().app_action(activeDevice.host, activeDevice.port, 'force_stop', pkg);
-          logAppsConsole(`am force-stop ${pkg}`, 'ok');
-        } else if (action === 'disable') {
-          await getApi().app_action(activeDevice.host, activeDevice.port, 'disable', pkg);
-          logAppsConsole(`pm disable-user ${pkg}`, 'ok');
-        }
-      } catch (err) {
-        logAppsConsole(action, `${pkg}: ${err}`, 'log-err');
-      }
+    if (
+      action === 'disable'
+      && !confirm(
+        `Vô hiệu hóa ${pkgs.length} gói qua ADB?\n\nCó thể hủy giữa chừng (dừng sau gói đang chạy). Một số app hệ thống có thể ảnh hưởng TV.`,
+      )
+    ) {
+      return;
     }
-    setButtonLoading(btn, false);
-    showAppsToast(`Đã xử lý ${pkgs.length} gói (${action})`, 'checklist');
-    await loadApps();
+    setButtonLoading(btn, true);
+    try {
+      const { ok, fail, cancelled } = await runAppsAdbOnPackages(action, pkgs);
+      if (cancelled) showAppsToast(`Đã hủy — ${ok} gói đã xử lý`, 'stop_circle');
+      else if (fail) showAppsToast(`${ok} ok, ${fail} lỗi`, 'warning');
+      else showAppsToast(`Đã xử lý ${ok} gói`, 'checklist');
+    } finally {
+      setButtonLoading(btn, false);
+    }
   });
 }
 
@@ -1187,6 +1317,31 @@ function setSmartCleanListLoading(loading, message) {
   }
 }
 
+async function refreshSmartCleanApps() {
+  if (!activeDevice) {
+    showAppsToast('Chọn thiết bị trước', 'info');
+    return;
+  }
+  const btn = document.getElementById('smartCleanRefreshApps');
+  const dismissed = new Set(smartCleanDismissed);
+  const useAi = smartCleanScanMode === 'ai';
+  setButtonLoading(btn, true, 'Đang tải…');
+  try {
+    setSmartCleanStatus('Đang đồng bộ danh sách app từ TV (ADB)…');
+    await loadApps();
+    smartCleanDismissed = dismissed;
+    await runSmartCleanAnalyze(useAi);
+    smartCleanDismissed = dismissed;
+    renderSmartCleanList();
+    showAppsToast('Đã làm mới danh sách app', 'sync');
+  } catch (err) {
+    setSmartCleanStatus(`Lỗi làm mới app: ${err}`);
+    showAppsToast(String(err), 'error');
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}
+
 async function runSmartCleanAnalyze(useAi) {
   if (!activeDevice) {
     showAppsToast('Chọn thiết bị trước', 'info');
@@ -1322,6 +1477,8 @@ smartCleanModal?.addEventListener('click', (e) => {
 
 document.getElementById('smartCleanModeOffline')?.addEventListener('click', () => runSmartCleanAnalyze(false));
 document.getElementById('smartCleanModeAi')?.addEventListener('click', () => runSmartCleanAnalyze(true));
+
+document.getElementById('smartCleanRefreshApps')?.addEventListener('click', () => refreshSmartCleanApps());
 
 async function persistSmartCleanModelChoice({ quiet = false } = {}) {
   const model = getSmartCleanModelValue();
@@ -1548,6 +1705,10 @@ if (appsList) {
     if (act === 'disable' && !confirm(`Vô hiệu hóa ${pkg}?\n\nHãy chắc chắn bạn hiểu tác động. Một số app hệ thống có thể ảnh hưởng chức năng TV.`)) {
       return;
     }
+    if ((act === 'enable' || act === 'disable') && appsAdbJob) {
+      showAppsToast('Đang có thao tác ADB — hãy Hủy hoặc đợi xong', 'info');
+      return;
+    }
     setButtonLoading(btn, true, loadingLabels[act] || 'Đang xử lý...');
     try {
       if (act === 'open') {
@@ -1568,23 +1729,21 @@ if (appsList) {
         await getApi().app_action(activeDevice.host, activeDevice.port, 'app_info', pkg);
         setAppsStatus('Đã mở màn hình App info');
       } else if (act === 'enable') {
-        setAppsStatus(`Đang kích hoạt ${pkg}...`);
-        await getApi().app_action(activeDevice.host, activeDevice.port, 'enable', pkg);
-        setAppsStatus('Đã kích hoạt, đang tải lại...');
-        await loadApps();
+        const { fail } = await runAppsAdbOnPackages('enable', [pkg]);
+        if (!fail) showAppsToast(`Đã bật lại ${pkg}`, 'check_circle');
         return;
       } else if (act === 'disable') {
-        setAppsStatus(`Đang vô hiệu hóa ${pkg}...`);
-        await getApi().app_action(activeDevice.host, activeDevice.port, 'disable', pkg);
-        setAppsStatus('Đã vô hiệu hóa, đang tải lại...');
-        await loadApps();
+        const { fail } = await runAppsAdbOnPackages('disable', [pkg]);
+        if (!fail) showAppsToast(`Đã vô hiệu hóa ${pkg}`, 'block');
         return;
       }
       setTimeout(() => setAppsStatus(''), 1200);
     } catch (err) {
       setAppsStatus(`Lỗi: ${err}`);
+      showAppsToast(String(err), 'error');
+    } finally {
+      setButtonLoading(btn, false);
     }
-    setButtonLoading(btn, false);
   });
 }
 

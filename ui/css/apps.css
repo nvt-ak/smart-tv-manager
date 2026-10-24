@@ -236,6 +236,25 @@
   display: flex;
 }
 
+.apps-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  min-height: 28px;
+}
+
+.apps-adb-cancel {
+  flex-shrink: 0;
+  font-size: 13px;
+  padding: 4px 12px;
+}
+
+.apps-adb-cancel[hidden] {
+  display: none !important;
+}
+
 .apps-grid {
   overflow: hidden;
   display: flex;

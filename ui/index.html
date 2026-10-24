@@ -53,7 +53,7 @@
           <img class="brand-mark-img" src="assets/app-icon.png" alt="" width="32" height="32" decoding="async">
         </div>
         <span class="brand-title">SmartTV Manager</span>
-        <span class="brand-version">v1.1.0</span>
+        <span class="brand-version">v1.2.0</span>
         <div class="adb-pill">
           <span class="adb-pill-dot"></span>
           <span>ADB Ready</span>
@@ -472,7 +472,13 @@
           </div>
         </div>
 
-        <div id="appsStatus" class="status-line" role="status"></div>
+        <div class="apps-status-row">
+          <div id="appsStatus" class="status-line" role="status"></div>
+          <button type="button" id="appsAdbCancelBtn" class="btn btn--ghost apps-adb-cancel" hidden>
+            <span class="material-symbols-outlined">stop_circle</span>
+            Hủy thao tác ADB
+          </button>
+        </div>
 
         <div class="apps-grid glass-card">
           <div class="apps-grid-header">
@@ -653,6 +659,15 @@
                 Tổng quan:
               </div>
               <div id="smartCleanSummary" class="smart-clean-metrics"></div>
+              <button
+                type="button"
+                id="smartCleanRefreshApps"
+                class="smart-clean-refresh-apps"
+                title="Làm mới danh sách app từ TV — giữ chế độ quét, bộ lọc và cấu hình AI"
+              >
+                <span class="material-symbols-outlined">sync</span>
+                <span class="smart-clean-refresh-label">Làm mới app</span>
+              </button>
             </div>
             <div class="smart-clean-search-row">
               <div class="smart-clean-search-wrap">

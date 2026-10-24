@@ -46,11 +46,11 @@ def app_info_cmd(package: str) -> str:
 
 
 def enable_cmd(package: str) -> str:
-    return f"pm enable {package}"
+    return f"pm enable --user 0 {package}"
 
 
 def disable_user_cmd(package: str) -> str:
-    return f"pm disable-user {package}"
+    return f"pm disable-user --user 0 {package}"
 
 
 def get_default_home_cmd() -> str:

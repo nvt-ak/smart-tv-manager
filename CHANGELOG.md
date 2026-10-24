@@ -18,6 +18,25 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ---
 
+## [1.2.0] - 2026-10-24
+
+Smart Clean làm mới danh sách app; cải thiện vô hiệu hóa ADB trên tab Quản lý ứng dụng.
+
+### Added
+
+- Smart Clean: nút **Làm mới app** — đồng bộ `pm list` từ TV, quét lại theo chế độ Offline/AI hiện tại; giữ bộ lọc, tìm kiếm, cấu hình AI và gói đã «Bỏ qua».
+
+### Changed
+
+- Quản lý ứng dụng: sau vô hiệu hóa/bật lại, cập nhật UI ngay; `pm list` chạy nền (không chặn nút); hàng loạt có **Hủy thao tác ADB** (dừng sau gói đang chạy trên TV).
+
+### Fixed
+
+- Quản lý ứng dụng (ADB): `pm disable-user` / `pm enable` dùng `--user 0`, kiểm tra output và xác nhận trạng thái trên TV; danh sách package tính «đã tắt» từ `pm list -e` (tránh lệch sau vô hiệu hóa); hủy đồng bộ phiên bản nền khi tải lại để UI không hiện lại «đang bật».
+- Quản lý ứng dụng: bỏ xác minh `pm list -e` toàn máy sau mỗi lần tắt/bật (chỉ khi output `pm` không rõ) — giảm thời gian chờ trên Wi‑Fi.
+
+---
+
 ## [1.1.0] - 2026-10-24
 
 Smart Clean / Debloat Advisor, cải thiện ADB & khởi động, sửa build CI PyInstaller.
