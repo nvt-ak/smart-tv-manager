@@ -30,7 +30,7 @@ from adb_shell.adb_device import AdbDeviceTcp
 PKG = "com.gathin.tvhome"
 HOME_DIR = f"/sdcard/Android/data/{PKG}/files"
 THEME_URI = f"content://{PKG}.theme"
-STAGE_PREFIX = "/data/local/tmp/tvremotehub-theme"
+STAGE_PREFIX = "/data/local/tmp/smarttvmanager-theme"
 
 CONFIG_NAME = "config.json"
 WALLPAPER_NAME = "wallpaper.jpg"
@@ -204,7 +204,7 @@ class ThemeManager:
     def read_wallpaper_preview_b64(self, max_bytes: int = 1_500_000) -> Optional[str]:
         """Pull wallpaper.jpg from TV for UI preview (best-effort)."""
         remote = f"{HOME_DIR}/{WALLPAPER_NAME}"
-        fd, local = tempfile.mkstemp(prefix="tvremotehub-wp-", suffix=".jpg")
+        fd, local = tempfile.mkstemp(prefix="smarttvmanager-wp-", suffix=".jpg")
         os.close(fd)
         timeout = adb_client.transfer_timeout_s(max_bytes)
         staged = f"{STAGE_PREFIX}-preview-wall.jpg"
@@ -499,7 +499,7 @@ class ThemeManager:
             with Image.open(local_path) as im:
                 im = im.convert("RGB")
                 im.thumbnail((1920, 1080), Image.Resampling.LANCZOS)
-                fd, tmp = tempfile.mkstemp(prefix="tvremotehub-wp-", suffix=".jpg")
+                fd, tmp = tempfile.mkstemp(prefix="smarttvmanager-wp-", suffix=".jpg")
                 os.close(fd)
                 im.save(tmp, "JPEG", quality=84, optimize=True)
             if os.path.getsize(tmp) < os.path.getsize(local_path):

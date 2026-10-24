@@ -1,0 +1,15 @@
+---
+description: Bắt buộc cập nhật CHANGELOG.md khi đổi hành vi, UI, build hoặc release
+alwaysApply: true
+---
+
+# CHANGELOG
+
+Khi **hoàn thành** thay đổi có ý nghĩa với người dùng hoặc vận hành (tính năng, sửa lỗi, đổi tên/build/CI/migration dữ liệu):
+
+1. Cập nhật [`CHANGELOG.md`](../CHANGELOG.md) dưới section **`## [Unreleased]`** — dùng `Added`, `Changed`, `Fixed`, `Removed`, `Security` khi phù hợp; mô tả **bằng tiếng Việt**, cụ thể (file/khu vực UI nếu hữu ích).
+2. **Không** gộp nhiều thay đổi không liên quan vào một dòng; mỗi bullet một ý.
+3. Khi user yêu cầu **tag / release** `v*`: chuyển nội dung `[Unreleased]` thành `## [x.y.z] - YYYY-MM-DD`, thêm section `[Unreleased]` trống phía trên, đồng bộ `APP_VERSION` trong [`app_brand.py`](app_brand.py) và UI (`ui/index.html`, `ui/splash.html`).
+4. Commit message có thể tham chiếu CHANGELOG; MR/release notes có thể trích từ section version tương ứng.
+
+Không cần ghi CHANGELOG cho: refactor nội bộ không đổi hành vi, chỉ format, chỉ cập nhật graphify/cache.

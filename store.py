@@ -1,4 +1,4 @@
-"""Saved device list: ~/.tv-remote-hub/devices.json."""
+"""Saved device list: ~/.smarttv-manager/devices.json."""
 import json
 import os
 from datetime import datetime

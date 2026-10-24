@@ -2,7 +2,7 @@
   const STATUSES = [
     { pct: 12, msg: 'Khởi động ADB server socket nội bộ...' },
     { pct: 28, msg: 'Tự động quét mạng LAN tìm thiết bị TV (cổng 5555)...' },
-    { pct: 48, msg: 'Nạp giao diện TV Remote Hub...' },
+    { pct: 48, msg: 'Nạp giao diện SmartTV Manager...' },
     { pct: 68, msg: 'Đồng bộ module Home & Theme...' },
     { pct: 88, msg: 'Chuẩn bị bàn điều khiển thiết bị...' },
     { pct: 100, msg: 'Khởi tạo thành công! Đang vào màn hình chính...' },

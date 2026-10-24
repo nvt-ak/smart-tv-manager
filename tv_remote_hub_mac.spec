@@ -33,7 +33,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="TVRemoteHub",
+    name="SmartTVManager",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -54,12 +54,12 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="TVRemoteHub",
+    name="SmartTVManager",
 )
 
 app = BUNDLE(
     coll,
-    name="TV Remote Hub.app",
+    name="SmartTV Manager.app",
     icon="assets/app-icon.icns",
-    bundle_identifier="com.vinaco.tvremotehub",
+    bundle_identifier="com.vinaco.smarttvmanager",
 )

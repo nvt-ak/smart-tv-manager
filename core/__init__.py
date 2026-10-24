@@ -1,1 +1,1 @@
-"""Core modules for TV Remote Hub."""
+"""Core modules for SmartTV Manager."""

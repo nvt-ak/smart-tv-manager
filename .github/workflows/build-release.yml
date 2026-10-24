@@ -14,12 +14,10 @@ jobs:
         include:
           - os: macos-latest
             spec: tv_remote_hub_mac.spec
-            artifact: TVRemoteHub-macos
-            path: dist/TV Remote Hub.app
+            artifact: SmartTVManager-macos-dmg
           - os: windows-latest
             spec: tv_remote_hub.spec
-            artifact: TVRemoteHub-windows-x64
-            path: dist/TVRemoteHub
+            artifact: SmartTVManager-windows-x64-zip
 
     runs-on: ${{ matrix.os }}
 
@@ -42,9 +40,98 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller ${{ matrix.spec }} --noconfirm --clean
 
-      - name: Upload artifact
+      - name: Package macOS DMG
+        if: runner.os == 'macOS'
+        run: |
+          APP="dist/SmartTV Manager.app"
+          DMG="dist/SmartTVManager-macos.dmg"
+          test -d "$APP"
+          hdiutil create -volname "SmartTV Manager" -srcfolder "$APP" -ov -format UDZO "$DMG"
+          ls -lh "$DMG"
+
+      - name: Package Windows ZIP
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dir = "dist/SmartTVManager"
+          $zip = "dist/SmartTVManager-windows-x64.zip"
+          if (-not (Test-Path "$dir/SmartTVManager.exe")) { throw "Missing $dir/SmartTVManager.exe" }
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path $dir -DestinationPath $zip -CompressionLevel Optimal
+          Get-Item $zip | Format-List Name, Length
+
+      - name: Upload artifact (macOS)
+        if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.path }}
+          path: dist/SmartTVManager-macos.dmg
           retention-days: 30
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/SmartTVManager-windows-x64.zip
+          retention-days: 30
+
+  release:
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SmartTVManager-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify release files
+        run: |
+          ls -la release-assets/
+          test -f release-assets/SmartTVManager-macos.dmg
+          test -f release-assets/SmartTVManager-windows-x64.zip
+
+      - name: Compose release notes from CHANGELOG
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VER="## [${TAG}]"
+          : > release-notes.md
+          if [ -f CHANGELOG.md ] && grep -qF "$VER" CHANGELOG.md; then
+            awk -v ver="$VER" '
+              $0 == ver { found=1; next }
+              found && /^## / { exit }
+              found { print }
+            ' CHANGELOG.md >> release-notes.md
+            echo "" >> release-notes.md
+          else
+            echo "Không tìm thấy section \`${VER}\` trong CHANGELOG.md — hãy đóng [Unreleased] trước khi tag." >> release-notes.md
+            echo "" >> release-notes.md
+          fi
+          {
+            echo "## Cài đặt"
+            echo ""
+            echo "| Nền tảng | File | Ghi chú |"
+            echo "|----------|------|---------|"
+            echo "| **macOS** | \`SmartTVManager-macos.dmg\` | Mở DMG → kéo **SmartTV Manager** vào Applications. Bản unsigned: **Right-click → Open** lần đầu. |"
+            echo "| **Windows** | \`SmartTVManager-windows-x64.zip\` | Giải nén → chạy \`SmartTVManager/SmartTVManager.exe\`. Cần [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/). |"
+            echo ""
+            echo "Build từ tag \`${{ github.ref_name }}\` — workflow [build-release.yml](https://github.com/${{ github.repository }}/actions/workflows/build-release.yml)."
+          } >> release-notes.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: false
+          body_path: release-notes.md
+          files: |
+            release-assets/SmartTVManager-macos.dmg
+            release-assets/SmartTVManager-windows-x64.zip

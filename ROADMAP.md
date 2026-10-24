@@ -1,4 +1,4 @@
-# TV Remote Hub — Product & Implementation Plan
+# SmartTV Manager — Product & Implementation Plan
 
 ## 1. Mục tiêu
 
@@ -18,7 +18,7 @@ Xây dựng ứng dụng desktop giúp người dùng quản lý Android TV tron
 - **Desktop shell:** Python + pywebview.
 - **UI:** HTML/CSS/JavaScript chạy trong webview.
 - **Device bridge:** `adb-shell`, kết nối trực tiếp TCP tới TV.
-- **Local storage:** JSON trong `~/.tv-remote-hub/`; có thể chuyển sang SQLite khi dữ liệu và lịch sử thao tác tăng.
+- **Local storage:** JSON trong `~/.smarttv-manager/`; có thể chuyển sang SQLite khi dữ liệu và lịch sử thao tác tăng.
 - **Nguồn dữ liệu tham khảo:** theme và danh sách debloat từ repo `cleanyourtv`.
 - **Bảo mật:** ADB key riêng, lưu với quyền chỉ tài khoản hiện tại được đọc; không mở server ra LAN hoặc Internet.
 

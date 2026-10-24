@@ -1,9 +1,10 @@
-"""TV Remote Hub: desktop app, lists TVs on the LAN and connects over ADB."""
+"""SmartTV Manager: desktop app, lists TVs on the LAN and connects over ADB."""
 import os
 
 import webview
 
 import adb_client
+from app_brand import APP_DISPLAY_NAME
 import paths
 import store
 from core.package_manager import PackageManager
@@ -220,7 +221,7 @@ class Api:
         safe_name = os.path.basename(filename)
         if not safe_name.lower().endswith(".apk"):
             raise Exception("Chỉ hỗ trợ file .apk")
-        path = os.path.join(tmpdir, f"tvremotehub_{os.getpid()}_{safe_name}")
+        path = os.path.join(tmpdir, f"smarttvmanager_{os.getpid()}_{safe_name}")
         with open(path, "wb") as f:
             f.write(raw)
         try:
@@ -518,7 +519,7 @@ if __name__ == "__main__":
         if os.path.isfile(ico):
             icon_path = ico
     webview.create_window(
-        "TV Remote Hub",
+        APP_DISPLAY_NAME,
         ui_path,
         js_api=api,
         width=1280,

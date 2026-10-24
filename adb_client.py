@@ -1,6 +1,6 @@
 """Minimal ADB-over-TCP client (adb-shell, no adb binary needed).
 
-Key is stored at ~/.tv-remote-hub/adbkey, separate from the stock
+Key is stored at ~/.smarttv-manager/adbkey, separate from the stock
 ~/.android/adbkey so this app's "Allow USB debugging?" grant on each TV
 is independent of other ADB clients on this machine.
 """
@@ -13,6 +13,8 @@ from concurrent.futures import ThreadPoolExecutor
 from adb_shell.adb_device import AdbDeviceTcp
 from adb_shell.auth.keygen import keygen
 from adb_shell.auth.sign_pythonrsa import PythonRSASigner
+
+from app_brand import user_data_dir
 
 PORT = 5555
 CONNECT_TIMEOUT = 8.0
@@ -63,7 +65,7 @@ def ensure_connected(device, timeout=CONNECT_TIMEOUT):
             pass
     reconnect(device, timeout=timeout)
 
-KEY_DIR = os.path.join(os.path.expanduser("~"), ".tv-remote-hub")
+KEY_DIR = user_data_dir()
 KEY_PATH = os.path.join(KEY_DIR, "adbkey")
 
 

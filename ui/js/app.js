@@ -5,7 +5,7 @@ function hasPywebviewApi() {
 
 function getApi() {
   if (!hasPywebviewApi()) {
-    throw new Error('Chạy TV Remote Hub bằng `python main.py` — không mở file HTML trực tiếp trong trình duyệt.');
+    throw new Error('Chạy SmartTV Manager bằng `python main.py` — không mở file HTML trực tiếp trong trình duyệt.');
   }
   return window.pywebview.api;
 }
@@ -1157,7 +1157,7 @@ document.getElementById('remoteSendKeycodeBtn')?.addEventListener('click', async
 
 document.getElementById('remoteScreencapBtn')?.addEventListener('click', async () => {
   if (!activeDevice) return;
-  const fn = `tvremotehub_${Date.now()}.png`;
+  const fn = `smarttvmanager_${Date.now()}.png`;
   const cmd = `screencap -p /sdcard/${fn}`;
   logRemoteAdb(cmd, '...');
   try {
@@ -1237,7 +1237,8 @@ if (remoteAdbLog) {
   logRemoteAdb('remote', 'Sẵn sàng — chọn thiết bị và gửi keyevent', 'ok');
 }
 
-const APK_HISTORY_KEY = 'tvremotehub_apk_history_v1';
+const APK_HISTORY_KEY = 'smarttvmanager_apk_history_v1';
+const APK_HISTORY_KEY_LEGACY = 'tvremotehub_apk_history_v1';
 
 function setApkStatus(msg) {
   if (apkStatus) apkStatus.textContent = msg || '';
@@ -1275,7 +1276,9 @@ async function refreshApkStorage() {
 
 function loadApkHistory() {
   try {
-    return JSON.parse(localStorage.getItem(APK_HISTORY_KEY) || '[]');
+    return JSON.parse(
+      localStorage.getItem(APK_HISTORY_KEY) || localStorage.getItem(APK_HISTORY_KEY_LEGACY) || '[]',
+    );
   } catch {
     return [];
   }
@@ -2151,7 +2154,7 @@ async function applyTheme(id, btn) {
     if (btn) setButtonLoading(btn, false);
     const msg = String(err);
     setHomeStatus(`Lỗi áp dụng: ${msg}`);
-    alert(`Áp dụng thất bại: ${msg}\n\nXem «Nhật ký áp dụng theme» hoặc ~/.tv-remote-hub/theme-apply.log`);
+    alert(`Áp dụng thất bại: ${msg}\n\nXem «Nhật ký áp dụng theme» hoặc ~/.smarttv-manager/theme-apply.log`);
   }
 }
 
@@ -2351,7 +2354,8 @@ document.addEventListener('keydown', (e) => {
   if (themeModal && !themeModal.hidden) closeThemeModal();
 });
 
-const DEV_GUIDE_STORAGE = 'tvremotehub.devGuideBanner.v1';
+const DEV_GUIDE_STORAGE = 'smarttvmanager.devGuideBanner.v1';
+const DEV_GUIDE_STORAGE_LEGACY = 'tvremotehub.devGuideBanner.v1';
 
 const DEV_GUIDE_BRAND_HINTS = {
   tcl: 'TCL / Google TV: Cài đặt → Hệ thống → Giới thiệu → Bản dựng hệ điều hành Android TV.',
@@ -2380,7 +2384,10 @@ const devGuideBanner = document.getElementById('devGuideBanner');
 
 function devGuideBannerHidden() {
   try {
-    return localStorage.getItem(DEV_GUIDE_STORAGE) === '1';
+    return (
+      localStorage.getItem(DEV_GUIDE_STORAGE) === '1'
+      || localStorage.getItem(DEV_GUIDE_STORAGE_LEGACY) === '1'
+    );
   } catch {
     return false;
   }
@@ -2596,7 +2603,7 @@ if (clearLogsBtn && terminalBodyEl) {
 }
 
 if (terminalBodyEl) {
-  appendTerminal('tv-remote-hub', 'ADB console sẵn sàng', 'log-ok');
+  appendTerminal('smarttv-manager', 'ADB console sẵn sàng', 'log-ok');
 }
 
 waitForPywebviewAndBoot();

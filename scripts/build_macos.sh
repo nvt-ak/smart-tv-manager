@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build TV Remote Hub .app on macOS (must run on a Mac).
+# Build SmartTV Manager .app on macOS (must run on a Mac).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -21,5 +21,5 @@ PY
 "$PYTHON" -m PyInstaller tv_remote_hub_mac.spec --noconfirm --clean
 
 echo ""
-echo "Build OK: $ROOT/dist/TV Remote Hub.app"
+echo "Build OK: $ROOT/dist/SmartTV Manager.app"
 echo "Tip: zip the .app for distribution; first open may need Right-click → Open (unsigned)."
