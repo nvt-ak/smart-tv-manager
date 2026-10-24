@@ -112,7 +112,8 @@ def run_shell(device, command: str, timeout: float | None = None) -> str:
                     reconnect(device, timeout=min(t, 15.0))
                 except Exception:
                     pass
-    assert last_err is not None
+    if last_err is None:
+        raise RuntimeError("run_shell: shell failed without a captured exception")
     raise last_err
 
 

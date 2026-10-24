@@ -85,7 +85,10 @@ class PackageManager:
                     m = re.search(r"versionCode=(\d+)", line)
                     if m:
                         info["version_code"] = m.group(1)
-            out2 = self._shell(f"pm list packages -e 2>&1 | grep -w {package}", timeout=adb_client.CONNECT_TIMEOUT)
+            out2 = self._shell(
+                f"pm list packages -e 2>&1 | grep -w {package}",
+                timeout=adb_client.SHELL_HEAVY_TIMEOUT,
+            )
             info["enabled"] = package in out2
         except Exception:
             pass

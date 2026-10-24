@@ -26,6 +26,12 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ### Fixed
 
+- `get_package_info`: lệnh `pm list packages -e` dùng `SHELL_HEAVY_TIMEOUT` (45s) thay 8s trên Wi‑Fi chậm.
+- `_device_props`: `getprop` có timeout `SHELL_DEFAULT_TIMEOUT` (25s).
+- `store.py`: `upsert` / `rename` / `remove` / `batch_update_online` trả snapshot list (không alias nội bộ); ghi file qua `_write_devices_file` trong lock (không gọi `save()` lồng lock — không deadlock).
+- Smart Clean AI: handler lỗi không tham chiếu `llm_model` khi chưa gán; `run_shell` không dùng `assert` cho luồng lỗi.
+- Smart Clean: chọn model — state `smartCleanSelectedModelId`, `mousedown` trên dropdown, không autoPick sau Ping; `applyPopulatePick` giữ model user khi locked.
+- Smart Clean: logic chọn model tách `smart_clean_model_logic.js` + test Node (`tests/smart_clean_model_logic.test.mjs`); **userLocked** sau khi chọn tay — fetch/sync không nhảy về default.
 - Smart Clean: chọn model không bị ghi đè bởi default/settings khi fetch nền hoặc sync; bỏ sync form sau Lưu Key (tránh nhảy model).
 - Smart Clean: trạng thái **Đã chọn** model (viền xanh, badge, dòng meta); blur ô tìm sync lại; quét AI chỉ khi model nằm trong danh sách đã tải; **tự fetch model** khi mở modal nếu key đã lưu.
 - Smart Clean: Test Ping tải **toàn bộ** model (không cắt 200); combobox **tìm kiếm** model; badge/mode tag hiển thị model đã chọn; proxy/local **không** fallback `gpt-4o-mini` — bắt chọn model sau Ping.

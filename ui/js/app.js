@@ -733,6 +733,13 @@ let smartCleanScanMode = 'offline';
 let smartCleanDismissed = new Set();
 let smartCleanModelsCache = [];
 let smartCleanModelsFetchGen = 0;
+let smartCleanModelUserLocked = false;
+/** Nguồn thật cho model đã chọn (tránh hidden/search lệch khi filter). */
+let smartCleanSelectedModelId = '';
+
+function smartCleanModelLogic() {
+  return globalThis.SmartCleanModelLogic || null;
+}
 
 const smartCleanModal = document.getElementById('smartCleanModal');
 const smartCleanList = document.getElementById('smartCleanList');
@@ -892,11 +899,17 @@ function readSmartCleanAiForm() {
 }
 
 function getSmartCleanModelValue() {
+  const fromState = (smartCleanSelectedModelId || '').trim();
+  if (fromState) return fromState;
   return document.getElementById('smartCleanModel')?.value?.trim() || '';
 }
 
 function isSmartCleanModelCommitted(modelId) {
   const id = (modelId || '').trim();
+  const L = smartCleanModelLogic();
+  if (L?.isCommittedModel) {
+    return L.isCommittedModel(id, smartCleanModelsCache);
+  }
   return Boolean(id && smartCleanModelsCache.includes(id));
 }
 
@@ -904,6 +917,10 @@ function syncSmartCleanModelSearchToSelection() {
   const search = document.getElementById('smartCleanModelSearch');
   const selected = getSmartCleanModelValue();
   if (!search) return;
+  if (smartCleanModelUserLocked && selected) {
+    search.value = selected;
+    return;
+  }
   if (selected && isSmartCleanModelCommitted(selected)) {
     search.value = selected;
     return;
@@ -959,10 +976,12 @@ function updateSmartCleanModelChrome() {
   }
 }
 
-function setSmartCleanModelValue(modelId, { syncSearch = true } = {}) {
+function setSmartCleanModelValue(modelId, { syncSearch = true, fromUser = false } = {}) {
   const hidden = document.getElementById('smartCleanModel');
   const search = document.getElementById('smartCleanModelSearch');
   const id = (modelId || '').trim();
+  smartCleanSelectedModelId = id;
+  if (fromUser) smartCleanModelUserLocked = true;
   if (hidden) hidden.value = id;
   if (syncSearch && search) search.value = id;
   updateSmartCleanModelChrome();
@@ -1009,23 +1028,12 @@ function openSmartCleanModelDropdown() {
   renderSmartCleanModelDropdown(filterSmartCleanModels(search?.value));
 }
 
-function pickSmartCleanModelId(list, preferredId) {
-  if (preferredId && list.includes(preferredId)) return preferredId;
-  const autoBest = list.find((id) => id === 'auto/best-chat' || String(id).startsWith('auto/'));
-  if (autoBest) return autoBest;
-  const notDefaultOpenAi = list.find((id) => id !== 'gpt-4o-mini');
-  return notDefaultOpenAi || list[0];
-}
-
-function populateSmartCleanModelPicker(
-  models,
-  preferredId,
-  { autoPick = true, respectCurrent = true } = {},
-) {
+function populateSmartCleanModelPicker(models, preferredId, { autoPick = false } = {}) {
   const search = document.getElementById('smartCleanModelSearch');
   const list = Array.isArray(models) ? models.filter(Boolean) : [];
   smartCleanModelsCache = list.slice();
   if (!list.length) {
+    smartCleanSelectedModelId = '';
     setSmartCleanModelValue('', { syncSearch: true });
     if (search) {
       search.disabled = true;
@@ -1039,22 +1047,42 @@ function populateSmartCleanModelPicker(
     search.disabled = false;
     search.placeholder = 'Gõ để tìm model (vd. auto/, gpt-)…';
   }
-  const pref = (preferredId || '').trim();
   const current = getSmartCleanModelValue();
-  let pick = '';
-  // Luôn giữ model user vừa chọn trên form — không ghi đè bằng default/settings.
-  if (respectCurrent && current && list.includes(current)) {
+  const pref = (preferredId || '').trim();
+  const L = smartCleanModelLogic();
+  let pick = current;
+  let changed = false;
+  if (L?.applyPopulatePick) {
+    const r = L.applyPopulatePick({
+      userLocked: smartCleanModelUserLocked,
+      current,
+      preferred: pref,
+      list,
+      autoPick,
+    });
+    pick = r.pick;
+    changed = r.changed;
+  } else if (smartCleanModelUserLocked && current && list.includes(current)) {
+    pick = current;
+    changed = false;
+  } else if (current && list.includes(current)) {
     pick = current;
   } else if (pref && list.includes(pref)) {
     pick = pref;
-  } else if (autoPick) {
-    pick = pickSmartCleanModelId(list, pref);
-  } else if (pref) {
-    pick = pref;
+    changed = pick !== current;
+  } else if (autoPick && list.length) {
+    pick = list[0];
+    changed = pick !== current;
+  } else {
+    pick = current;
   }
-  if (pick !== current) {
+  if (changed) {
     setSmartCleanModelValue(pick, { syncSearch: true });
   } else {
+    smartCleanSelectedModelId = pick;
+    if (document.getElementById('smartCleanModel')) {
+      document.getElementById('smartCleanModel').value = pick;
+    }
     updateSmartCleanModelChrome();
   }
 }
@@ -1079,16 +1107,23 @@ async function refreshSmartCleanModels({
   }
   const baseEl = document.getElementById('smartCleanApiBase');
   if (baseEl && res.base_url) baseEl.value = res.base_url;
+  const list = res.models || [];
   const current = getSmartCleanModelValue();
-  const want =
-    (current && (res.models || []).includes(current) ? current : '') ||
-    preferred ||
-    settings.openai_model ||
-    '';
-  populateSmartCleanModelPicker(res.models || [], want, {
-    autoPick,
-    respectCurrent: true,
-  });
+  let want = preferred;
+  const L = smartCleanModelLogic();
+  if (L?.resolveRefreshPreferred) {
+    want = L.resolveRefreshPreferred({
+      current,
+      preferred,
+      settingsModel: settings.openai_model,
+      list,
+    });
+  } else if (current && list.includes(current)) {
+    want = current;
+  } else {
+    want = preferred || settings.openai_model || '';
+  }
+  populateSmartCleanModelPicker(list, want, { autoPick });
   updateSmartCleanModelChrome();
   return res;
 }
@@ -1108,11 +1143,15 @@ async function syncSmartCleanAiFormFromSettings() {
         smartCleanKeyHint.textContent = '';
       }
     }
+    const cur = getSmartCleanModelValue();
+    if (!smartCleanModelUserLocked && s.openai_model && !cur) {
+      setSmartCleanModelValue(s.openai_model, { syncSearch: true });
+    }
+    const preferredPopulate = smartCleanModelUserLocked
+      ? getSmartCleanModelValue()
+      : getSmartCleanModelValue() || s.openai_model;
     if (smartCleanModelsCache.length) {
-      populateSmartCleanModelPicker(smartCleanModelsCache, s.openai_model, {
-        autoPick: false,
-        respectCurrent: true,
-      });
+      populateSmartCleanModelPicker(smartCleanModelsCache, preferredPopulate, { autoPick: false });
     } else if (s.openai_configured) {
       const search = document.getElementById('smartCleanModelSearch');
       if (search) {
@@ -1246,6 +1285,8 @@ async function openSmartCleanModal() {
 function closeSmartCleanModal() {
   if (smartCleanModal) smartCleanModal.hidden = true;
   document.body.classList.remove('smart-clean-modal-open');
+  smartCleanModelUserLocked = false;
+  smartCleanSelectedModelId = getSmartCleanModelValue();
 }
 
 async function smartCleanDisablePackages(pkgs, { closeOnSuccess = false } = {}) {
@@ -1283,10 +1324,13 @@ document.getElementById('smartCleanModeOffline')?.addEventListener('click', () =
 document.getElementById('smartCleanModeAi')?.addEventListener('click', () => runSmartCleanAnalyze(true));
 
 async function persistSmartCleanModelChoice({ quiet = false } = {}) {
-  const { model, base } = readSmartCleanAiForm();
+  const model = getSmartCleanModelValue();
+  const base = readSmartCleanAiForm().base;
   if (!isSmartCleanModelCommitted(model)) return;
   try {
     await getApi().save_app_settings(null, model, base || null);
+    smartCleanSelectedModelId = model;
+    smartCleanModelUserLocked = true;
     updateSmartCleanModelChrome();
     if (!quiet) showAppsToast(`Đã chọn: ${model}`, 'check_circle');
   } catch (err) {
@@ -1297,7 +1341,7 @@ async function persistSmartCleanModelChoice({ quiet = false } = {}) {
 function applySmartCleanModelChoice(modelId) {
   const id = (modelId || '').trim();
   if (!id || !smartCleanModelsCache.includes(id)) return false;
-  setSmartCleanModelValue(id, { syncSearch: true });
+  setSmartCleanModelValue(id, { syncSearch: true, fromUser: true });
   return true;
 }
 
@@ -1323,10 +1367,12 @@ smartCleanModelSearchEl?.addEventListener('keydown', async (e) => {
   }
 });
 
-document.getElementById('smartCleanModelDropdown')?.addEventListener('click', async (e) => {
+document.getElementById('smartCleanModelDropdown')?.addEventListener('mousedown', async (e) => {
   const btn = e.target.closest('[data-model]');
   if (!btn) return;
-  if (!applySmartCleanModelChoice(btn.dataset.model)) return;
+  e.preventDefault();
+  const modelId = btn.getAttribute('data-model');
+  if (!applySmartCleanModelChoice(modelId)) return;
   closeSmartCleanModelDropdown();
   await persistSmartCleanModelChoice();
 });
@@ -1435,7 +1481,7 @@ document.getElementById('smartCleanTestPing')?.addEventListener('click', async (
       key,
       base,
       preferred,
-      autoPick: !preferred,
+      autoPick: false,
       toastOnError: true,
     });
     if (!res?.ok) return;

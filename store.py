@@ -22,6 +22,11 @@ def _normalize_devices(devices):
     return devices
 
 
+def _snapshot_devices(devices):
+    """Bản sao nông — caller không giữ reference list đang dùng nội bộ store."""
+    return [dict(d) for d in devices]
+
+
 def load():
     with _lock:
         if not os.path.exists(PATH):
@@ -33,22 +38,27 @@ def load():
             return []
 
 
+def _write_devices_file(devices):
+    """Ghi devices.json — caller phải đang giữ `_lock`."""
+    os.makedirs(KEY_DIR, mode=0o700, exist_ok=True)
+    tmp = os.path.join(KEY_DIR, f"devices.{uuid.uuid4().hex}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(devices, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, PATH)
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+
 def save(devices):
     with _lock:
-        os.makedirs(KEY_DIR, mode=0o700, exist_ok=True)
-        tmp = os.path.join(KEY_DIR, f"devices.{uuid.uuid4().hex}.tmp")
-        try:
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(devices, f, indent=2, ensure_ascii=False)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp, PATH)
-        finally:
-            if os.path.exists(tmp):
-                try:
-                    os.remove(tmp)
-                except OSError:
-                    pass
+        _write_devices_file(devices)
 
 
 def batch_update_online(status_by_host: dict):
@@ -76,21 +86,8 @@ def batch_update_online(status_by_host: dict):
                 d["last_seen"] = now
             changed = True
         if changed:
-            os.makedirs(KEY_DIR, mode=0o700, exist_ok=True)
-            tmp = os.path.join(KEY_DIR, f"devices.{uuid.uuid4().hex}.tmp")
-            try:
-                with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump(devices, f, indent=2, ensure_ascii=False)
-                    f.flush()
-                    os.fsync(f.fileno())
-                os.replace(tmp, PATH)
-            finally:
-                if os.path.exists(tmp):
-                    try:
-                        os.remove(tmp)
-                    except OSError:
-                        pass
-        return devices
+            _write_devices_file(devices)
+        return _snapshot_devices(devices)
 
 
 def upsert(host, port, name):
@@ -110,8 +107,8 @@ def upsert(host, port, name):
             "last_seen": datetime.now().isoformat(),
             "online": True,
         })
-    save(devices)
-    return devices
+        _write_devices_file(devices)
+    return _snapshot_devices(devices)
 
 
 def update_status(host, online=True, last_seen=None):
@@ -134,9 +131,9 @@ def rename(host, name):
                 changed = True
                 break
         if not changed:
-            return devices
-    save(devices)
-    return devices
+            return _snapshot_devices(devices)
+        _write_devices_file(devices)
+        return _snapshot_devices(devices)
 
 
 def remove(host):
@@ -149,5 +146,5 @@ def remove(host):
         except Exception:
             devices = []
         devices = [d for d in devices if d["host"] != host]
-    save(devices)
-    return devices
+        _write_devices_file(devices)
+    return _snapshot_devices(devices)

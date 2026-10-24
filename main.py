@@ -228,8 +228,13 @@ class Api:
 
     def _device_props(self, pm: PackageManager) -> tuple:
         try:
-            brand = (pm._shell("getprop ro.product.manufacturer") or "").strip()
-            model = (pm._shell("getprop ro.product.model") or "").strip()
+            prop_timeout = adb_client.SHELL_DEFAULT_TIMEOUT
+            brand = (
+                pm._shell("getprop ro.product.manufacturer", timeout=prop_timeout) or ""
+            ).strip()
+            model = (
+                pm._shell("getprop ro.product.model", timeout=prop_timeout) or ""
+            ).strip()
             return brand, model
         except Exception:
             return "", ""
@@ -297,6 +302,7 @@ class Api:
             if not key:
                 ai_error = "Chưa lưu OpenAI API key — dùng gợi ý nhanh (offline) hoặc dán key bên dưới."
             else:
+                llm_model = ""
                 try:
                     apps_by_pkg = {a.get("package"): a for a in apps if a.get("package")}
                     current_home = listed.get("current_home") or ""
@@ -347,10 +353,11 @@ class Api:
                     suggestions = self._clean_engine.merge_ai(suggestions, ai_rows)
                 except Exception as e:
                     msg = str(e)
-                    if "HTTP 401" in msg and "gpt-4o" in llm_model.lower():
+                    model_hint = (llm_model or "").strip()
+                    if "HTTP 401" in msg and model_hint and "gpt-4o" in model_hint.lower():
                         msg += " — proxy local thường không hỗ trợ tên OpenAI mặc định; chọn model sau Test Ping và Lưu Key."
-                    elif "HTTP 401" in msg:
-                        msg += f" — kiểm tra API key và model «{llm_model}» trên Base URL đã cấu hình."
+                    elif "HTTP 401" in msg and model_hint:
+                        msg += f" — kiểm tra API key và model «{model_hint}» trên Base URL đã cấu hình."
                     ai_error = msg
         counts = {"recommend": 0, "review": 0, "skip": 0, "blocked": 0}
         for s in suggestions:
