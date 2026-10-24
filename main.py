@@ -276,16 +276,20 @@ class Api:
     ):
         if not tmp_path or not os.path.exists(tmp_path):
             raise Exception("File tạm không tồn tại hoặc đã hết hạn. Hãy chọn lại file APK.")
-        dev = self._get_dev(host, port)
-        installer = ApkInstaller(dev)
         try:
-            res = installer.install(
-                tmp_path,
-                reinstall=bool(reinstall),
-                allow_downgrade=bool(allow_downgrade),
-                grant_permissions=bool(grant_permissions),
-            )
-            return res
+            with self._dev_op_lock(host, port):
+                dev = self._get_dev(host, port)
+                installer = ApkInstaller(dev)
+                try:
+                    return installer.install(
+                        tmp_path,
+                        reinstall=bool(reinstall),
+                        allow_downgrade=bool(allow_downgrade),
+                        grant_permissions=bool(grant_permissions),
+                    )
+                except Exception:
+                    self._drop_dev(host, port)
+                    raise
         finally:
             try:
                 os.unlink(tmp_path)

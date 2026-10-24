@@ -1373,6 +1373,30 @@ function setApkProgress(show, pct, label, cmd) {
   if (cmdEl && cmd) cmdEl.textContent = cmd;
 }
 
+/** Progress bar while install_apk runs (push + pm install can take many minutes on Wi‑Fi). */
+function startApkInstallProgressTimer(flags) {
+  const started = Date.now();
+  let pct = 3;
+  return setInterval(() => {
+    const elapsed = Date.now() - started;
+    let label;
+    if (elapsed < 45000) {
+      label = 'Đang đẩy APK lên TV qua Wi‑Fi…';
+    } else if (elapsed < 120000) {
+      label = 'Đang chạy pm install trên TV…';
+    } else {
+      label = 'TV vẫn đang xử lý — APK lớn có thể mất 5–10 phút';
+    }
+    if (elapsed > 45000 && pct < 52) pct = 52;
+    else if (elapsed > 120000 && pct < 75) pct = 75;
+    else if (pct < 97) {
+      const step = pct < 45 ? 2.2 : pct < 80 ? 0.9 : 0.35;
+      pct = Math.min(97, pct + step);
+    }
+    setApkProgress(true, pct, label, `pm install ${flags} …`);
+  }, 1000);
+}
+
 function showApkInspector(show) {
   const insp = document.getElementById('apkInspector');
   const sideEmpty = document.getElementById('apkSideEmpty');
@@ -1422,7 +1446,51 @@ function renderApkInfo(info) {
     warns.innerHTML = w.join('');
   }
   renderApkCompat(info);
+  suggestApkInstallPreset(info);
+  updateApkInstallCmdPreview();
   if (apkInfo) apkInfo.textContent = JSON.stringify(info, null, 2);
+}
+
+function getApkInstallOptions() {
+  const preset = document.getElementById('apkInstallPreset')?.value || 'replace';
+  const post = document.getElementById('apkPostInstall')?.value || 'none';
+  let reinstall = true;
+  let allowDowngrade = false;
+  if (preset === 'replace_downgrade') {
+    reinstall = true;
+    allowDowngrade = true;
+  } else if (preset === 'fresh') {
+    reinstall = false;
+    allowDowngrade = false;
+  } else if (preset === 'downgrade') {
+    reinstall = false;
+    allowDowngrade = true;
+  }
+  const grant = post === 'grant' || post === 'grant_open';
+  const openAfter = post === 'open' || post === 'grant_open';
+  return { reinstall, allowDowngrade, grant, openAfter };
+}
+
+function buildApkInstallFlagStr(opts) {
+  const flags = ['-t'];
+  if (opts.reinstall) flags.push('-r');
+  if (opts.allowDowngrade) flags.push('-d');
+  if (opts.grant) flags.push('-g');
+  return flags.join(' ');
+}
+
+function updateApkInstallCmdPreview() {
+  const el = document.getElementById('apkInstallCmdPreview');
+  if (!el) return;
+  const flags = buildApkInstallFlagStr(getApkInstallOptions());
+  el.textContent = `pm install ${flags} /sdcard/Download/…apk`;
+}
+
+function suggestApkInstallPreset(info) {
+  const sel = document.getElementById('apkInstallPreset');
+  if (!sel || !info) return;
+  if (info.warning_downgrade) sel.value = 'replace_downgrade';
+  else if (info.warning_same) sel.value = 'replace';
 }
 
 function clearApk() {
@@ -1463,7 +1531,7 @@ if (apkFileInput) {
       setApkStatus('Chỉ chấp nhận file .apk');
       return;
     }
-    setApkStatus(`Đang phân tích ${file.name}...`);
+    setApkStatus(`Đang đọc manifest ${file.name}…`);
     setButtonLoading(apkSelectBtn, true, 'Đang đọc...');
     try {
       const reader = new FileReader();
@@ -1512,23 +1580,20 @@ if (apkClearBtn) {
   apkClearBtn.addEventListener('click', clearApk);
 }
 
+document.getElementById('apkInstallPreset')?.addEventListener('change', updateApkInstallCmdPreview);
+document.getElementById('apkPostInstall')?.addEventListener('change', updateApkInstallCmdPreview);
+updateApkInstallCmdPreview();
+
 if (apkInstallBtn) {
   apkInstallBtn.addEventListener('click', async () => {
     if (!activeDevice || !currentApk) return;
     if (!confirm(`Cài đặt ${currentApk.filename} lên ${activeDevice.name}?\n\nHãy đảm bảo APK đến từ nguồn đáng tin cậy.`)) return;
-    const reinstall = document.getElementById('apkFlagReinstall')?.checked !== false;
-    const allowDowngrade = document.getElementById('apkFlagDowngrade')?.checked === true;
-    const grant = document.getElementById('apkFlagGrant')?.checked === true;
-    const openAfter = document.getElementById('apkOpenAfter')?.checked === true;
-    const flags = ['-t', reinstall && '-r', allowDowngrade && '-d', grant && '-g'].filter(Boolean).join(' ');
+    const { reinstall, allowDowngrade, grant, openAfter } = getApkInstallOptions();
+    const flags = buildApkInstallFlagStr({ reinstall, allowDowngrade, grant, openAfter: false });
     setButtonLoading(apkInstallBtn, true, 'Đang cài đặt...');
     setApkStatus('Đang đẩy APK và cài đặt...');
-    setApkProgress(true, 8, 'Đang đẩy APK lên TV…', `pm install ${flags} …`);
-    let tick = 8;
-    const timer = setInterval(() => {
-      tick = Math.min(92, tick + 6);
-      setApkProgress(true, tick, tick < 50 ? 'Đang đẩy APK…' : 'Đang chạy pm install…', `pm install ${flags} …`);
-    }, 400);
+    setApkProgress(true, 3, 'Bắt đầu đẩy APK lên TV…', `pm install ${flags} …`);
+    const timer = startApkInstallProgressTimer(flags);
     try {
       const res = await getApi().install_apk(
         activeDevice.host,

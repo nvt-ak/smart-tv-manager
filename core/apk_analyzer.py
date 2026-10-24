@@ -1,17 +1,16 @@
 """APK metadata & signature analysis."""
 import hashlib
-import importlib
+import logging
 import os
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Dict
 
 
-def _load_analyze_apk() -> Optional[Callable]:
-    """Load at runtime so PyInstaller does not pull optional androguard.pentest (frida)."""
-    try:
-        mod = importlib.import_module("androguard.misc")
-        return getattr(mod, "AnalyzeAPK", None)
-    except Exception:
-        return None
+def _apk_from_path(apk_path: str):
+    """Manifest-only parse — avoids AnalyzeAPK dex/xref (very slow on desktop)."""
+    logging.getLogger("androguard").setLevel(logging.WARNING)
+    from androguard.core.apk import APK
+
+    return APK(apk_path)
 
 
 class ApkAnalyzer:
@@ -22,37 +21,52 @@ class ApkAnalyzer:
             "size": os.path.getsize(apk_path) if os.path.exists(apk_path) else 0,
             "sha256": self._sha256(apk_path),
         }
-        analyze_apk = _load_analyze_apk()
-        if analyze_apk and os.path.exists(apk_path):
+        if not os.path.exists(apk_path):
+            return result
+        try:
+            a = _apk_from_path(apk_path)
+            result["package"] = a.get_package()
+            result["version_name"] = a.get_androidversion_name()
+            result["version_code"] = a.get_androidversion_code()
+            result["min_sdk"] = a.get_min_sdk_version()
+            result["target_sdk"] = a.get_target_sdk_version()
+            perms = a.get_permissions() or []
+            result["permissions"] = sorted(list(perms))
+            dangerous_keywords = [
+                "CAMERA",
+                "RECORD_AUDIO",
+                "MICROPHONE",
+                "ACCESS_FINE_LOCATION",
+                "ACCESS_COARSE_LOCATION",
+                "READ_CONTACTS",
+                "READ_SMS",
+                "SEND_SMS",
+                "READ_CALL_LOG",
+                "READ_PHONE_STATE",
+                "WRITE_EXTERNAL_STORAGE",
+                "READ_EXTERNAL_STORAGE",
+            ]
+            result["dangerous_count"] = len(
+                [p for p in perms if any(k in p for k in dangerous_keywords)]
+            )
             try:
-                a, d, dx = analyze_apk(apk_path)
-                result["package"] = a.get_package()
-                result["version_name"] = a.get_androidversion_name()
-                result["version_code"] = a.get_androidversion_code()
-                result["min_sdk"] = a.get_min_sdk_version()
-                result["target_sdk"] = a.get_target_sdk_version()
-                perms = a.get_permissions() or []
-                result["permissions"] = sorted(list(perms))
-                dangerous_keywords = ["CAMERA", "RECORD_AUDIO", "MICROPHONE", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "READ_CONTACTS", "READ_SMS", "SEND_SMS", "READ_CALL_LOG", "READ_PHONE_STATE", "WRITE_EXTERNAL_STORAGE", "READ_EXTERNAL_STORAGE"]
-                result["dangerous_count"] = len([p for p in perms if any(k in p for k in dangerous_keywords)])
-                try:
-                    certs = a.get_certificates()
-                    result["certs_count"] = len(certs)
-                    if certs:
-                        c = certs[0]
-                        try:
-                            result["cert_issuer"] = str(c.issuer)[:120]
-                            result["cert_subject"] = str(c.subject)[:120]
-                        except Exception:
-                            pass
-                        try:
-                            result["cert_serial"] = str(c.serial_number)
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-            except Exception as e:
-                result["error"] = str(e)
+                certs = a.get_certificates()
+                result["certs_count"] = len(certs)
+                if certs:
+                    c = certs[0]
+                    try:
+                        result["cert_issuer"] = str(c.issuer)[:120]
+                        result["cert_subject"] = str(c.subject)[:120]
+                    except Exception:
+                        pass
+                    try:
+                        result["cert_serial"] = str(c.serial_number)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except Exception as e:
+            result["error"] = str(e)
         return result
 
     def _sha256(self, path: str) -> str:

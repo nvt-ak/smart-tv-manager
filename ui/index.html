@@ -597,25 +597,44 @@
                 <span id="apkProgressCmd">pm install …</span>
               </div>
             </div>
-            <div class="apk-flag-grid">
-              <label class="apk-flag"><input type="checkbox" id="apkFlagReinstall" checked> Cài đè (-r)</label>
-              <label class="apk-flag"><input type="checkbox" id="apkFlagDowngrade"> Hạ cấp (-d)</label>
-              <label class="apk-flag"><input type="checkbox" id="apkFlagGrant"> Cấp quyền (-g)</label>
-            </div>
-            <div class="apk-action-row">
-              <div class="apk-action-primary">
-                <button type="button" id="apkInstallBtn" class="btn btn--primary" disabled>
-                  <span class="material-symbols-outlined">system_security_update_good</span>
-                  Cài đặt lên TV
-                </button>
-                <label class="apk-flag" style="border-style:dashed;">
-                  <input type="checkbox" id="apkOpenAfter"> Tự mở sau khi cài
+            <div class="apk-install-bar">
+              <div class="apk-install-fields">
+                <label class="apk-field" for="apkInstallPreset">
+                  <span class="apk-field-label">Chế độ cài đặt</span>
+                  <div class="apk-select-wrap">
+                    <select id="apkInstallPreset" class="apk-select">
+                      <option value="replace" selected>Cài đè (khuyến nghị) · -r</option>
+                      <option value="replace_downgrade">Ghi đè + hạ cấp · -r -d</option>
+                      <option value="fresh">Cài mới · không -r</option>
+                      <option value="downgrade">Hạ cấp · -d</option>
+                    </select>
+                    <span class="material-symbols-outlined apk-select-chevron" aria-hidden="true">expand_more</span>
+                  </div>
+                </label>
+                <label class="apk-field" for="apkPostInstall">
+                  <span class="apk-field-label">Sau khi cài</span>
+                  <div class="apk-select-wrap">
+                    <select id="apkPostInstall" class="apk-select">
+                      <option value="none" selected>Chỉ cài xong</option>
+                      <option value="open">Tự mở ứng dụng</option>
+                      <option value="grant">Cấp quyền · -g</option>
+                      <option value="grant_open">Cấp quyền + tự mở</option>
+                    </select>
+                    <span class="material-symbols-outlined apk-select-chevron" aria-hidden="true">expand_more</span>
+                  </div>
                 </label>
               </div>
-              <button type="button" id="apkClearBtn" class="btn btn--danger-ghost" disabled>
-                <span class="material-symbols-outlined">delete_outline</span>
-                Xóa tệp
-              </button>
+              <p id="apkInstallCmdPreview" class="apk-install-cmd" aria-live="polite">pm install -t -r …</p>
+              <div class="apk-install-btn-row">
+                <button type="button" id="apkInstallBtn" class="btn btn--primary apk-bar-btn" disabled>
+                  <span class="material-symbols-outlined" aria-hidden="true">install_mobile</span>
+                  Cài đặt lên TV
+                </button>
+                <button type="button" id="apkClearBtn" class="btn btn--danger-ghost apk-bar-btn" disabled>
+                  <span class="material-symbols-outlined">delete_outline</span>
+                  Xóa tệp
+                </button>
+              </div>
             </div>
           </div>
 
