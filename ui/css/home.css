@@ -7,6 +7,123 @@
   max-width: 107.5rem;
 }
 
+.home-widgets-panel {
+  padding: var(--space-lg);
+  border: 1px solid var(--hairline);
+}
+
+.home-widgets-summary {
+  cursor: pointer;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  list-style: none;
+}
+
+.home-widgets-summary::-webkit-details-marker {
+  display: none;
+}
+
+.home-widgets-lead {
+  margin: var(--space-md) 0;
+  font-size: 13px;
+  color: var(--color-on-surface-variant);
+  line-height: 1.5;
+}
+
+.home-widgets-master {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-md);
+}
+
+.home-widgets-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-md);
+}
+
+@media (min-width: 768px) {
+  .home-widgets-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.home-widgets-inline {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.home-widgets-inline .field-input {
+  flex: 1;
+  min-width: 140px;
+}
+
+.home-widgets-field--full {
+  grid-column: 1 / -1;
+}
+
+.home-widgets-location-toggle {
+  margin: var(--space-xs) 0;
+}
+
+.home-widgets-location-status {
+  margin: 0 0 var(--space-sm);
+  font-size: 13px;
+  color: var(--color-on-surface-variant, #9aa0a6);
+}
+
+.home-widgets-field--manual {
+  margin-top: var(--space-sm);
+}
+
+.home-widgets-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-lg);
+  margin: var(--space-md) 0;
+  font-size: 13px;
+}
+
+.home-widgets-toggles label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.home-widgets-preview {
+  padding: var(--space-md);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-container-low);
+  border: 1px solid var(--hairline);
+  margin-bottom: var(--space-md);
+}
+
+.home-widgets-preview-greeting {
+  font-size: 15px;
+  font-weight: 600;
+  margin: var(--space-xs) 0 var(--space-sm);
+  color: var(--color-primary-fixed-dim);
+}
+
+.home-widgets-preview-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 13px;
+  color: var(--color-on-surface);
+}
+
+.home-widgets-preview-note {
+  margin: var(--space-sm) 0 0;
+  font-size: 12px;
+  color: var(--color-on-surface-variant);
+}
+
 .home-ribbon {
   display: flex;
   flex-direction: column;

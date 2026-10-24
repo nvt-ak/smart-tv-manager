@@ -1,4 +1,6 @@
 """Shared PyInstaller Analysis inputs (imported from *.spec files)."""
+import sys
+
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 
@@ -27,6 +29,7 @@ def analysis_bundle(extra_datas=None):
     hiddenimports = collect_submodules("adb_shell") + [
         "paths",
         "certifi",
+        "core.host_location",
         "cryptography.hazmat.backends.openssl",
         "cryptography.hazmat.bindings._rust",
     ]
@@ -39,5 +42,8 @@ def analysis_bundle(extra_datas=None):
     ag_datas, _, ag_hidden = _androguard_bundle()
     datas += ag_datas
     hiddenimports += ag_hidden
+
+    if sys.platform == "darwin":
+        hiddenimports += ["CoreLocation"]
 
     return datas, binaries, hiddenimports

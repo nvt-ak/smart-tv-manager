@@ -17,6 +17,19 @@ def _parse_package_lines(out: str) -> List[str]:
     return packages
 
 
+def _friendly_pm_shell_error(err: Exception, package: str, *, enabling: bool) -> str:
+    text = str(err)
+    if "SecurityException" in text and "Shell cannot change component state" in text:
+        action = "bật" if enabling else "tắt"
+        return (
+            f"TV không cho phép {action} «{package}» qua ADB "
+            "(ứng dụng hệ thống / OEM khóa hoặc chỉ quản lý trên TV)."
+        )
+    if "SecurityException" in text:
+        return f"TV từ chối thao tác package «{package}» (SecurityException)."
+    return text
+
+
 def _pm_state_message_ok(out: str, *, enabling: bool) -> bool:
     text = (out or "").strip().lower()
     if not text:
@@ -218,7 +231,7 @@ class PackageManager:
                 (out or f"pm enable không đổi trạng thái {package}").strip()
             )
         except Exception as e:
-            raise Exception(str(e))
+            raise Exception(_friendly_pm_shell_error(e, package, enabling=True))
 
     def disable_user(self, package: str) -> bool:
         try:
@@ -231,4 +244,4 @@ class PackageManager:
                 (out or f"pm disable-user không đổi trạng thái {package}").strip()
             )
         except Exception as e:
-            raise Exception(str(e))
+            raise Exception(_friendly_pm_shell_error(e, package, enabling=False))

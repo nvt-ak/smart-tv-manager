@@ -81,6 +81,9 @@ def batch_update_online(status_by_host: dict):
             if host not in status_by_host:
                 continue
             online = bool(status_by_host[host])
+            prev_online = bool(d.get("online"))
+            if prev_online == online:
+                continue
             d["online"] = online
             if online:
                 d["last_seen"] = now

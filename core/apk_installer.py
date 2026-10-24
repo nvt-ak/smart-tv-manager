@@ -28,7 +28,7 @@ class ApkInstaller:
             size = os.path.getsize(local_apk)
         except OSError:
             size = 0
-        timeout = adb_client.transfer_timeout_s(size)
+        timeout = adb_client.push_timeout_int(size)
         size_kb = max(1, size // 1024)
         last: Exception | None = None
         for attempt in range(3):

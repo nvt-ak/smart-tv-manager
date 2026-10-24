@@ -12,9 +12,30 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ### Added
 
+- Tab **Home & Theme**: panel **Widget tuỳ chọn** — tên, thời tiết (Open-Meteo), vàng, xăng dầu; lưu cấu hình và **Áp dụng lên TV** qua `config.json` CleanYourTV (`greeting_name`, `show_stats`, module cards).
+- Widget Home: thời tiết theo **vị trí máy tính** qua CoreLocation (macOS), không dùng `navigator.geolocation` (pywebview không hiện hộp thoại quyền); nút mở System Settings khi bị từ chối.
+- Thoát app: đóng mọi phiên ADB TCP đang cache (`shutdown` khi đóng cửa sổ).
+
 ### Changed
 
 ### Fixed
+
+- `batch_update_online`: chỉ ghi `devices.json` khi cờ `online` thực sự đổi (tránh ghi đĩa lặp khi quét trạng thái).
+- Widget Home: geocode/thời tiết dùng SSL qua `certifi` (giống Smart Clean AI) — sửa lỗi `CERTIFICATE_VERIFY_FAILED` trên macOS.
+- Ghi `config.json` lên TV: khi thiếu ThemeProvider, luôn thử `cp` vào overlay (trước đây `content write` báo lỗi nhưng exit 0 nên bỏ qua fallback); phát hiện provider chính xác hơn; **Áp dụng widget** báo lỗi rõ nếu chưa cài CleanYourTV.
+- Widget Home / CoreLocation: sửa chữ ký delegate PyObjC; delegate khai báo một lần (tránh «overriding existing Objective-C class»); giữ manager/delegate đến khi có tọa độ; `requestLocation` + timeout 45s; lên lịch trên main queue (libdispatch).
+- ADB push: timeout kiểu `int` (tránh lỗi fileno); kiểm tra file local trước khi đẩy.
+- Quản lý app: báo lỗi rõ khi TV `SecurityException` (OEM không cho bật/tắt qua shell, VD Stan).
+
+### Changed
+
+- Widget Home: giá vàng lấy từ [`vang.today/api/prices`](https://www.vang.today/api/prices) (mặc định mã `VNGSJC`), có thể đổi mã trên form.
+- Áp dụng theme CleanYourTV: nếu **Widget Home** đang bật, tự gộp `greeting_name` / `show_stats` / … vào `config.json` của theme (không cần áp widget riêng sau khi đổi theme).
+
+### Removed
+
+- Widget Home: bỏ mục chứng khoán / VN-Index (API + checkbox trên form).
+- Widget Home: giá xăng/dầu ưu tiên API CMS **Petrolimex** (`portals.petrolimex.com.vn`); fallback [VietFuelAPI](https://vietfuel-api.tranqui.workers.dev/api/fuel-prices) (RON95 + diesel, vùng 1/2).
 
 ---
 

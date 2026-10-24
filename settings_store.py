@@ -92,6 +92,26 @@ def set_openai_model(model: str | None) -> None:
     save(data)
 
 
+def get_home_widgets() -> dict:
+    from core import home_widgets
+
+    return home_widgets.normalize_widgets(load().get("home_widgets"))
+
+
+def set_home_widgets(updates: dict | None) -> dict:
+    from core import home_widgets
+
+    data = load()
+    cur = home_widgets.normalize_widgets(data.get("home_widgets"))
+    if updates:
+        merged = {**cur, **updates}
+        data["home_widgets"] = home_widgets.normalize_widgets(merged)
+    else:
+        data.pop("home_widgets", None)
+    save(data)
+    return get_home_widgets()
+
+
 def public_settings() -> dict:
     data = load()
     key = get_openai_api_key()
@@ -103,4 +123,5 @@ def public_settings() -> dict:
         "openai_key_hint": hint,
         "openai_model": resolve_openai_model(base_url=get_openai_base_url()),
         "openai_base_url": get_openai_base_url(),
+        "home_widgets": get_home_widgets(),
     }

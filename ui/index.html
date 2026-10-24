@@ -1006,6 +1006,106 @@
           </div>
         </div>
 
+        <details class="home-widgets-panel glass-card" id="homeWidgetsPanel" open>
+          <summary class="home-widgets-summary">
+            <span class="material-symbols-outlined">dashboard_customize</span>
+            Widget tuỳ chọn trên màn hình TV
+          </summary>
+          <p class="home-widgets-lead">
+            Dữ liệu lấy trên máy tính (Wi‑Fi), gộp vào <code>config.json</code> khi bạn <strong>áp dụng theme</strong>
+            hoặc bấm «Áp dụng lên TV» bên dưới.
+            Bảng giá hiển thị gọn cạnh lời chào; thời tiết chi tiết: cài add-on Weather trên TV và bật Module cards.
+          </p>
+          <label class="home-widgets-master">
+            <input type="checkbox" id="homeWidgetsEnabled">
+            Bật widget Home trên TV này
+          </label>
+          <div class="home-widgets-grid">
+            <label class="field home-widgets-field">
+              <span class="field-label">Tên hiển thị</span>
+              <input type="text" id="homeWidgetDisplayName" class="field-input" placeholder="VD: Gia đình nhà Trịnh" maxlength="48">
+            </label>
+            <div class="field home-widgets-field home-widgets-field--full">
+              <span class="field-label">Thời tiết theo vị trí máy tính</span>
+              <label class="home-widgets-master home-widgets-location-toggle">
+                <input type="checkbox" id="homeWidgetUseLocation" checked>
+                Dùng vị trí hiện tại (macOS/Windows sẽ hỏi quyền)
+              </label>
+              <p id="homeWidgetLocationStatus" class="home-widgets-location-status" aria-live="polite">
+                Chưa lấy vị trí
+              </p>
+              <div class="home-widgets-inline">
+                <button type="button" id="homeWidgetLocationBtn" class="btn btn--surface">
+                  <span class="material-symbols-outlined">my_location</span>
+                  Lấy vị trí
+                </button>
+                <button type="button" id="homeWidgetLocationSettingsBtn" class="btn btn--ghost" hidden>
+                  Mở Cài đặt quyền
+                </button>
+              </div>
+              <label class="field home-widgets-field home-widgets-field--manual">
+                <span class="field-label">Tên địa điểm tuỳ chọn (nếu không dùng GPS)</span>
+                <div class="home-widgets-inline">
+                  <input type="text" id="homeWidgetWeatherCity" class="field-input" placeholder="Để trống = tự đặt theo vị trí">
+                  <button type="button" id="homeWidgetGeocodeBtn" class="btn btn--surface">Tìm theo tên</button>
+                </div>
+              </label>
+            </div>
+            <label class="field home-widgets-field">
+              <span class="field-label">Mã vàng (vang.today)</span>
+              <input type="text" id="homeWidgetGoldCode" class="field-input" placeholder="VNGSJC" maxlength="24">
+            </label>
+            <label class="field home-widgets-field">
+              <span class="field-label">Vàng dự phòng (nếu API lỗi)</span>
+              <input type="text" id="homeWidgetManualGold" class="field-input" placeholder="VD: 141,7tr/l bán">
+            </label>
+            <label class="field home-widgets-field">
+              <span class="field-label">Vùng giá xăng (Petrolimex)</span>
+              <select id="homeWidgetFuelZone" class="field-input">
+                <option value="1">Vùng 1 (chuẩn)</option>
+                <option value="2">Vùng 2 (+ tối đa 2%)</option>
+              </select>
+            </label>
+            <label class="field home-widgets-field">
+              <span class="field-label">Xăng dự phòng (nếu API lỗi)</span>
+              <input type="text" id="homeWidgetFuelRon" class="field-input" placeholder="RON95 24.730đ/l">
+            </label>
+            <label class="field home-widgets-field">
+              <span class="field-label">Dầu dự phòng</span>
+              <input type="text" id="homeWidgetFuelDie" class="field-input" placeholder="Diesel 22.800đ/l">
+            </label>
+          </div>
+          <div class="home-widgets-toggles">
+            <label><input type="checkbox" id="homeWidgetShowName" checked> Tên</label>
+            <label><input type="checkbox" id="homeWidgetShowWeather" checked> Thời tiết</label>
+            <label><input type="checkbox" id="homeWidgetShowGold" checked> Vàng</label>
+            <label><input type="checkbox" id="homeWidgetShowFuel" checked> Xăng dầu</label>
+            <label><input type="checkbox" id="homeWidgetShowStats"> CPU / RAM / bộ nhớ</label>
+            <label><input type="checkbox" id="homeWidgetShowAppNames"> Tên dưới mọi icon app</label>
+            <label><input type="checkbox" id="homeWidgetModuleCards" checked> Module cards (Weather add-on)</label>
+          </div>
+          <div class="home-widgets-preview">
+            <span class="apps-stat-label">Xem trước trên TV</span>
+            <p id="homeWidgetPreviewGreeting" class="home-widgets-preview-greeting">GOOD MORNING, —</p>
+            <ul id="homeWidgetPreviewList" class="home-widgets-preview-list"></ul>
+            <p id="homeWidgetPreviewNote" class="home-widgets-preview-note"></p>
+          </div>
+          <div class="home-panel-actions home-panel-actions--wrap">
+            <button type="button" id="homeWidgetPreviewBtn" class="btn btn--surface">
+              <span class="material-symbols-outlined">visibility</span>
+              Xem trước dữ liệu
+            </button>
+            <button type="button" id="homeWidgetSaveBtn" class="btn btn--surface">
+              <span class="material-symbols-outlined">save</span>
+              Lưu cấu hình
+            </button>
+            <button type="button" id="homeWidgetApplyBtn" class="btn btn--accent">
+              <span class="material-symbols-outlined">cast</span>
+              Áp dụng lên TV
+            </button>
+          </div>
+        </details>
+
         <div class="home-gallery glass-card">
           <div class="home-gallery-head">
             <div>

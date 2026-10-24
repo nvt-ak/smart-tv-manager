@@ -17,7 +17,16 @@ function hideAppBoot() {
   window.setTimeout(() => el.remove(), 220);
 }
 
+function disableNativeSpellcheck() {
+  document.querySelectorAll('input, textarea').forEach((el) => {
+    el.spellcheck = false;
+    el.setAttribute('autocorrect', 'off');
+    el.setAttribute('autocomplete', 'off');
+  });
+}
+
 function bootApp() {
+  disableNativeSpellcheck();
   initDevGuide();
   refreshList('cache')
     .catch((err) => {
@@ -2792,6 +2801,305 @@ async function activateHomeTab() {
   updateHomeChrome();
   await loadHomeThemes();
   await loadCurrentTheme();
+  await loadHomeWidgetsUi();
+}
+
+let homeWidgetCoords = { lat: 21.0285, lon: 105.8542 };
+
+function setHomeWidgetLocationStatus(text, tone = 'muted') {
+  const el = document.getElementById('homeWidgetLocationStatus');
+  if (!el) return;
+  el.textContent = text;
+  el.dataset.tone = tone;
+}
+
+function setHomeWidgetLocationSettingsVisible(show) {
+  const btn = document.getElementById('homeWidgetLocationSettingsBtn');
+  if (btn) btn.hidden = !show;
+}
+
+function isLocationPermissionError(msg) {
+  const s = String(msg || '').toLowerCase();
+  return s.includes('từ chối') || s.includes('denied') || s.includes('quyền vị trí');
+}
+
+async function applyHostLocationResult(rev) {
+  homeWidgetCoords.lat = rev.lat;
+  homeWidgetCoords.lon = rev.lon;
+  const cityEl = document.getElementById('homeWidgetWeatherCity');
+  if (cityEl && cityEl.dataset.autoLocation === '1') {
+    cityEl.value = rev.city || '';
+  }
+  setHomeWidgetLocationSettingsVisible(false);
+  setHomeWidgetLocationStatus(
+    `${rev.city || 'Vị trí hiện tại'} · ${homeWidgetCoords.lat.toFixed(4)}, ${homeWidgetCoords.lon.toFixed(4)}`,
+    'ok'
+  );
+  return rev;
+}
+
+async function requestHomeWidgetGeolocation() {
+  setHomeWidgetLocationStatus('macOS sẽ hỏi quyền vị trí (CoreLocation)…', 'pending');
+  if (getApi().get_home_widget_host_location) {
+    try {
+      const rev = await getApi().get_home_widget_host_location();
+      return applyHostLocationResult(rev);
+    } catch (err) {
+      const msg = String(err);
+      setHomeWidgetLocationStatus(msg, 'error');
+      setHomeWidgetLocationSettingsVisible(isLocationPermissionError(msg));
+      throw new Error(msg);
+    }
+  }
+  throw new Error('Cần cập nhật app — thiếu API định vị native.');
+}
+
+async function ensureHomeWidgetLocation({ force = false } = {}) {
+  const useLoc = document.getElementById('homeWidgetUseLocation')?.checked !== false;
+  if (!useLoc && !force) {
+    setHomeWidgetLocationStatus('Đang dùng tọa độ đã lưu hoặc tên thành phố thủ công.', 'muted');
+    return;
+  }
+  try {
+    await requestHomeWidgetGeolocation();
+  } catch {
+    /* status already set */
+  }
+}
+
+function readHomeWidgetsFormPayload() {
+  return {
+    enabled: document.getElementById('homeWidgetsEnabled')?.checked ?? false,
+    display_name: document.getElementById('homeWidgetDisplayName')?.value?.trim() || '',
+    weather_use_location: document.getElementById('homeWidgetUseLocation')?.checked !== false,
+    weather_city: document.getElementById('homeWidgetWeatherCity')?.value?.trim() || '',
+    weather_lat: homeWidgetCoords.lat,
+    weather_lon: homeWidgetCoords.lon,
+    gold_vang_today_code: document.getElementById('homeWidgetGoldCode')?.value?.trim() || 'VNGSJC',
+    fuel_zone: Number(document.getElementById('homeWidgetFuelZone')?.value || 1) === 2 ? 2 : 1,
+    manual_gold_sjc: document.getElementById('homeWidgetManualGold')?.value?.trim() || '',
+    fuel_ron95: document.getElementById('homeWidgetFuelRon')?.value?.trim() || '',
+    fuel_diesel: document.getElementById('homeWidgetFuelDie')?.value?.trim() || '',
+    show_name: document.getElementById('homeWidgetShowName')?.checked ?? true,
+    show_weather: document.getElementById('homeWidgetShowWeather')?.checked ?? true,
+    show_gold: document.getElementById('homeWidgetShowGold')?.checked ?? true,
+    show_fuel: document.getElementById('homeWidgetShowFuel')?.checked ?? true,
+    show_system_stats: document.getElementById('homeWidgetShowStats')?.checked ?? false,
+    always_show_app_names: document.getElementById('homeWidgetShowAppNames')?.checked ?? false,
+    module_cards: document.getElementById('homeWidgetModuleCards')?.checked ?? true,
+  };
+}
+
+function fillHomeWidgetsForm(cfg) {
+  const c = cfg || {};
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!val;
+    else el.value = val ?? '';
+  };
+  set('homeWidgetsEnabled', c.enabled);
+  set('homeWidgetDisplayName', c.display_name || '');
+  set('homeWidgetUseLocation', c.weather_use_location !== false);
+  const cityEl = document.getElementById('homeWidgetWeatherCity');
+  if (cityEl) {
+    cityEl.value = c.weather_city || '';
+    cityEl.dataset.autoLocation = c.weather_use_location !== false ? '1' : '0';
+  }
+  set('homeWidgetGoldCode', c.gold_vang_today_code || 'VNGSJC');
+  const fuelZone = document.getElementById('homeWidgetFuelZone');
+  if (fuelZone) fuelZone.value = String(Number(c.fuel_zone) === 2 ? 2 : 1);
+  set('homeWidgetManualGold', c.manual_gold_sjc || '');
+  set('homeWidgetFuelRon', c.fuel_ron95 || '');
+  set('homeWidgetFuelDie', c.fuel_diesel || '');
+  set('homeWidgetShowName', c.show_name !== false);
+  set('homeWidgetShowWeather', c.show_weather !== false);
+  set('homeWidgetShowGold', c.show_gold !== false);
+  set('homeWidgetShowFuel', c.show_fuel !== false);
+  set('homeWidgetShowStats', c.show_system_stats);
+  set('homeWidgetShowAppNames', c.always_show_app_names);
+  set('homeWidgetModuleCards', c.module_cards !== false);
+  homeWidgetCoords.lat = Number(c.weather_lat) || 21.0285;
+  homeWidgetCoords.lon = Number(c.weather_lon) || 105.8542;
+}
+
+function renderHomeWidgetsPreview(prev) {
+  const greetEl = document.getElementById('homeWidgetPreviewGreeting');
+  const listEl = document.getElementById('homeWidgetPreviewList');
+  const noteEl = document.getElementById('homeWidgetPreviewNote');
+  if (!prev) return;
+  const name = prev.greeting_name || '—';
+  if (greetEl) greetEl.textContent = name ? `GOOD MORNING, ${name.toUpperCase()}` : 'GOOD MORNING';
+  if (listEl) {
+    listEl.innerHTML = '';
+    for (const line of prev.board_lines || []) {
+      const li = document.createElement('li');
+      li.textContent = line;
+      listEl.appendChild(li);
+    }
+    const errs = prev.errors || {};
+    for (const [k, msg] of Object.entries(errs)) {
+      const li = document.createElement('li');
+      li.textContent = `${k}: ${msg}`;
+      li.style.color = 'var(--color-error, #f44336)';
+      listEl.appendChild(li);
+    }
+  }
+  if (noteEl) noteEl.textContent = prev.note || '';
+}
+
+async function loadHomeWidgetsUi() {
+  if (!window.pywebview?.api?.get_home_widgets_settings) return;
+  try {
+    const cfg = await getApi().get_home_widgets_settings();
+    fillHomeWidgetsForm(cfg);
+    if (cfg.weather_use_location !== false) {
+      await ensureHomeWidgetLocation();
+    } else {
+      setHomeWidgetLocationStatus(
+        `Tọa độ đã lưu: ${homeWidgetCoords.lat.toFixed(4)}, ${homeWidgetCoords.lon.toFixed(4)}`,
+        'muted'
+      );
+    }
+    const prev = await getApi().preview_home_widgets(readHomeWidgetsFormPayload());
+    renderHomeWidgetsPreview(prev);
+  } catch {
+    /* ignore */
+  }
+}
+
+const homeWidgetPreviewBtn = document.getElementById('homeWidgetPreviewBtn');
+const homeWidgetSaveBtn = document.getElementById('homeWidgetSaveBtn');
+const homeWidgetApplyBtn = document.getElementById('homeWidgetApplyBtn');
+const homeWidgetGeocodeBtn = document.getElementById('homeWidgetGeocodeBtn');
+const homeWidgetLocationBtn = document.getElementById('homeWidgetLocationBtn');
+const homeWidgetLocationSettingsBtn = document.getElementById('homeWidgetLocationSettingsBtn');
+const homeWidgetUseLocation = document.getElementById('homeWidgetUseLocation');
+const homeWidgetWeatherCity = document.getElementById('homeWidgetWeatherCity');
+
+if (homeWidgetLocationSettingsBtn) {
+  homeWidgetLocationSettingsBtn.addEventListener('click', async () => {
+    try {
+      if (getApi().open_location_privacy_settings) {
+        await getApi().open_location_privacy_settings();
+        showHomeToast('Đã mở Location Services — bật quyền rồi bấm «Lấy vị trí» lại', 'settings');
+      }
+    } catch (err) {
+      showHomeToast(String(err), 'error');
+    }
+  });
+}
+
+if (homeWidgetWeatherCity) {
+  homeWidgetWeatherCity.addEventListener('input', () => {
+    homeWidgetWeatherCity.dataset.autoLocation = '0';
+  });
+}
+
+if (homeWidgetUseLocation) {
+  homeWidgetUseLocation.addEventListener('change', async () => {
+    if (homeWidgetUseLocation.checked) {
+      if (homeWidgetWeatherCity) homeWidgetWeatherCity.dataset.autoLocation = '1';
+      await ensureHomeWidgetLocation({ force: true });
+    } else {
+      setHomeWidgetLocationStatus('Tắt GPS — dùng tọa độ đã lưu hoặc «Tìm theo tên».', 'muted');
+    }
+  });
+}
+
+if (homeWidgetLocationBtn) {
+  homeWidgetLocationBtn.addEventListener('click', async () => {
+    if (homeWidgetUseLocation) homeWidgetUseLocation.checked = true;
+    if (homeWidgetWeatherCity) homeWidgetWeatherCity.dataset.autoLocation = '1';
+    setButtonLoading(homeWidgetLocationBtn, true, 'Đang lấy…');
+    try {
+      await requestHomeWidgetGeolocation();
+      showHomeToast('Đã cập nhật vị trí', 'my_location');
+    } catch (err) {
+      showHomeToast(String(err), 'error');
+    }
+    setButtonLoading(homeWidgetLocationBtn, false);
+  });
+}
+
+if (homeWidgetGeocodeBtn) {
+  homeWidgetGeocodeBtn.addEventListener('click', async () => {
+    const city = document.getElementById('homeWidgetWeatherCity')?.value?.trim();
+    if (!city) {
+      showHomeToast('Nhập tên thành phố hoặc bấm «Lấy vị trí»', 'info');
+      return;
+    }
+    if (homeWidgetUseLocation) homeWidgetUseLocation.checked = false;
+    setButtonLoading(homeWidgetGeocodeBtn, true, 'Đang tìm…');
+    try {
+      const res = await getApi().geocode_home_weather_city(city);
+      homeWidgetCoords.lat = res.lat;
+      homeWidgetCoords.lon = res.lon;
+      setHomeWidgetLocationStatus(
+        `${city} · ${res.lat.toFixed(4)}, ${res.lon.toFixed(4)} (theo tên)`,
+        'ok'
+      );
+      showHomeToast(`Tọa độ: ${res.lat.toFixed(2)}, ${res.lon.toFixed(2)}`, 'location_on');
+    } catch (err) {
+      showHomeToast(String(err), 'error');
+    }
+    setButtonLoading(homeWidgetGeocodeBtn, false);
+  });
+}
+
+if (homeWidgetPreviewBtn) {
+  homeWidgetPreviewBtn.addEventListener('click', async () => {
+    setButtonLoading(homeWidgetPreviewBtn, true, 'Đang tải…');
+    try {
+      await ensureHomeWidgetLocation();
+      const prev = await getApi().preview_home_widgets(readHomeWidgetsFormPayload());
+      renderHomeWidgetsPreview(prev);
+      setHomeStatus('Đã cập nhật xem trước widget.');
+    } catch (err) {
+      setHomeStatus(`Lỗi xem trước: ${err}`);
+    }
+    setButtonLoading(homeWidgetPreviewBtn, false);
+  });
+}
+
+if (homeWidgetSaveBtn) {
+  homeWidgetSaveBtn.addEventListener('click', async () => {
+    setButtonLoading(homeWidgetSaveBtn, true, 'Đang lưu…');
+    try {
+      await ensureHomeWidgetLocation();
+      await getApi().save_home_widgets_settings(readHomeWidgetsFormPayload());
+      showHomeToast('Đã lưu cấu hình widget', 'save');
+    } catch (err) {
+      showHomeToast(String(err), 'error');
+    }
+    setButtonLoading(homeWidgetSaveBtn, false);
+  });
+}
+
+if (homeWidgetApplyBtn) {
+  homeWidgetApplyBtn.addEventListener('click', async () => {
+    if (!activeDevice) {
+      showHomeToast('Chọn thiết bị trước', 'info');
+      return;
+    }
+    setButtonLoading(homeWidgetApplyBtn, true, 'Đang áp dụng…');
+    try {
+      await ensureHomeWidgetLocation();
+      await getApi().save_home_widgets_settings(readHomeWidgetsFormPayload());
+      const res = await getApi().apply_home_widgets_to_tv(activeDevice.host, activeDevice.port, true);
+      showHomeToast('Đã ghi widget lên TV — Home khởi động lại', 'cast');
+      setHomeStatus(
+        res.greeting_name
+          ? `TV: greeting_name = ${res.greeting_name}`
+          : 'Đã áp dụng widget (không có dòng chào).',
+      );
+      await loadCurrentTheme();
+    } catch (err) {
+      setHomeStatus(`Lỗi áp dụng widget: ${err}`);
+      showHomeToast(String(err), 'error');
+    }
+    setButtonLoading(homeWidgetApplyBtn, false);
+  });
 }
 
 async function loadHomeThemes(opts = {}) {
@@ -3173,7 +3481,17 @@ async function applyTheme(id, btn) {
     setHomeStatus(`Theme không hợp lệ: ${theme.errors.join('; ')}`);
     return;
   }
-  if (!confirm(`Áp dụng theme "${theme.name}" lên ${activeDevice.name}?\n\nApp sẽ tự động sao lưu cấu hình hiện tại trước khi ghi.`)) return;
+  const widgetsOn = document.getElementById('homeWidgetsEnabled')?.checked;
+  const widgetHint = widgetsOn
+    ? '\n\nWidget Home đang bật — sẽ gộp vào config của theme.'
+    : '';
+  if (
+    !confirm(
+      `Áp dụng theme "${theme.name}" lên ${activeDevice.name}?\n\nApp sẽ tự động sao lưu cấu hình hiện tại trước khi ghi.${widgetHint}`
+    )
+  ) {
+    return;
+  }
 
   if (btn) setButtonLoading(btn, true, 'Đang áp dụng...');
   renderHomeApplyLog([], { open: true });
@@ -3192,7 +3510,8 @@ async function applyTheme(id, btn) {
     closeThemeModal();
     setHomeStatus(`Đã áp dụng "${theme.name}". Backup: ${backupTime}${warns}`);
     homeActiveThemeId = id;
-    showHomeToast(`Đã áp dụng theme "${theme.name}"`, 'palette');
+    const widgetExtra = res.home_widgets ? ' (kèm widget Home)' : '';
+    showHomeToast(`Đã áp dụng theme "${theme.name}"${widgetExtra}`, 'palette');
     await loadCurrentTheme();
     await loadHomeBackups();
     renderHomeThemeGrid();

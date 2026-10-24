@@ -17,6 +17,8 @@ from core.theme_manager import ThemeManager
 from core.cleanyourtv_themes import CleanyourtvThemes
 from core.clean_suggestions import CleanSuggestionEngine
 from core import ai_clean
+from core import home_widgets
+from core import host_location
 import settings_store
 import base64
 import json
@@ -60,6 +62,19 @@ class Api:
                 pm.device.close()
             except Exception:
                 pass
+
+    def shutdown(self):
+        """Close every cached ADB session (call when the app exits)."""
+        keys = set(self._dev_cache.keys()) | set(self._pm_cache.keys())
+        for key in list(keys):
+            host, _, port_s = key.rpartition(":")
+            if not host:
+                continue
+            try:
+                port = int(port_s)
+            except ValueError:
+                port = 5555
+            self._drop_dev(host, port)
 
     def _ping_cached_dev(self, dev, timeout=None):
         timeout = timeout if timeout is not None else adb_client.QUICK_CHECK_TIMEOUT
@@ -631,6 +646,17 @@ class Api:
             })
         return result
 
+    def _home_widgets_tv_bundle(self):
+        """Launcher patch + sidecar when Widget Home is enabled in settings."""
+        cfg = settings_store.get_home_widgets()
+        if not cfg.get("enabled"):
+            return None, None, None
+        prev = home_widgets.preview(cfg)
+        board_lines = prev.get("board_lines") or []
+        patch = home_widgets.launcher_config_patch(cfg, board_lines=board_lines)
+        sidecar = home_widgets.board_payload(cfg, board_lines=board_lines)
+        return patch, sidecar, prev
+
     def _append_theme_apply_log(self, job_id: str, phase: str, detail: str) -> None:
         os.makedirs(adb_client.KEY_DIR, mode=0o700, exist_ok=True)
         line = (
@@ -669,8 +695,20 @@ class Api:
                 on_step("backup", "snapshot config (bỏ qua kéo wallpaper để nhanh hơn)")
                 backup = tm.backup_config(backup_root, pull_assets=False)
                 on_step("backup_done", backup.get("time") or "")
+                widget_patch, widget_sidecar, _widget_prev = self._home_widgets_tv_bundle()
                 try:
-                    result = tm.apply_theme(theme)
+                    result = tm.apply_theme(
+                        theme,
+                        config_overlay=widget_patch,
+                    )
+                    if widget_sidecar:
+                        on_step("widgets_sidecar", "smarttv_widgets.json")
+                        try:
+                            tm.write_json_sidecar("smarttv_widgets.json", widget_sidecar)
+                        except Exception:
+                            pass
+                    if widget_patch:
+                        result["home_widgets"] = True
                 except Exception as exc:
                     on_step("error", str(exc))
                     on_step("restore_backup", backup.get("path") or "")
@@ -737,9 +775,89 @@ class Api:
                 "log_path": job.get("log_path"),
             }
 
+    def get_home_widgets_settings(self):
+        return settings_store.get_home_widgets()
+
+    def save_home_widgets_settings(self, payload=None):
+        if payload is None:
+            payload = {}
+        if not isinstance(payload, dict):
+            raise ValueError("Cấu hình widget không hợp lệ")
+        return settings_store.set_home_widgets(payload)
+
+    def preview_home_widgets(self, payload=None):
+        cfg = settings_store.get_home_widgets()
+        if isinstance(payload, dict) and payload:
+            cfg = home_widgets.normalize_widgets({**cfg, **payload})
+        return home_widgets.preview(cfg)
+
+    def geocode_home_weather_city(self, city=""):
+        lat, lon, err = home_widgets.geocode_city(city)
+        if err:
+            raise Exception(err)
+        return {"lat": lat, "lon": lon, "city": (city or "").strip()}
+
+    def reverse_geocode_home_weather(self, lat, lon):
+        try:
+            lat_f = float(lat)
+            lon_f = float(lon)
+        except (TypeError, ValueError) as e:
+            raise Exception("Tọa độ không hợp lệ") from e
+        city, err = home_widgets.reverse_geocode(lat_f, lon_f)
+        if err:
+            return {"lat": lat_f, "lon": lon_f, "city": city, "warning": err}
+        return {"lat": lat_f, "lon": lon_f, "city": city}
+
+    def get_home_widget_host_location(self):
+        """Native host GPS/Wi‑Fi (CoreLocation on macOS) — shows system permission dialog."""
+        lat, lon, err = host_location.get_host_location()
+        if err:
+            raise Exception(err)
+        city, warn = home_widgets.reverse_geocode(lat, lon)
+        out = {"lat": lat, "lon": lon, "city": city}
+        if warn:
+            out["warning"] = warn
+        return out
+
+    def open_location_privacy_settings(self):
+        return {"ok": host_location.open_location_privacy_settings()}
+
+    def apply_home_widgets_to_tv(self, host, port=5555, restart=True):
+        patch, sidecar, prev = self._home_widgets_tv_bundle()
+        if not patch:
+            raise Exception("Bật «Widget Home» trước khi áp dụng lên TV")
+        board_lines = (prev or {}).get("board_lines") or []
+        with self._dev_op_lock(host, port):
+            dev = self._get_dev(host, port)
+            gathin = LauncherDetector(dev).detect_gathin()
+            if not gathin.get("installed"):
+                raise Exception(
+                    "TV chưa cài CleanYourTV (com.gathin.tvhome). "
+                    "Widget Home chỉ áp dụng được khi đã cài launcher này."
+                )
+            tm = ThemeManager(dev)
+            tm.patch_config(patch, restart=bool(restart))
+            try:
+                tm.write_json_sidecar("smarttv_widgets.json", sidecar)
+            except Exception:
+                pass
+        return {
+            "ok": True,
+            "greeting_name": patch.get("greeting_name"),
+            "board_lines": board_lines,
+            "errors": prev.get("errors") or {},
+        }
+
 
 if __name__ == "__main__":
+    import atexit
+    import sys
+
+    if sys.platform == "darwin":
+        host_location._darwin_inject_location_usage_description()
+
     api = Api()
+    atexit.register(api.shutdown)
     root = paths.app_root()
     ui_path = os.path.join(root, "ui", "index.html")
     icon_path = os.path.join(root, "ui", "assets", "app-icon.png")
@@ -747,7 +865,7 @@ if __name__ == "__main__":
         ico = os.path.join(root, "assets", "app-icon.ico")
         if os.path.isfile(ico):
             icon_path = ico
-    webview.create_window(
+    window = webview.create_window(
         APP_DISPLAY_NAME,
         ui_path,
         js_api=api,
@@ -756,5 +874,11 @@ if __name__ == "__main__":
         resizable=True,
         background_color="#07090E",
     )
+
+    def _on_window_closing():
+        api.shutdown()
+        return True
+
+    window.events.closing += _on_window_closing
     start_kwargs = {"icon": icon_path} if os.path.isfile(icon_path) else {}
     webview.start(**start_kwargs)

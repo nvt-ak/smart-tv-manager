@@ -1,4 +1,6 @@
 pywebview==5.3.2
+pyobjc-framework-CoreLocation>=10.0; sys_platform == 'darwin'
+pyobjc-framework-libdispatch>=10.0; sys_platform == 'darwin'
 certifi>=2024.2.2
 adb-shell==0.4.4
 rsa==4.9.1

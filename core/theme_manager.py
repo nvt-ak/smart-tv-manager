@@ -111,11 +111,13 @@ class ThemeManager:
         raise Exception(f"Shell error: {last}")
 
     def _push(self, local: str, remote: str) -> None:
+        if not local or not os.path.isfile(local):
+            raise Exception(f"Không tìm thấy file local để đẩy lên TV: {local or '(rỗng)'}")
         try:
             size = os.path.getsize(local)
         except OSError:
             size = 0
-        timeout = adb_client.transfer_timeout_s(size)
+        timeout = adb_client.push_timeout_int(size)
         size_kb = max(1, size // 1024)
         last: Optional[Exception] = None
         for attempt in range(3):
@@ -157,12 +159,14 @@ class ThemeManager:
         """True when the launcher's ThemeProvider accepts writes."""
         if self._provider_supported is not None:
             return self._provider_supported
+        ok = False
         try:
             out = self._shell(
-                "cmd package resolve-content-provider "
-                f"{THEME_URI}/{CONFIG_NAME} 2>&1 || pm list packages {PKG} 2>&1"
+                f"cmd package resolve-content-provider --uri {THEME_URI} 2>&1"
             )
-            ok = PKG in out and "Unknown" not in out
+            lo = (out or "").lower()
+            if PKG in out and "could not find" not in lo and "unknown authority" not in lo:
+                ok = True
         except Exception:
             ok = False
         self._provider_supported = ok
@@ -420,9 +424,72 @@ class ThemeManager:
 
         return {"ok": not errors, "errors": errors, "warnings": warnings}
 
+    @staticmethod
+    def merge_config_dict(
+        base: Dict[str, Any], overlay: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        if not overlay:
+            return dict(base)
+        config = dict(base)
+        for key, val in overlay.items():
+            if val is None:
+                config.pop(key, None)
+            else:
+                config[key] = val
+        return config
+
+    def write_config_dict(self, config: Dict[str, Any]) -> None:
+        fd, local = tempfile.mkstemp(prefix="smarttvmanager-cfg-", suffix=".json")
+        os.close(fd)
+        try:
+            with open(local, "w", encoding="utf-8") as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+            self._write_file(local, CONFIG_NAME)
+        finally:
+            try:
+                os.unlink(local)
+            except OSError:
+                pass
+
+    def patch_config(self, partial: Dict[str, Any], *, restart: bool = True) -> Dict[str, Any]:
+        """Merge keys into overlay config.json on the TV (None removes a key)."""
+        config = self.read_config()
+        for key, val in partial.items():
+            if val is None:
+                config.pop(key, None)
+            else:
+                config[key] = val
+        self._shell(f"mkdir -p {HOME_DIR} 2>/dev/null")
+        self.write_config_dict(config)
+        self._write_revision()
+        if restart and not self.restart_launcher():
+            raise Exception("Không khởi động lại launcher sau cập nhật config")
+        return {"ok": True, "config": config}
+
+    def write_json_sidecar(self, filename: str, payload: Dict[str, Any]) -> None:
+        safe = os.path.basename(filename)
+        if safe != filename or not safe.endswith(".json"):
+            raise ValueError("Tên file sidecar không hợp lệ")
+        fd, local = tempfile.mkstemp(prefix="smarttvmanager-sidecar-", suffix=".json")
+        os.close(fd)
+        try:
+            with open(local, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            self._write_file(local, safe)
+        finally:
+            try:
+                os.unlink(local)
+            except OSError:
+                pass
+
     # ----------------------------------------------------------------- apply
 
-    def apply_theme(self, theme: Dict[str, Any]) -> Dict[str, Any]:
+    def apply_theme(
+        self,
+        theme: Dict[str, Any],
+        *,
+        config_overlay: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Write config + wallpapers, bump the revision and restart Home."""
         name = theme.get("name") or theme.get("id") or "theme"
         self._step("validate", name)
@@ -434,8 +501,15 @@ class ThemeManager:
         self._shell(f"mkdir -p {HOME_DIR} 2>/dev/null")
 
         config_path = os.path.join(theme["path"], CONFIG_NAME)
+        if not os.path.isfile(config_path):
+            raise Exception(f"Theme thiếu {CONFIG_NAME}")
+        with open(config_path, encoding="utf-8") as f:
+            config = json.load(f)
+        if config_overlay:
+            self._step("merge_config", "widget Home")
+            config = self.merge_config_dict(config, config_overlay)
         self._step("push", CONFIG_NAME)
-        self._write_file(config_path, CONFIG_NAME)
+        self.write_config_dict(config)
 
         wallpaper = theme.get("wallpaper")
         if wallpaper and os.path.exists(wallpaper):
@@ -514,6 +588,51 @@ class ThemeManager:
         self._push(local_path, staged)
         return staged
 
+    def _overlay_file_exists(self, rel: str, *, timeout_s: float = 30.0) -> bool:
+        target = f"{HOME_DIR}/{rel}"
+        out = self._shell(
+            f"[ -f {target} ] && echo yes || echo no", timeout_s=timeout_s
+        ).strip()
+        return "yes" in out
+
+    def _put_staged_overlay(self, staged: str, rel: str, *, io_timeout: float) -> None:
+        """Write staged bytes into the launcher overlay (provider, then cp)."""
+        target = f"{HOME_DIR}/{rel}"
+        self._shell(
+            f"mkdir -p $(dirname {target}) 2>/dev/null; rm -f {target} 2>/dev/null",
+            timeout_s=io_timeout,
+        )
+        provider_out = ""
+        if self.provider_supported():
+            provider_out = self._shell(
+                f"content write --uri {THEME_URI}/{rel} < {staged} 2>&1",
+                timeout_s=io_timeout,
+            ).strip()
+            if self._overlay_file_exists(rel, timeout_s=io_timeout):
+                self._shell(f"rm -f {staged}", timeout_s=io_timeout)
+                return
+            lo = provider_out.lower()
+            if "unsupported operation" in lo:
+                provider_out = provider_out[:240]
+
+        cp_out = self._shell(
+            f"cp {staged} {target} 2>&1; chmod 644 {target} 2>/dev/null; "
+            f"rm -f {staged}",
+            timeout_s=io_timeout,
+        ).strip()
+        if self._overlay_file_exists(rel, timeout_s=io_timeout):
+            return
+
+        hint = cp_out[:200] if cp_out else (provider_out[:200] if provider_out else "")
+        if not self.provider_supported():
+            prefix = (
+                "CleanYourTV trên TV thiếu ThemeProvider (cần bản launcher mới) "
+                "hoặc TV chặn ghi thư mục Android/data. "
+            )
+        else:
+            prefix = "Ghi overlay thất bại (firmware chặn Android/data?). "
+        raise Exception(f"Không ghi được {rel} lên TV: {prefix}{hint}".strip())
+
     def _write_file(self, local_path: str, rel: str) -> None:
         """Provider write first, `cp` fallback (mirrors theme.sh `put`)."""
         push_path = local_path
@@ -533,25 +652,8 @@ class ThemeManager:
             io_timeout = adb_client.transfer_timeout_s(size)
             self._step("adb_push", f"{rel} → {STAGE_PREFIX}")
             staged = self._stage(push_path, rel)
-            target = f"{HOME_DIR}/{rel}"
             self._step("adb_write", rel)
-            cmd = (
-                f"mkdir -p $(dirname {target}) 2>/dev/null; "
-                f"rm -f {target} 2>/dev/null; "
-                f"o=$(content write --uri {THEME_URI}/{rel} < {staged} 2>&1) && "
-                "case \"$o\" in *'Unsupported operation'*) false ;; esac "
-                f"|| cp {staged} {target} 2>/dev/null; "
-                f"rm -f {staged}; echo \"$o\""
-            )
-            out = self._shell(cmd, timeout_s=io_timeout).strip()
-            exists = self._shell(
-                f"[ -f {target} ] && echo yes || echo no", timeout_s=io_timeout
-            ).strip()
-            if "yes" not in exists:
-                hint = out[:240] if out else "content write và cp đều thất bại"
-                raise Exception(
-                    f"Không ghi được {rel} lên TV (firmware chặn Android/data?): {hint}"
-                )
+            self._put_staged_overlay(staged, rel, io_timeout=io_timeout)
         finally:
             if temp_path and os.path.exists(temp_path):
                 try:
@@ -580,13 +682,7 @@ class ThemeManager:
         token = uuid.uuid4().hex
         tmp = f"{STAGE_PREFIX}-{REVISION_NAME}"
         self._shell(f"printf '%s' '{token}' > {tmp}")
-        self._shell(
-            f"rm -f {HOME_DIR}/{REVISION_NAME} 2>/dev/null; "
-            f"o=$(content write --uri {THEME_URI}/{REVISION_NAME} < {tmp} 2>&1) && "
-            "case \"$o\" in *'Unsupported operation'*) false ;; esac "
-            f"|| cp {tmp} {HOME_DIR}/{REVISION_NAME} 2>/dev/null; "
-            f"rm -f {tmp}"
-        )
+        self._put_staged_overlay(tmp, REVISION_NAME, io_timeout=30.0)
 
     def restart_launcher(self) -> bool:
         """Force-stop Home and bring it back, restoring the accessibility list.

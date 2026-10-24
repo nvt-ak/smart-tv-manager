@@ -43,6 +43,11 @@ def transfer_timeout_s(size_bytes: int) -> float:
 push_timeout_s = transfer_timeout_s  # backwards-compatible alias
 
 
+def push_timeout_int(size_bytes: int) -> int:
+    """adb-shell push timeouts must be int (float can break transport on some builds)."""
+    return int(min(transfer_timeout_s(size_bytes), 2_147_483_647))
+
+
 def reconnect(device, timeout=CONNECT_TIMEOUT):
     """Re-open TCP ADB after a filesync timeout leaves the session stuck."""
     try:
