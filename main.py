@@ -507,7 +507,7 @@ class Api:
 if __name__ == "__main__":
     api = Api()
     root = paths.app_root()
-    ui_path = os.path.join(root, "ui", "index.html")
+    ui_path = os.path.join(root, "ui", "splash.html")
     icon_path = os.path.join(root, "ui", "assets", "app-icon.png")
     if os.name == "nt":
         ico = os.path.join(root, "assets", "app-icon.ico")
@@ -520,7 +520,7 @@ if __name__ == "__main__":
         width=1280,
         height=820,
         resizable=True,
-        background_color="#0B0E14",
+        background_color="#07090E",
     )
     start_kwargs = {"icon": icon_path} if os.path.isfile(icon_path) else {}
     webview.start(**start_kwargs)

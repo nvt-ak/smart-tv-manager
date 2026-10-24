@@ -1,0 +1,138 @@
+<!doctype html>
+<html class="dark" lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TV Remote Hub</title>
+  <style>
+    html { color-scheme: dark; background: #07090e; }
+    body { margin: 0; background: #07090e; }
+  </style>
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/splash.css">
+</head>
+<body class="splash-root">
+
+  <div class="splash-window" role="status" aria-live="polite" aria-label="Đang khởi động TV Remote Hub">
+    <header class="splash-titlebar">
+      <div class="splash-traffic">
+        <span class="splash-traffic-red" aria-hidden="true"></span>
+        <span class="splash-traffic-yellow" aria-hidden="true"></span>
+        <span class="splash-traffic-green" aria-hidden="true"></span>
+        <span class="splash-titlebar-label">
+          <span class="material-symbols-outlined">live_tv</span>
+          TV Remote Hub — Initialization
+        </span>
+      </div>
+      <div class="splash-titlebar-meta">
+        <span class="splash-version-pill">
+          <span class="splash-version-dot"></span>
+          v2.4 PRO
+        </span>
+      </div>
+    </header>
+
+    <div class="splash-main">
+      <div class="splash-noise" aria-hidden="true"></div>
+      <svg class="splash-grid" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="splashGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#00f0ff" stroke-width="0.5" stroke-opacity="0.3"/>
+            <circle cx="0" cy="0" r="1.5" fill="#00f0ff" fill-opacity="0.5"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#splashGrid)"/>
+      </svg>
+
+      <div class="splash-radar" aria-hidden="true">
+        <div class="splash-radar-ring"></div>
+        <div class="splash-radar-ring"></div>
+        <div class="splash-radar-ring"></div>
+        <div class="splash-radar-glow"></div>
+      </div>
+
+      <div class="splash-tagline">
+        <span class="splash-tagline-dot"></span>
+        <span>Android Debug Bridge · Desktop Console</span>
+        <span aria-hidden="true">·</span>
+        <span class="splash-tagline-port">PORT: 5555</span>
+      </div>
+
+      <div class="splash-hero">
+        <div class="splash-icon-wrap">
+          <div class="splash-icon-glow" aria-hidden="true"></div>
+          <img class="splash-icon-img" src="assets/app-icon.png" width="136" height="136" alt="TV Remote Hub">
+          <span class="splash-icon-badge">
+            <span class="material-symbols-outlined">wifi</span>
+            Smart Cast Active
+          </span>
+        </div>
+        <div class="splash-brand">
+          <h1>TV Remote <span class="splash-brand-accent">Hub</span></h1>
+          <p class="splash-brand-desc">
+            Hệ thống quản lý, truyền phát và điều khiển Smart TV chuyên nghiệp qua giao thức ADB Daemon
+          </p>
+        </div>
+      </div>
+
+      <div class="splash-bottom">
+        <div class="splash-status-row">
+          <div class="splash-status-msg">
+            <span class="material-symbols-outlined">progress_activity</span>
+            <span id="splashStatusText">Đang quét mạng nội bộ &amp; tìm thiết bị TV...</span>
+          </div>
+          <span id="splashPercent" class="splash-percent">0%</span>
+        </div>
+        <div class="splash-progress-track">
+          <div id="splashProgressBar" class="splash-progress-bar">
+            <div class="splash-progress-shimmer" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <div class="splash-log">
+          <div class="splash-log-head">
+            <span><span class="material-symbols-outlined">terminal</span> ADB Engine Logs</span>
+            <span class="splash-daemon"><span class="splash-daemon-dot"></span> DAEMON ONLINE</span>
+          </div>
+          <div class="splash-log-line">
+            <span class="splash-log-ts">[init]</span>
+            <span>Khởi động ADB server tại cổng 5037...</span>
+            <span class="splash-log-ok">OK</span>
+          </div>
+          <div class="splash-log-line">
+            <span class="splash-log-ts">[net]</span>
+            <span>Quét LAN cổng 5555 (Android TV)...</span>
+            <span class="splash-log-ok">…</span>
+          </div>
+          <div class="splash-log-line is-active">
+            <span class="splash-log-ts">[ui]</span>
+            <span id="splashLogActive">Nạp module điều khiển &amp; Home Theme...</span>
+          </div>
+        </div>
+
+        <div class="splash-foot">
+          <div>
+            <span>Engine: <strong>pywebview</strong></span>
+            <span aria-hidden="true"> · </span>
+            <span>ADB <strong>5037</strong></span>
+          </div>
+          <div>
+            <span>Nhấn <kbd>Esc</kbd> để bỏ qua</span>
+            <span aria-hidden="true"> · </span>
+            <button type="button" id="splashSkip" class="splash-skip">
+              Bỏ qua
+              <span class="material-symbols-outlined" style="font-size:14px">arrow_forward</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/splash.js"></script>
+</body>
+</html>
