@@ -74,9 +74,16 @@ class ApkInstaller:
             raise Exception("File APK không tồn tại")
         filename = os.path.basename(local_apk)
         if not remote_path:
-            remote_path = f"/sdcard/Download/{filename}"
+            # /sdcard (FUSE) bị SELinux chặn với system_server trên nhiều TV (avc denied fuse) →
+            # dùng /data/local/tmp, thư mục dành cho adb.
+            safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
+            remote_path = f"/data/local/tmp/{safe}"
         try:
             self._push_apk(local_apk, remote_path, progress_cb)
+            try:
+                self._shell(f"chmod 644 {remote_path}", timeout=15.0)
+            except Exception:
+                pass
             if progress_cb:
                 progress_cb("Đang cài đặt...")
             flags = ["-t"]

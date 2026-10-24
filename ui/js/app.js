@@ -309,9 +309,96 @@ function setAppsStatus(msg) {
   if (appsStatus) appsStatus.textContent = msg || '';
 }
 
+// ADB không đọc được nhãn app → tên hiển thị lấy từ bảng này, rồi đoán từ package id.
+const KNOWN_APP_NAMES = {
+  'com.netflix.ninja': 'Netflix',
+  'com.google.android.youtube.tv': 'YouTube',
+  'com.google.android.youtube.tvmusic': 'YouTube Music',
+  'com.amazon.amazonvideo.livingroom': 'Prime Video',
+  'com.apple.atve.androidtv.appletv': 'Apple TV',
+  'com.google.android.videos': 'Google TV (Phim)',
+  'com.google.android.play.games': 'Google Play Games',
+  'com.google.android.katniss': 'Google Assistant (Katniss)',
+  'com.google.android.tv.assistant': 'Google Assistant TV',
+  'com.google.android.apps.tv.launcherx': 'Google TV Launcher',
+  'com.google.android.apps.tv.dreamx': 'Google TV Screensaver',
+  'com.google.android.tungsten.setupwraith': 'Trình thiết lập Google TV',
+  'com.google.android.partnersetup': 'Google Partner Setup',
+  'com.google.android.onetimeinitializer': 'Google One Time Init',
+  'com.google.android.feedback': 'Google Feedback',
+  'com.google.android.tvlauncher': 'Android TV Home',
+  'com.google.android.tvrecommendations': 'Android TV Recommendations',
+  'com.google.android.tv.remote.service': 'Android TV Remote Service',
+  'com.google.android.tv': 'Live Channels',
+  'com.android.vending': 'Google Play Store',
+  'com.android.chrome': 'Chrome',
+  'com.android.tv.settings': 'Cài đặt Android TV',
+  'com.android.settings': 'Cài đặt',
+  'com.gathin.tvhome': 'CleanYourTV (Gathin Home)',
+  'au.com.stan.and': 'Stan',
+  'tv.wuaki.apptv': 'Rakuten TV',
+  'com.rophim.android.tv': 'RoPhim',
+  'com.ionitech.airscreen': 'AirScreen',
+  'org.chromium.webview_shell': 'WebView Shell',
+  'com.tcl.ui_mediaCenter': 'TCL Media Center (Phím Media)',
+  'com.tcl.partnercustomizer': 'TCL Partner Customizer (Phím TCL Channel / TKey)',
+  'com.tcl.tv.tclhome_passive': 'TCL Home (passive)',
+  'com.tcl.channelplus': 'TCL Channel+',
+  'com.tcl.browser': 'TCL Browser',
+  'com.tcl.gallery': 'TCL Gallery',
+  'com.tcl.gamebar': 'TCL Game Bar',
+  'com.tcl.assistant': 'TCL Assistant',
+  'com.tcl.smartalexa': 'TCL Alexa',
+  'com.tcl.miracast': 'TCL Miracast',
+  'com.tcl.MultiScreenInteraction_TV': 'TCL Multi Screen',
+  'com.tcl.waterfall.overseas': 'TCL Waterfall',
+  'com.tcl.overseasappshow': 'TCL App Show',
+  'com.tcl.usercenter': 'TCL User Center',
+  'com.tcl.messagebox': 'TCL Message Box',
+  'com.tcl.dashboard': 'TCL Dashboard',
+  'com.tcl.esticker': 'TCL eSticker',
+  'com.tcl.micmanager': 'TCL Mic Manager',
+  'com.tcl.guard': 'TCL Guard',
+  'com.tcl.logkit': 'TCL LogKit',
+  'com.tcl.bi': 'TCL BI (thống kê)',
+  'com.tcl.ocean.instructions': 'TCL Hướng dẫn',
+  'com.tcl.android.webview': 'TCL WebView',
+  'com.tcl.xian.StartandroidService': 'TCL Start Service',
+  'com.tcl.tv': 'TCL TV (TVRootApp)',
+};
+const GENERIC_PKG_SEGMENTS = new Set([
+  'android', 'app', 'apps', 'apptv', 'tv', 'tvapp', 'main', 'ninja', 'client', 'mobile', 'service',
+  'services', 'overseas', 'livingroom', 'atve', 'and', 'ui', 'core', 'pro', 'lite',
+]);
+const PKG_PREFIX_SEGMENTS = new Set(['com', 'org', 'net', 'io', 'tv', 'au', 'vn', 'google', 'android']);
+
+function prettySegment(seg) {
+  const spaced = seg
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim();
+  return spaced.replace(/\b([a-z])/g, (m) => m.toUpperCase());
+}
+
 function friendlyPkgName(pkg) {
-  const leaf = (pkg.split('.').pop() || pkg).replace(/[_-]/g, ' ');
-  return leaf.charAt(0).toUpperCase() + leaf.slice(1);
+  if (KNOWN_APP_NAMES[pkg]) return KNOWN_APP_NAMES[pkg];
+  const segs = pkg.split('.').filter(Boolean);
+  let meaningful = segs.filter((s, i) => !(i === 0 && PKG_PREFIX_SEGMENTS.has(s)));
+  if (!meaningful.length) meaningful = segs;
+  const picked = [];
+  for (let i = meaningful.length - 1; i >= 0 && picked.length < 2; i -= 1) {
+    picked.unshift(meaningful[i]);
+    if (!GENERIC_PKG_SEGMENTS.has(meaningful[i].toLowerCase())) break;
+  }
+  return picked.map(prettySegment).join(' ') || pkg;
+}
+
+function normalizeSearchText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
 }
 
 function appMaterialIcon(pkg) {
@@ -351,8 +438,10 @@ function updateAppsFilterLabels() {
   const user = appsCache.filter((a) => a.type === 'user').length;
   const system = appsCache.filter((a) => a.type === 'system').length;
   const disabled = appsCache.filter((a) => a.type === 'disabled' || !a.enabled).length;
+  const enabledCount = appsCache.filter((a) => a.enabled && a.type !== 'disabled').length;
   const labels = {
     all: `Tất cả (${total})`,
+    enabled: `Đang bật (${enabledCount})`,
     user: `Người dùng (${user})`,
     disabled: `Đã vô hiệu hóa (${disabled})`,
     system: `Hệ thống (${system})`,
@@ -414,18 +503,19 @@ function updateAppsLauncherBanner() {
 }
 
 function getFilteredApps() {
-  const search = (appSearch?.value || '').toLowerCase().trim();
+  const terms = normalizeSearchText(appSearch?.value || '').split(/\s+/).filter(Boolean);
   let list = appsCache.slice();
-  if (appsActiveFilter === 'user') list = list.filter((a) => a.type === 'user');
+  if (appsActiveFilter === 'enabled') list = list.filter((a) => a.enabled && a.type !== 'disabled');
+  else if (appsActiveFilter === 'user') list = list.filter((a) => a.type === 'user');
   else if (appsActiveFilter === 'system') list = list.filter((a) => a.type === 'system');
   else if (appsActiveFilter === 'disabled') {
     list = list.filter((a) => a.type === 'disabled' || !a.enabled);
   }
-  if (search) {
+  if (terms.length) {
     list = list.filter((a) => {
-      const pkg = a.package.toLowerCase();
-      const label = friendlyPkgName(a.package).toLowerCase();
-      return pkg.includes(search) || label.includes(search);
+      // Mỗi từ khoá phải xuất hiện trong tên HOẶC package id (chứa, không phân biệt dấu/hoa thường).
+      const hay = normalizeSearchText(`${friendlyPkgName(a.package)} ${a.package}`);
+      return terms.every((t) => hay.includes(t));
     });
   }
   return list;

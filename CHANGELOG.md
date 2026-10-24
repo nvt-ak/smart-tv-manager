@@ -10,6 +10,21 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-24
+
+### Added
+
+- Màn Ứng dụng: bảng tên thân thiện cho các package phổ biến trên TV (Netflix, Prime Video, TCL Media Center, …) và đoán tên tốt hơn cho package còn lại.
+- Màn Ứng dụng: tab lọc **Đang bật**.
+
+### Changed
+
+- Tìm app: khớp «chứa» theo cả tên và package id, nhiều từ khoá, không phân biệt dấu/hoa thường.
+
+### Fixed
+
+- Cài APK: đẩy file vào `/data/local/tmp` thay vì `/sdcard/Download` (SELinux `avc: denied fuse` làm `pm install` không đọc được file trên TV TCL).
+
 ## [1.3.0] - 2026-10-24
 
 ### Added
