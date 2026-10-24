@@ -1,3 +1,8 @@
 venv/
+.venv-build/
+.venv-build-test/
 __pycache__/
 graphify-out/
+build/
+dist/
+*.spec.bak

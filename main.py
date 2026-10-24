@@ -4,6 +4,7 @@ import os
 import webview
 
 import adb_client
+import paths
 import store
 from core.package_manager import PackageManager
 from core.safety import safety
@@ -385,6 +386,13 @@ class Api:
 
 if __name__ == "__main__":
     api = Api()
-    ui_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "index.html")
+    root = paths.app_root()
+    ui_path = os.path.join(root, "ui", "index.html")
+    icon_path = os.path.join(root, "ui", "assets", "app-icon.png")
+    if os.name == "nt":
+        ico = os.path.join(root, "assets", "app-icon.ico")
+        if os.path.isfile(ico):
+            icon_path = ico
     webview.create_window("TV Remote Hub", ui_path, js_api=api, width=1280, height=820, resizable=True)
-    webview.start()
+    start_kwargs = {"icon": icon_path} if os.path.isfile(icon_path) else {}
+    webview.start(**start_kwargs)

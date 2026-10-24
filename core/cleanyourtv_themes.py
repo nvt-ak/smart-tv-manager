@@ -3,11 +3,13 @@ import json
 import os
 from typing import Any, Dict, List
 
+import paths
+
 
 class CleanyourtvThemes:
     def __init__(self, base_dir: str = None):
         if base_dir is None:
-            base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "cleanyourtv", "themes")
+            base_dir = os.path.join(paths.app_root(), "data", "cleanyourtv", "themes")
         self.base_dir = base_dir
 
     def list_themes(self) -> List[Dict[str, Any]]:

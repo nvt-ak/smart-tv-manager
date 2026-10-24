@@ -1,12 +1,17 @@
 """APK metadata & signature analysis."""
 import hashlib
+import importlib
 import os
-from typing import Any, Dict
+from typing import Any, Callable, Dict, Optional
 
-try:
-    from androguard.misc import AnalyzeAPK
-except Exception:
-    AnalyzeAPK = None
+
+def _load_analyze_apk() -> Optional[Callable]:
+    """Load at runtime so PyInstaller does not pull optional androguard.pentest (frida)."""
+    try:
+        mod = importlib.import_module("androguard.misc")
+        return getattr(mod, "AnalyzeAPK", None)
+    except Exception:
+        return None
 
 
 class ApkAnalyzer:
@@ -17,9 +22,10 @@ class ApkAnalyzer:
             "size": os.path.getsize(apk_path) if os.path.exists(apk_path) else 0,
             "sha256": self._sha256(apk_path),
         }
-        if AnalyzeAPK and os.path.exists(apk_path):
+        analyze_apk = _load_analyze_apk()
+        if analyze_apk and os.path.exists(apk_path):
             try:
-                a, d, dx = AnalyzeAPK(apk_path)
+                a, d, dx = analyze_apk(apk_path)
                 result["package"] = a.get_package()
                 result["version_name"] = a.get_androidversion_name()
                 result["version_code"] = a.get_androidversion_code()

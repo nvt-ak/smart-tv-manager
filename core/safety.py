@@ -3,7 +3,9 @@ import json
 import os
 from typing import List, Set
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+import paths
+
+DATA_DIR = os.path.join(paths.app_root(), "data")
 PROTECTED_PATH = os.path.join(DATA_DIR, "protected_packages.json")
 
 
