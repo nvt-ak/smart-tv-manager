@@ -511,12 +511,10 @@ function scheduleAppsVersionSync() {
   }, 2000);
 }
 
-async function syncAppsVersions(max = 20) {
-  if (!activeDevice || !appsCache.length || !window.pywebview?.api?.get_apps_info) return;
-  const toFetch = appsCache.slice(0, max).map((a) => a.package);
-  if (!toFetch.length) return;
-  setAppsStatus(`Đang lấy phiên bản (${toFetch.length} gói đầu, chậm trên Wi‑Fi)...`);
-  const info = await getApi().get_apps_info(activeDevice.host, activeDevice.port, toFetch);
+const APPS_VERSION_SYNC_MAX = 100;
+const APPS_VERSION_BATCH = 40;
+
+function applyAppsInfoMap(info) {
   for (const [pkg, data] of Object.entries(info || {})) {
     const i = appsCache.findIndex((a) => a.package === pkg);
     if (i >= 0) {
@@ -524,10 +522,35 @@ async function syncAppsVersions(max = 20) {
       if (data.version_code) appsCache[i].version_code = data.version_code;
     }
   }
-  updateAppsLauncherBanner();
-  renderApps();
-  setAppsStatus(`Đã tải ${appsCache.length} package`);
-  setTimeout(() => setAppsStatus(''), 1200);
+}
+
+async function syncAppsVersions(maxTotal = APPS_VERSION_SYNC_MAX) {
+  if (!activeDevice || !appsCache.length || !window.pywebview?.api?.get_apps_info) return;
+  const missing = appsCache
+    .filter((a) => !a.version && !a.version_code)
+    .map((a) => a.package)
+    .slice(0, maxTotal);
+  if (!missing.length) return;
+
+  let done = 0;
+  for (let i = 0; i < missing.length; i += APPS_VERSION_BATCH) {
+    const batch = missing.slice(i, i + APPS_VERSION_BATCH);
+    setAppsStatus(
+      `Đang lấy phiên bản… ${done}/${missing.length} (Wi‑Fi ADB có thể chậm)`,
+    );
+    const info = await getApi().get_apps_info(
+      activeDevice.host,
+      activeDevice.port,
+      batch,
+      APPS_VERSION_BATCH,
+    );
+    applyAppsInfoMap(info);
+    done += batch.length;
+    updateAppsLauncherBanner();
+    renderApps();
+  }
+  setAppsStatus(`Đã đồng bộ phiên bản cho ${done}/${missing.length} gói (tối đa ${maxTotal})`);
+  setTimeout(() => setAppsStatus(''), 2000);
 }
 
 async function loadApps() {

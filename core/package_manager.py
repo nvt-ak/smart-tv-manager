@@ -91,7 +91,7 @@ class PackageManager:
             pass
         return info
 
-    def get_packages_info(self, packages: List[str], limit: int = 20) -> Dict[str, Dict[str, Any]]:
+    def get_packages_info(self, packages: List[str], limit: int = 80) -> Dict[str, Dict[str, Any]]:
         """Basic info for a small subset — each package is 1–2 shell calls."""
         result = {}
         for pkg in packages[:limit]:

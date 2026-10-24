@@ -7,6 +7,12 @@ from typing import Any, Dict, List, Tuple
 
 import paths
 
+TIER_SORT_ORDER = {"recommend": 0, "review": 1, "skip": 2, "blocked": 3}
+
+
+def sort_suggestions_by_tier(items: List[dict]) -> List[dict]:
+    return sorted(items, key=lambda x: (TIER_SORT_ORDER.get(x.get("tier"), 9), x.get("package") or ""))
+
 
 class CleanSuggestionEngine:
     def __init__(self) -> None:
@@ -114,9 +120,7 @@ class CleanSuggestionEngine:
                     "selected": tier == "recommend",
                 }
             )
-        order = {"recommend": 0, "review": 1, "skip": 2, "blocked": 3}
-        out.sort(key=lambda x: (order.get(x["tier"], 9), x["package"]))
-        return out
+        return sort_suggestions_by_tier(out)
 
     def merge_ai(self, local: List[dict], ai_rows: List[dict]) -> List[dict]:
         by_pkg: Dict[str, dict] = {s["package"]: dict(s) for s in local}
@@ -135,4 +139,4 @@ class CleanSuggestionEngine:
             cur["reason"] = (row.get("reason") or cur.get("reason") or "Gợi ý AI.").strip()
             cur["source"] = "ai"
             cur["selected"] = tier == "recommend"
-        return sorted(by_pkg.values(), key=lambda x: x["package"])
+        return sort_suggestions_by_tier(list(by_pkg.values()))

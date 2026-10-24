@@ -99,9 +99,11 @@ class Api:
         if not devices:
             return []
 
-        mode = (check or "adb").strip().lower()
+        mode = (check or "adb").strip().lower() or "adb"
         if mode in ("cache", "false", "0", "no"):
             return [dict(d) for d in devices]
+        if mode not in ("port", "adb"):
+            mode = "adb"
 
         def check_one(d):
             host = d["host"]
@@ -110,14 +112,15 @@ class Api:
                 online = adb_client.port_reachable(host, port)
             else:
                 online = adb_client.quick_check(host, port)
-            store.update_status(host, online=online)
             nd = dict(d)
             nd["online"] = online
-            return nd
+            return host, online, nd
 
         workers = min(8, len(devices))
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            return list(pool.map(check_one, devices))
+            rows = list(pool.map(check_one, devices))
+        store.batch_update_online({host: online for host, online, _ in rows})
+        return [nd for _, _, nd in rows]
 
     def scan(self):
         found = adb_client.scan_subnet()
@@ -288,14 +291,15 @@ class Api:
         ok = sum(1 for r in results if r.get("ok"))
         return {"results": results, "ok_count": ok, "fail_count": len(results) - ok}
 
-    def get_apps_info(self, host, port=5555, packages=None):
+    def get_apps_info(self, host, port=5555, packages=None, limit=80):
         if not packages:
             return {}
         pkgs = [p for p in packages if p]
+        cap = max(1, min(int(limit or 80), 120))
         with self._dev_op_lock(host, port):
             try:
                 pm = self._get_pm(host, port)
-                return pm.get_packages_info(pkgs, limit=20)
+                return pm.get_packages_info(pkgs, limit=cap)
             except Exception as e:
                 if self._adb_timeout_error(e):
                     self._drop_dev(host, port)

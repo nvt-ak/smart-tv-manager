@@ -21,6 +21,10 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ### Fixed
 
+- Smart Clean: `merge_ai` giữ thứ tự tier (recommend → review → skip) như `analyze`.
+- Tab Apps: đồng bộ phiên bản theo lô (tối đa 100 gói, 40/lần) thay vì chỉ 20 gói đầu.
+- `list_devices`: chuẩn hóa `check` rỗng/khoảng trắng → `adb`; mode lạ fallback `adb`.
+- `list_devices` song song: ghi `devices.json` một lần (`batch_update_online`) + khóa/temp file riêng — hết `FileNotFoundError` khi thay `.tmp`.
 - Khởi động nhanh hơn: mở thẳng `index.html` + overlay boot (không splash riêng), `list_devices('cache'|'port'|'adb')` — lần đầu không chặn pywebview bằng ADB; tải phiên bản app trì hoãn (tối đa 20 gói).
 - ADB Wi‑Fi: `PackageManager` dùng timeout/reconnect (tới 45s cho `pm list packages`), gộp 3 lệnh list trong một shell; timeout → xóa cache kết nối và báo lỗi tiếng Việt thay vì traceback `TcpTimeoutException`.
 

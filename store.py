@@ -1,82 +1,153 @@
 """Saved device list: ~/.smarttv-manager/devices.json."""
 import json
 import os
+import threading
+import uuid
 from datetime import datetime
 
 from adb_client import KEY_DIR
 
 PATH = os.path.join(KEY_DIR, "devices.json")
+_lock = threading.Lock()
+
+
+def _normalize_devices(devices):
+    for d in devices:
+        if "last_seen" not in d:
+            d["last_seen"] = None
+        if "online" not in d:
+            d["online"] = False
+        if "port" not in d:
+            d["port"] = 5555
+    return devices
 
 
 def load():
-    if not os.path.exists(PATH):
-        return []
-    try:
-        with open(PATH, encoding="utf-8") as f:
-            devices = json.load(f)
-        # Backward compatibility: ensure all fields exist
-        for d in devices:
-            if "last_seen" not in d:
-                d["last_seen"] = None
-            if "online" not in d:
-                d["online"] = False
-            if "port" not in d:
-                d["port"] = 5555
-        return devices
-    except Exception:
-        return []
+    with _lock:
+        if not os.path.exists(PATH):
+            return []
+        try:
+            with open(PATH, encoding="utf-8") as f:
+                return _normalize_devices(json.load(f))
+        except Exception:
+            return []
 
 
 def save(devices):
-    os.makedirs(KEY_DIR, mode=0o700, exist_ok=True)
-    tmp = PATH + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(devices, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, PATH)
+    with _lock:
+        os.makedirs(KEY_DIR, mode=0o700, exist_ok=True)
+        tmp = os.path.join(KEY_DIR, f"devices.{uuid.uuid4().hex}.tmp")
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(devices, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, PATH)
+        finally:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+
+
+def batch_update_online(status_by_host: dict):
+    """Update online flags for many hosts in one read/write (thread-safe)."""
+    if not status_by_host:
+        return load()
+    with _lock:
+        if not os.path.exists(PATH):
+            devices = []
+        else:
+            try:
+                with open(PATH, encoding="utf-8") as f:
+                    devices = _normalize_devices(json.load(f))
+            except Exception:
+                devices = []
+        changed = False
+        now = datetime.now().isoformat()
+        for d in devices:
+            host = d.get("host")
+            if host not in status_by_host:
+                continue
+            online = bool(status_by_host[host])
+            d["online"] = online
+            if online:
+                d["last_seen"] = now
+            changed = True
+        if changed:
+            os.makedirs(KEY_DIR, mode=0o700, exist_ok=True)
+            tmp = os.path.join(KEY_DIR, f"devices.{uuid.uuid4().hex}.tmp")
+            try:
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(devices, f, indent=2, ensure_ascii=False)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp, PATH)
+            finally:
+                if os.path.exists(tmp):
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+        return devices
 
 
 def upsert(host, port, name):
-    devices = [d for d in load() if d["host"] != host]
-    devices.append({
-        "name": name,
-        "host": host,
-        "port": int(port),
-        "last_seen": datetime.now().isoformat(),
-        "online": True,
-    })
+    with _lock:
+        devices = []
+        if os.path.exists(PATH):
+            try:
+                with open(PATH, encoding="utf-8") as f:
+                    devices = _normalize_devices(json.load(f))
+            except Exception:
+                devices = []
+        devices = [d for d in devices if d["host"] != host]
+        devices.append({
+            "name": name,
+            "host": host,
+            "port": int(port),
+            "last_seen": datetime.now().isoformat(),
+            "online": True,
+        })
     save(devices)
     return devices
 
 
 def update_status(host, online=True, last_seen=None):
-    devices = load()
-    changed = False
-    for d in devices:
-        if d["host"] == host:
-            d["online"] = bool(online)
-            if online:
-                d["last_seen"] = last_seen or datetime.now().isoformat()
-            changed = True
-            break
-    if changed:
-        save(devices)
-    return devices
+    return batch_update_online({host: online})
 
 
 def rename(host, name):
-    devices = load()
-    changed = False
-    for d in devices:
-        if d["host"] == host:
-            d["name"] = name
-            changed = True
-            break
-    if changed:
-        save(devices)
+    with _lock:
+        if not os.path.exists(PATH):
+            return []
+        try:
+            with open(PATH, encoding="utf-8") as f:
+                devices = _normalize_devices(json.load(f))
+        except Exception:
+            return []
+        changed = False
+        for d in devices:
+            if d["host"] == host:
+                d["name"] = name
+                changed = True
+                break
+        if not changed:
+            return devices
+    save(devices)
     return devices
 
 
 def remove(host):
-    devices = [d for d in load() if d["host"] != host]
+    with _lock:
+        if not os.path.exists(PATH):
+            return []
+        try:
+            with open(PATH, encoding="utf-8") as f:
+                devices = _normalize_devices(json.load(f))
+        except Exception:
+            devices = []
+        devices = [d for d in devices if d["host"] != host]
     save(devices)
     return devices
