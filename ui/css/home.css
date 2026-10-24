@@ -982,6 +982,18 @@
   cursor: text;
 }
 
-.home-widget-img { width: 100%; max-width: 640px; margin-top: 10px; border-radius: 12px; display: block; }
-
-.home-widget-img { width: 100%; max-width: 640px; margin-top: 10px; border-radius: 12px; display: block; }
+/* Widget vàng & xăng — compact */
+.home-widgets-state { margin-left: auto; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: rgba(255,255,255,.08); color: var(--text-muted, #94a3b8); }
+.home-widgets-state.is-on { background: rgba(52,199,89,.16); color: #34c759; }
+.hw-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.hw-switch { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; white-space: nowrap; }
+.hw-name { flex: 1 1 200px; min-width: 160px; }
+.hw-select { flex: 0 1 170px; min-width: 130px; }
+.hw-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.hw-chip { cursor: pointer; }
+.hw-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.hw-chip span { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12.5px; border: 1px solid rgba(255,255,255,.14); color: var(--text-muted, #94a3b8); transition: background .15s, color .15s; }
+.hw-chip input:checked + span { background: rgba(245,158,11,.18); border-color: rgba(245,158,11,.5); color: #fbbf24; }
+.hw-chip input:focus-visible + span { outline: 2px solid #fbbf24; outline-offset: 2px; }
+.hw-apply { margin-left: auto; }
+.hw-hint { margin: 8px 0 0; font-size: 12px; color: var(--text-muted, #94a3b8); }

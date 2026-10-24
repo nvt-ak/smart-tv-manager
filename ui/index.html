@@ -1012,84 +1012,38 @@
           </div>
         </div>
 
-        <details class="home-widgets-panel glass-card" id="homeWidgetsPanel" open>
+        <details class="home-widgets-panel glass-card" id="homeWidgetsPanel">
           <summary class="home-widgets-summary">
             <span class="material-symbols-outlined">dashboard_customize</span>
-            Widget tuỳ chọn trên màn hình TV
+            Widget vàng &amp; xăng dầu
+            <span id="homeWidgetState" class="home-widgets-state">Tắt</span>
           </summary>
-          <p class="home-widgets-lead">
-            Dữ liệu lấy trên máy tính (Wi‑Fi), gộp vào <code>config.json</code> khi bạn <strong>áp dụng theme</strong>
-            hoặc bấm «Áp dụng lên TV» bên dưới.
-            Bảng giá hiển thị gọn cạnh lời chào.
-          </p>
-          <label class="home-widgets-master">
-            <input type="checkbox" id="homeWidgetsEnabled">
-            Bật widget Home trên TV này
-          </label>
-          <div class="home-widgets-grid">
-            <label class="field home-widgets-field">
-              <span class="field-label">Tên hiển thị</span>
-              <input type="text" id="homeWidgetDisplayName" class="field-input" placeholder="VD: Gia đình nhà Trịnh" maxlength="48">
+          <div class="hw-row">
+            <label class="hw-switch">
+              <input type="checkbox" id="homeWidgetsEnabled">
+              <span>Bật trên TV</span>
             </label>
-            <label class="field home-widgets-field">
-              <span class="field-label">Mã vàng (vang.today)</span>
-              <input type="text" id="homeWidgetGoldCode" class="field-input" placeholder="VNGSJC" maxlength="24">
-            </label>
-            <label class="field home-widgets-field">
-              <span class="field-label">Vàng dự phòng (nếu API lỗi)</span>
-              <input type="text" id="homeWidgetManualGold" class="field-input" placeholder="VD: 141,7tr/l bán">
-            </label>
-            <label class="field home-widgets-field">
-              <span class="field-label">Vùng giá xăng (Petrolimex)</span>
-              <select id="homeWidgetFuelZone" class="field-input">
-                <option value="1">Vùng 1 (chuẩn)</option>
-                <option value="2">Vùng 2 (+ tối đa 2%)</option>
-              </select>
-            </label>
-            <label class="field home-widgets-field">
-              <span class="field-label">Xăng dự phòng (nếu API lỗi)</span>
-              <input type="text" id="homeWidgetFuelRon" class="field-input" placeholder="RON95 24.730đ/l">
-            </label>
-            <label class="field home-widgets-field">
-              <span class="field-label">Dầu dự phòng</span>
-              <input type="text" id="homeWidgetFuelDie" class="field-input" placeholder="Diesel 22.800đ/l">
-            </label>
+            <input type="text" id="homeWidgetDisplayName" class="field-input hw-name" placeholder="Tên hiển thị (VD: Gia đình nhà Trịnh)" maxlength="48">
+            <select id="homeWidgetFuelZone" class="field-input hw-select" title="Vùng giá xăng">
+              <option value="1">Xăng vùng 1</option>
+              <option value="2">Xăng vùng 2</option>
+            </select>
+            <select id="homeWidgetTheme" class="field-input hw-select" title="Theme dùng làm ảnh nền"></select>
           </div>
-          <div class="home-widgets-toggles">
-            <label><input type="checkbox" id="homeWidgetShowName" checked> Tên</label>
-            <label><input type="checkbox" id="homeWidgetShowGold" checked> Vàng</label>
-            <label><input type="checkbox" id="homeWidgetShowFuel" checked> Xăng dầu</label>
-            <label><input type="checkbox" id="homeWidgetShowStats"> CPU / RAM / bộ nhớ</label>
-            <label><input type="checkbox" id="homeWidgetShowAppNames"> Tên dưới mọi icon app</label>
-            <label><input type="checkbox" id="homeWidgetModuleCards" checked> Module cards</label>
-            <label><input type="checkbox" id="homeWidgetWallpaper" checked> Vẽ widget vàng/xăng vào ảnh nền</label>
-            <label>Theme nền: <select id="homeWidgetTheme" class="field-input"></select></label>
-          </div>
-          <div class="home-widgets-preview">
-            <span class="apps-stat-label">Xem trước trên TV</span>
-            <p id="homeWidgetPreviewGreeting" class="home-widgets-preview-greeting">GOOD MORNING, —</p>
-            <ul id="homeWidgetPreviewList" class="home-widgets-preview-list"></ul>
-            <p id="homeWidgetPreviewNote" class="home-widgets-preview-note"></p>
-            <img id="homeWidgetImg" class="home-widget-img" alt="Xem trước widget trên ảnh nền" hidden>
-          </div>
-          <div class="home-panel-actions home-panel-actions--wrap">
-            <button type="button" id="homeWidgetPreviewBtn" class="btn btn--surface">
-              <span class="material-symbols-outlined">visibility</span>
-              Xem trước dữ liệu
-            </button>
-            <button type="button" id="homeWidgetImgBtn" class="btn btn--surface">
-              <span class="material-symbols-outlined">image</span>
-              Xem trước ảnh nền
-            </button>
-            <button type="button" id="homeWidgetSaveBtn" class="btn btn--surface">
-              <span class="material-symbols-outlined">save</span>
-              Lưu cấu hình
-            </button>
-            <button type="button" id="homeWidgetApplyBtn" class="btn btn--accent">
+          <div class="hw-chips">
+            <label class="hw-chip"><input type="checkbox" id="homeWidgetShowGold" checked><span>Giá vàng</span></label>
+            <label class="hw-chip"><input type="checkbox" id="homeWidgetShowFuel" checked><span>Xăng dầu</span></label>
+            <label class="hw-chip"><input type="checkbox" id="homeWidgetWallpaper" checked><span>Vẽ vào ảnh nền</span></label>
+            <label class="hw-chip"><input type="checkbox" id="homeWidgetShowName" checked><span>Tên</span></label>
+            <label class="hw-chip"><input type="checkbox" id="homeWidgetShowStats"><span>CPU / RAM</span></label>
+            <label class="hw-chip"><input type="checkbox" id="homeWidgetShowAppNames"><span>Tên app</span></label>
+            <label class="hw-chip"><input type="checkbox" id="homeWidgetModuleCards" checked><span>Module cards</span></label>
+            <button type="button" id="homeWidgetApplyBtn" class="btn btn--accent hw-apply">
               <span class="material-symbols-outlined">cast</span>
               Áp dụng lên TV
             </button>
           </div>
+          <p class="hw-hint">Giá tự lấy từ API (vang.today, Petrolimex) mỗi lần áp dụng; cấu hình tự lưu.</p>
         </details>
 
         <div class="home-gallery glass-card">

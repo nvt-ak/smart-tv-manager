@@ -2835,11 +2835,7 @@ function readHomeWidgetsFormPayload() {
   return {
     enabled: document.getElementById('homeWidgetsEnabled')?.checked ?? false,
     display_name: document.getElementById('homeWidgetDisplayName')?.value?.trim() || '',
-    gold_vang_today_code: document.getElementById('homeWidgetGoldCode')?.value?.trim() || 'VNGSJC',
     fuel_zone: Number(document.getElementById('homeWidgetFuelZone')?.value || 1) === 2 ? 2 : 1,
-    manual_gold_sjc: document.getElementById('homeWidgetManualGold')?.value?.trim() || '',
-    fuel_ron95: document.getElementById('homeWidgetFuelRon')?.value?.trim() || '',
-    fuel_diesel: document.getElementById('homeWidgetFuelDie')?.value?.trim() || '',
     show_name: document.getElementById('homeWidgetShowName')?.checked ?? true,
     show_gold: document.getElementById('homeWidgetShowGold')?.checked ?? true,
     show_fuel: document.getElementById('homeWidgetShowFuel')?.checked ?? true,
@@ -2860,12 +2856,8 @@ function fillHomeWidgetsForm(cfg) {
   };
   set('homeWidgetsEnabled', c.enabled);
   set('homeWidgetDisplayName', c.display_name || '');
-  set('homeWidgetGoldCode', c.gold_vang_today_code || 'VNGSJC');
   const fuelZone = document.getElementById('homeWidgetFuelZone');
   if (fuelZone) fuelZone.value = String(Number(c.fuel_zone) === 2 ? 2 : 1);
-  set('homeWidgetManualGold', c.manual_gold_sjc || '');
-  set('homeWidgetFuelRon', c.fuel_ron95 || '');
-  set('homeWidgetFuelDie', c.fuel_diesel || '');
   set('homeWidgetShowName', c.show_name !== false);
   set('homeWidgetShowGold', c.show_gold !== false);
   set('homeWidgetShowFuel', c.show_fuel !== false);
@@ -2875,47 +2867,6 @@ function fillHomeWidgetsForm(cfg) {
   set('homeWidgetWallpaper', c.widget_wallpaper !== false);
 }
 
-function renderHomeWidgetsPreview(prev) {
-  const greetEl = document.getElementById('homeWidgetPreviewGreeting');
-  const listEl = document.getElementById('homeWidgetPreviewList');
-  const noteEl = document.getElementById('homeWidgetPreviewNote');
-  if (!prev) return;
-  const name = prev.greeting_name || '—';
-  if (greetEl) greetEl.textContent = name ? `GOOD MORNING, ${name.toUpperCase()}` : 'GOOD MORNING';
-  if (listEl) {
-    listEl.innerHTML = '';
-    for (const line of prev.board_lines || []) {
-      const li = document.createElement('li');
-      li.textContent = line;
-      listEl.appendChild(li);
-    }
-    const errs = prev.errors || {};
-    for (const [k, msg] of Object.entries(errs)) {
-      const li = document.createElement('li');
-      li.textContent = `${k}: ${msg}`;
-      li.style.color = 'var(--color-error, #f44336)';
-      listEl.appendChild(li);
-    }
-  }
-  if (noteEl) noteEl.textContent = prev.note || '';
-}
-
-async function loadHomeWidgetsUi() {
-  if (!window.pywebview?.api?.get_home_widgets_settings) return;
-  try {
-    const cfg = await getApi().get_home_widgets_settings();
-    fillHomeWidgetsForm(cfg);
-    const prev = await getApi().preview_home_widgets(readHomeWidgetsFormPayload());
-    renderHomeWidgetsPreview(prev);
-  } catch {
-    /* ignore */
-  }
-}
-
-const homeWidgetPreviewBtn = document.getElementById('homeWidgetPreviewBtn');
-const homeWidgetSaveBtn = document.getElementById('homeWidgetSaveBtn');
-const homeWidgetApplyBtn = document.getElementById('homeWidgetApplyBtn');
-const homeWidgetImgBtn = document.getElementById('homeWidgetImgBtn');
 function widgetThemeId() {
   const sel = document.getElementById('homeWidgetTheme');
   return (sel && sel.value) || homeActiveThemeId || '';
@@ -2937,59 +2888,43 @@ function populateWidgetThemeSelect() {
   if (want) sel.value = want;
 }
 
-async function refreshWidgetImagePreview() {
-  const r = await getApi().preview_widget_wallpaper(widgetThemeId(), readHomeWidgetsFormPayload());
-  const img = document.getElementById('homeWidgetImg');
-  if (img) {
-    img.src = `data:image/jpeg;base64,${r.image_b64}`;
-    img.hidden = false;
-  }
-  const errs = Object.values(r.errors || {});
-  const where = r.theme_name
-    ? `theme «${r.theme_name}»${r.wallpaper_count > 1 ? ` (ảnh 1/${r.wallpaper_count})` : ''}${r.has_wallpaper ? '' : ' — theme không có ảnh nền, dùng nền mặc định'}`
-    : 'chưa chọn theme — dùng nền mặc định';
-  const cnt = `Vàng ${r.gold_shown}/${r.gold_total} mục, xăng dầu ${r.fuel_shown}/${r.fuel_total} mục`;
-  setHomeStatus(`Xem trước trên ${where}. ${cnt}.${errs.length ? ' Thiếu dữ liệu: ' + errs.join('; ') : ''}`);
-}
-if (homeWidgetImgBtn) {
-  homeWidgetImgBtn.addEventListener('click', async () => {
-    setButtonLoading(homeWidgetImgBtn, true, 'Đang vẽ…');
-    try {
-      await refreshWidgetImagePreview();
-    } catch (err) {
-      setHomeStatus(`Lỗi xem trước ảnh nền: ${err}`);
-    }
-    setButtonLoading(homeWidgetImgBtn, false);
-  });
-}
-if (homeWidgetPreviewBtn) {
-  homeWidgetPreviewBtn.addEventListener('click', async () => {
-    setButtonLoading(homeWidgetPreviewBtn, true, 'Đang tải…');
-    try {
-      const prev = await getApi().preview_home_widgets(readHomeWidgetsFormPayload());
-      renderHomeWidgetsPreview(prev);
-      if (document.getElementById('homeWidgetWallpaper')?.checked) await refreshWidgetImagePreview();
-      else setHomeStatus('Đã cập nhật xem trước widget.');
-    } catch (err) {
-      setHomeStatus(`Lỗi xem trước: ${err}`);
-    }
-    setButtonLoading(homeWidgetPreviewBtn, false);
-  });
+function updateHomeWidgetState() {
+  const el = document.getElementById('homeWidgetState');
+  if (!el) return;
+  const on = !!document.getElementById('homeWidgetsEnabled')?.checked;
+  el.textContent = on ? 'Đang bật' : 'Tắt';
+  el.classList.toggle('is-on', on);
 }
 
-if (homeWidgetSaveBtn) {
-  homeWidgetSaveBtn.addEventListener('click', async () => {
-    setButtonLoading(homeWidgetSaveBtn, true, 'Đang lưu…');
+let homeWidgetSaveTimer = null;
+function scheduleHomeWidgetSave() {
+  updateHomeWidgetState();
+  clearTimeout(homeWidgetSaveTimer);
+  homeWidgetSaveTimer = setTimeout(async () => {
     try {
       await getApi().save_home_widgets_settings(readHomeWidgetsFormPayload());
-      showHomeToast('Đã lưu cấu hình widget', 'save');
     } catch (err) {
-      showHomeToast(String(err), 'error');
+      showHomeToast(`Không lưu được cấu hình widget: ${err}`, 'error');
     }
-    setButtonLoading(homeWidgetSaveBtn, false);
-  });
+  }, 400);
 }
 
+async function loadHomeWidgetsUi() {
+  if (!window.pywebview?.api?.get_home_widgets_settings) return;
+  try {
+    fillHomeWidgetsForm(await getApi().get_home_widgets_settings());
+    updateHomeWidgetState();
+  } catch {
+    /* ignore */
+  }
+}
+
+document.querySelectorAll('#homeWidgetsPanel input, #homeWidgetsPanel select').forEach((el) => {
+  el.addEventListener('change', scheduleHomeWidgetSave);
+  if (el.type === 'text') el.addEventListener('input', scheduleHomeWidgetSave);
+});
+
+const homeWidgetApplyBtn = document.getElementById('homeWidgetApplyBtn');
 if (homeWidgetApplyBtn) {
   homeWidgetApplyBtn.addEventListener('click', async () => {
     if (!activeDevice) {
@@ -2998,15 +2933,13 @@ if (homeWidgetApplyBtn) {
     }
     setButtonLoading(homeWidgetApplyBtn, true, 'Đang áp dụng…');
     try {
+      clearTimeout(homeWidgetSaveTimer);
       await getApi().save_home_widgets_settings(readHomeWidgetsFormPayload());
       setHomeStatus('Đang lấy giá và vẽ widget lên ảnh nền…');
       const res = await getApi().apply_home_widgets_to_tv(activeDevice.host, activeDevice.port, true, widgetThemeId());
+      if (res.theme_id) homeActiveThemeId = res.theme_id;
       showHomeToast('Đã ghi widget lên TV — Home khởi động lại', 'cast');
-      setHomeStatus(
-        res.greeting_name
-          ? `TV: greeting_name = ${res.greeting_name}`
-          : 'Đã áp dụng widget (không có dòng chào).',
-      );
+      setHomeStatus(res.wallpaper ? 'Đã vẽ giá vàng / xăng dầu vào ảnh nền và áp dụng lên TV.' : 'Đã áp dụng widget.');
       await loadCurrentTheme();
     } catch (err) {
       setHomeStatus(`Lỗi áp dụng widget: ${err}`);
