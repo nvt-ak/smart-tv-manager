@@ -997,3 +997,8 @@
 .hw-chip input:focus-visible + span { outline: 2px solid #fbbf24; outline-offset: 2px; }
 .hw-apply { margin-left: auto; }
 .hw-hint { margin: 8px 0 0; font-size: 12px; color: var(--text-muted, #94a3b8); }
+.home-auto-stock { margin: 8px 0 4px; font-size: 13px; font-weight: 500; }
+.home-launcher-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; padding-top: var(--space-md); }
+.home-launcher-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 12px; white-space: nowrap; font-size: 13px; }
+.home-launcher-actions .btn .material-symbols-outlined { font-size: 18px; }
+.home-launcher-actions__wide { grid-column: 1 / -1; }

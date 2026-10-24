@@ -304,6 +304,24 @@ def _cover(img: Image.Image, size: Tuple[int, int]) -> Image.Image:
     return img.crop((l, t, l + w, t + h))
 
 
+def _solid_background(size: Tuple[int, int], color: str) -> Image.Image:
+    """Theme `background_color` (#RRGGBB) with a faint lift towards the bottom so cards read."""
+    try:
+        c = color.lstrip("#")
+        base = tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
+    except Exception:
+        return _fallback_background(size)
+    w, h = size
+    bg = Image.new("RGB", size, base)
+    px = bg.load()
+    for y in range(h):
+        k = 10 * y / max(1, h - 1)
+        col = tuple(min(255, round(v + k)) for v in base)
+        for x in range(w):
+            px[x, y] = col
+    return bg
+
+
 def _fallback_background(size: Tuple[int, int]) -> Image.Image:
     w, h = size
     bg = Image.new("RGB", size)
@@ -322,6 +340,7 @@ def render_widgets(
     *,
     size: Tuple[int, int] = (BASE_W, BASE_H),
     region: Tuple[int, int, int, int] = DEFAULT_REGION,
+    bg_color: Optional[str] = None,
 ) -> Image.Image:
     """Return the wallpaper (cover-fitted to `size`) with the gold and fuel cards drawn on it."""
     s = size[0] / BASE_W
@@ -329,7 +348,7 @@ def render_widgets(
         with Image.open(wallpaper_path) as im:
             canvas = _cover(im.convert("RGB"), size)
     else:
-        canvas = _fallback_background(size)
+        canvas = _solid_background(size, bg_color) if bg_color else _fallback_background(size)
     rx0, ry0, rx1, ry1 = (round(v * s) for v in region)
     gap = round(GAP * s)
     gold, fuel = data.get("gold"), data.get("fuel")

@@ -928,7 +928,6 @@
         </div>
 
         <div id="homeStatus" class="status-line" role="status"></div>
-        <button type="button" id="homeStatusCopy" class="btn btn--ghost" hidden>Sao chép nội dung trạng thái</button>
         <details id="homeApplyLogWrap" class="home-apply-log-wrap" hidden>
           <summary>Nhật ký áp dụng theme</summary>
           <p id="homeApplyLogHint" class="home-apply-log-hint"></p>
@@ -945,23 +944,27 @@
               <span id="homeDetectBadge" class="home-adb-badge">Chưa kiểm tra</span>
             </div>
             <div id="homeDetectInfo" class="home-kpi-list">
-              <div class="home-kpi-row"><span class="home-kpi-label">Package</span><span id="homeKpiPackage" class="home-kpi-value">—</span></div>
-              <div class="home-kpi-row"><span class="home-kpi-label">Trạng thái cài</span><span id="homeKpiInstalled" class="home-kpi-value">—</span></div>
-              <div class="home-kpi-row"><span class="home-kpi-label">Home mặc định</span><span id="homeKpiDefault" class="home-kpi-value">—</span></div>
-              <div class="home-kpi-row"><span class="home-kpi-label">Tương thích ROM</span><span id="homeKpiCompat" class="home-kpi-value">—</span></div>
+              <div class="home-kpi-row"><span class="home-kpi-label">CleanYourTV</span><span id="homeKpiInstalled" class="home-kpi-value">—</span></div>
+              <div class="home-kpi-row"><span class="home-kpi-label">Launcher gốc</span><span id="homeKpiStock" class="home-kpi-value">—</span></div>
+              <div class="home-kpi-row"><span class="home-kpi-label">Phím HOME mở</span><span id="homeKpiDefault" class="home-kpi-value">—</span></div>
+              <div class="home-kpi-row" hidden><span id="homeKpiPackage"></span><span id="homeKpiCompat"></span></div>
             </div>
-            <div class="home-panel-actions">
-              <button type="button" id="homeDetectBtn" class="btn btn--surface">
-                <span class="material-symbols-outlined">rule</span>
-                Kiểm tra lại
+            <label class="hw-switch home-auto-stock" title="Khi áp dụng theme, tự tắt Google TV Launcher để phím HOME vật lý mở CleanYourTV. Có thể làm P+/P- và phím chuyển chế độ TV ngừng hoạt động.">
+              <input type="checkbox" id="homeAutoStock" checked>
+              <span>Tự tắt launcher gốc khi áp dụng theme</span>
+            </label>
+            <div class="home-launcher-actions">
+              <button type="button" id="homeStockOnBtn" class="btn btn--surface home-launcher-actions__wide" title="Bật lại Google TV Launcher (trạng thái ban đầu của TV)">
+                <span class="material-symbols-outlined">undo</span>
+                <span>Đặt lại launcher gốc</span>
               </button>
-              <button type="button" id="homeSetDefaultBtn" class="btn btn--primary">
-                <span class="material-symbols-outlined">home</span>
-                Đặt làm Home mặc định
+              <button type="button" id="homeDetectBtn" class="btn btn--surface" title="Đọc lại trạng thái từ TV">
+                <span class="material-symbols-outlined">refresh</span>
+                <span>Kiểm tra lại</span>
               </button>
-              <button type="button" id="homeDiagBtn" class="btn btn--ghost">
+              <button type="button" id="homeDiagBtn" class="btn btn--surface" title="Xem cách TV định tuyến phím HOME">
                 <span class="material-symbols-outlined">bug_report</span>
-                Chẩn đoán phím HOME
+                <span>Chẩn đoán HOME</span>
               </button>
             </div>
             <pre id="homeDiagOut" class="home-pre" hidden></pre>

@@ -49,6 +49,16 @@ class LauncherDetector:
             except Exception as e:
                 error = error or str(e)
         is_default = home == self.GATHIN_PKG
+        stock_disabled = None
+        if installed is not None:
+            try:
+                out = self._shell("pm list packages -d com.google.android.apps.tv.launcherx 2>&1")
+                stock_disabled = any(
+                    ln.strip() == "package:com.google.android.apps.tv.launcherx"
+                    for ln in (out or "").splitlines()
+                )
+            except Exception:
+                stock_disabled = None
         # Gathin đang là launcher mặc định thì chắc chắn đã cài.
         if installed is None and is_default:
             installed, error = True, None
@@ -59,6 +69,7 @@ class LauncherDetector:
             "current_home": home,
             "compatible": bool(installed),
             "error": error,
+            "stock_disabled": stock_disabled,
         }
 
     def discover_config(self) -> Dict[str, Any]:

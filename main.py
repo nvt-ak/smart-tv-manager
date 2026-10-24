@@ -776,6 +776,22 @@ class Api:
 
         return self._launcher_op(host, port, run)
 
+    def set_stock_launcher(self, host, port=5555, disable=True):
+        """Disable (HOME → Gathin) or re-enable (original state) the stock Google TV launcher."""
+        def run(tm):
+            return tm.disable_stock_launcher() if disable else tm.enable_stock_launcher()
+
+        return self._launcher_op(host, port, run)
+
+    def get_auto_stock_launcher(self):
+        return bool(settings_store.load().get("auto_disable_stock_launcher", True))
+
+    def set_auto_stock_launcher(self, enabled=True):
+        data = settings_store.load()
+        data["auto_disable_stock_launcher"] = bool(enabled)
+        settings_store.save(data)
+        return bool(enabled)
+
     def diagnose_home(self, host, port=5555):
         """Read-only dump to see how HOME is routed on this TV (copyable in the UI)."""
         pkg = LauncherDetector.GATHIN_PKG
@@ -846,6 +862,33 @@ class Api:
         sidecar = home_widgets.board_payload(cfg, board_lines=board_lines)
         return patch, sidecar, prev
 
+    # Remote buttons of this TCL set that send keycodes Gathin does not know (captured with logcat):
+    # Settings = 4077, TV = 4001 → Live TV. Verified on the TV; extendable in settings.json
+    # under "remote_keys": {"settings_key_keycodes": [...], "app_keys": [...]}.
+    DEFAULT_REMOTE_KEYS = {
+        "settings_key_keycodes": [4077],
+        "app_keys": ["4001:com.tcl.tv"],
+    }
+
+    def _remote_key_overrides(self, theme):
+        """Config keys that keep the remote's Settings/TV buttons working after a theme push."""
+        cfg = settings_store.load().get("remote_keys")
+        keys = dict(cfg) if isinstance(cfg, dict) else dict(self.DEFAULT_REMOTE_KEYS)
+        base = {}
+        try:
+            with open(os.path.join(theme["path"], "config.json"), encoding="utf-8") as f:
+                base = json.load(f) or {}
+        except Exception:
+            pass
+        for k in ("settings_key_keycodes", "app_keys"):
+            if k in keys:
+                merged = list(base.get(k) or [])
+                for v in keys[k]:
+                    if v not in merged:
+                        merged.append(v)
+                keys[k] = merged
+        return keys
+
     def _wants_widget_wallpaper(self):
         cfg = settings_store.get_home_widgets()
         return bool(
@@ -859,6 +902,12 @@ class Api:
         from core import widget_render
 
         out = dict(theme)
+        bg = None
+        try:
+            with open(os.path.join(theme["path"], "config.json"), encoding="utf-8") as f:
+                bg = (json.load(f) or {}).get("background_color")
+        except Exception:
+            pass
         wp = theme.get("wallpaper")
         has_collection = any(
             str(p).lower().endswith((".jpg", ".jpeg", ".png"))
@@ -866,7 +915,7 @@ class Api:
         )
         if wp and os.path.exists(wp) or not has_collection:
             dst = os.path.join(workdir, "wallpaper.jpg")
-            widget_render.render_to_file(wp if wp and os.path.exists(wp) else None, data, dst)
+            widget_render.render_to_file(wp if wp and os.path.exists(wp) else None, data, dst, bg_color=bg)
             out["wallpaper"] = dst
         if has_collection:
             subdir = os.path.join(workdir, "wallpapers")
@@ -915,6 +964,7 @@ class Api:
 
         on_step("start", f"{theme.get('name') or theme_id} → {host}:{port}")
         widget_tmp = None
+        widget_skip = None
         if self._wants_widget_wallpaper():
             try:
                 on_step("widgets_fetch", "lấy dữ liệu vàng / xăng dầu")
@@ -924,16 +974,21 @@ class Api:
                     on_step("widgets_render", "vẽ widget vào wallpaper")
                     theme = self._composite_theme_widgets(theme, wdata, widget_tmp)
                 else:
-                    on_step("widgets_skip", "; ".join((wdata.get("errors") or {}).values()) or "không có dữ liệu")
+                    widget_skip = "; ".join((wdata.get("errors") or {}).values()) or "không có dữ liệu"
+                    on_step("widgets_skip", widget_skip)
             except Exception as exc:
-                on_step("widgets_error", str(exc))
+                widget_skip = str(exc)
+                on_step("widgets_error", widget_skip)
         try:
-            return self._apply_gathin_theme_locked(host, port, theme, theme_id, on_step, steps)
+            res = self._apply_gathin_theme_locked(host, port, theme, theme_id, on_step, steps, bool(widget_tmp))
+            res["widgets_wallpaper"] = bool(widget_tmp)
+            res["widgets_skipped"] = widget_skip
+            return res
         finally:
             if widget_tmp:
                 shutil.rmtree(widget_tmp, ignore_errors=True)
 
-    def _apply_gathin_theme_locked(self, host, port, theme, theme_id, on_step, steps):
+    def _apply_gathin_theme_locked(self, host, port, theme, theme_id, on_step, steps, widget_drawn=False):
         with self._dev_op_lock(host, port):
             self._drop_dev(host, port)
             on_step("adb_connect", f"{host}:{port}")
@@ -946,10 +1001,15 @@ class Api:
                 backup = tm.backup_config(backup_root, pull_assets=False)
                 on_step("backup_done", backup.get("time") or "")
                 widget_patch, widget_sidecar, _widget_prev = self._home_widgets_tv_bundle()
+                widget_patch = {**self._remote_key_overrides(theme), **(widget_patch or {})} or None
+                if widget_drawn:
+                    # Themes like Default ship `"wallpaper": false`; the baked image would never show.
+                    widget_patch = {**(widget_patch or {}), "wallpaper": True}
                 try:
                     result = tm.apply_theme(
                         theme,
                         config_overlay=widget_patch,
+                        restart=False,  # một lần khởi động lại duy nhất ở cuối (sau khi tắt launcher gốc)
                     )
                     if widget_sidecar:
                         on_step("widgets_sidecar", "smarttv_widgets.json")
@@ -969,6 +1029,27 @@ class Api:
                     except Exception as restore_exc:
                         on_step("restore_failed", str(restore_exc))
                     raise exc
+                if self.get_auto_stock_launcher():
+                    try:
+                        on_step("stock_launcher", "tắt launcher gốc để phím HOME mở Gathin")
+                        res_stock = tm.disable_stock_launcher()
+                        result["stock_launcher"] = res_stock.get("ok")
+                        if not res_stock.get("ok"):
+                            on_step("stock_launcher_rollback", "HOME không chuyển sang Gathin — đã bật lại launcher gốc")
+                    except Exception as exc:
+                        result["stock_launcher"] = False
+                        on_step("stock_launcher_error", str(exc))
+                on_step("restart_launcher", "khởi động lại Home để nhận theme")
+                try:
+                    if not tm.restart_launcher():
+                        on_step("restart_failed", "restart_launcher trả về False — thử lại")
+                        time.sleep(1.5)
+                        adb_client.reconnect(dev, timeout=15.0)
+                        if not tm.restart_launcher():
+                            raise Exception("Không khởi động lại launcher (adb shell timeout hoặc lỗi am/settings)")
+                except Exception as exc:
+                    on_step("error", str(exc))
+                    raise
                 try:
                     data = settings_store.load()
                     data["last_theme_id"] = theme_id

@@ -2800,24 +2800,7 @@ document.getElementById('apkClearHistoryBtn')?.addEventListener('click', () => {
 
 function setHomeStatus(msg) {
   if (homeStatus) homeStatus.textContent = msg || '';
-  const copyBtn = document.getElementById('homeStatusCopy');
-  if (copyBtn) copyBtn.hidden = !msg;
 }
-
-document.getElementById('homeStatusCopy')?.addEventListener('click', async () => {
-  const text = homeStatus?.textContent || '';
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    ta.remove();
-  }
-  showHomeToast('Đã sao chép', 'content_copy');
-});
 
 function formatApplyStepLine(step) {
   const t = step.t
@@ -2962,10 +2945,14 @@ function widgetThemeId() {
   return (sel && sel.value) || homeActiveThemeId || '';
 }
 
+let widgetThemeSynced = null;
 function populateWidgetThemeSelect() {
   const sel = document.getElementById('homeWidgetTheme');
   if (!sel) return;
   const prev = sel.value;
+  // Ô chọn luôn bám theme đang áp dụng; chỉ giữ lựa chọn tay khi theme đang áp dụng không đổi.
+  const followActive = widgetThemeSynced !== homeActiveThemeId;
+  widgetThemeSynced = homeActiveThemeId;
   sel.innerHTML = '';
   const valid = (homeThemes || []).filter((t) => !(t.errors || []).length);
   valid.forEach((t) => {
@@ -2974,7 +2961,8 @@ function populateWidgetThemeSelect() {
     o.textContent = t.name || t.id;
     sel.appendChild(o);
   });
-  const want = [prev, homeActiveThemeId].find((id) => id && valid.some((t) => t.id === id));
+  const order = followActive ? [homeActiveThemeId, prev] : [prev, homeActiveThemeId];
+  const want = order.find((id) => id && valid.some((t) => t.id === id));
   if (want) sel.value = want;
 }
 
@@ -3119,7 +3107,17 @@ function renderHomeDetect(info) {
   const instEl = document.getElementById('homeKpiInstalled');
   const defEl = document.getElementById('homeKpiDefault');
   const compatEl = document.getElementById('homeKpiCompat');
+  const stockEl = document.getElementById('homeKpiStock');
   if (!info) return;
+  if (stockEl) {
+    if (info.stock_disabled == null) {
+      stockEl.textContent = '—';
+      stockEl.className = 'home-kpi-value';
+    } else {
+      stockEl.textContent = info.stock_disabled ? 'Đã tắt' : 'Đang bật';
+      stockEl.className = `home-kpi-value ${info.stock_disabled ? 'ok' : ''}`;
+    }
+  }
   if (pkgEl) pkgEl.textContent = info.pkg || '—';
   if (instEl) {
     if (info.installed === null || info.installed === undefined) {
@@ -3134,10 +3132,12 @@ function renderHomeDetect(info) {
   }
   if (defEl) {
     if (info.is_default_home) {
-      defEl.textContent = 'Gathin (mặc định)';
+      defEl.textContent = 'CleanYourTV';
       defEl.className = 'home-kpi-value ok';
     } else {
-      defEl.textContent = info.current_home ? `Khác: ${info.current_home}` : 'Chưa thiết lập';
+      defEl.textContent = info.current_home
+        ? (info.current_home === 'com.google.android.apps.tv.launcherx' ? 'Launcher gốc' : info.current_home)
+        : 'Chưa xác định';
       defEl.className = `home-kpi-value ${info.current_home ? '' : 'err'}`;
     }
   }
@@ -3171,6 +3171,7 @@ function renderActiveThemePanel(cur, matchedTheme) {
   const keys = Object.keys(cur.config || {});
   const walls = cur.wallpapers || [];
   homeActiveThemeId = matchedTheme ? matchedTheme.id : guessActiveThemeId(cur.config);
+  populateWidgetThemeSelect();
 
   const displayName = matchedTheme
     ? matchedTheme.name
@@ -3335,8 +3336,11 @@ async function loadCurrentTheme(btn, opts = {}) {
       if (!homeThemes.length && homeThemesLoading) await homeThemesLoading;
       if (!activeDevice || `${activeDevice.host}:${activeDevice.port}` !== key) return;
       const stableCfg = stableThemeJson(cur.config || {});
+      // Nhiều theme có thể trùng config (sau khi bỏ khoá widget) → ưu tiên theme vừa áp dụng.
+      const byConfig = homeThemes.filter((t) => stableThemeJson(t.config || {}) === stableCfg);
       const matched =
-        homeThemes.find((t) => stableThemeJson(t.config || {}) === stableCfg) ||
+        byConfig.find((t) => t.id === cur.last_theme_id) ||
+        byConfig[0] ||
         homeThemes.find((t) => t.id === cur.last_theme_id) ||
         null;
       const cachedWall =
@@ -3508,8 +3512,14 @@ async function applyTheme(id, btn) {
     closeThemeModal();
     setHomeStatus(`Đã áp dụng "${theme.name}". Backup: ${backupTime}${warns}`);
     homeActiveThemeId = id;
-    const widgetExtra = res.home_widgets ? ' (kèm widget Home)' : '';
+    const widgetExtra = (res.home_widgets ? ' (kèm widget Home)' : '') +
+      (res.stock_launcher ? ' · đã tắt launcher gốc' : '') +
+      (res.widgets_wallpaper ? ' · đã vẽ widget vàng/xăng vào ảnh nền' : '');
     showHomeToast(`Đã áp dụng theme "${theme.name}"${widgetExtra}`, 'palette');
+    if (res.widgets_skipped) {
+      setHomeStatus(`Đã áp dụng "${theme.name}" nhưng KHÔNG vẽ được widget: ${res.widgets_skipped}`);
+      showHomeToast(`Không vẽ được widget: ${res.widgets_skipped}`, 'error');
+    }
     await loadCurrentTheme();
     await loadHomeBackups();
     renderHomeThemeGrid();
@@ -3570,6 +3580,40 @@ if (homeSetDefaultBtn) {
       setHomeStatus(`Lỗi: ${err}`);
     }
     setButtonLoading(homeSetDefaultBtn, false);
+  });
+}
+
+const homeStockOnBtn = document.getElementById('homeStockOnBtn');
+if (homeStockOnBtn) {
+  homeStockOnBtn.addEventListener('click', async () => {
+    if (!activeDevice) return;
+    if (!confirm('Bật lại Google TV Launcher? Phím HOME vật lý sẽ mở launcher gốc, các phím P+/P-, chế độ TV hoạt động như ban đầu.\\n\\nTắt «Tự tắt launcher gốc» nếu không muốn lần áp dụng theme sau lại tắt nó.')) return;
+    setButtonLoading(homeStockOnBtn, true, 'Đang xử lý...');
+    try {
+      const res = await getApi().set_stock_launcher(activeDevice.host, activeDevice.port, false);
+      if (res.launcher) renderHomeDetect(res.launcher);
+      showHomeToast(res.ok ? 'Đã bật lại launcher gốc' : 'Không bật lại được launcher gốc', res.ok ? 'undo' : 'error');
+      setHomeStatus(res.ok ? 'Đã bật lại Google TV Launcher (trạng thái ban đầu).' : `Không bật lại được: ${res.output || ''}`);
+    } catch (err) {
+      setHomeStatus(`Lỗi: ${err}`);
+    }
+    setButtonLoading(homeStockOnBtn, false);
+  });
+}
+
+const homeAutoStock = document.getElementById('homeAutoStock');
+if (homeAutoStock) {
+  const loadAutoStock = () => {
+    try {
+      getApi().get_auto_stock_launcher().then((v) => { homeAutoStock.checked = !!v; }).catch(() => {});
+    } catch {
+      /* API chưa sẵn sàng */
+    }
+  };
+  if (hasPywebviewApi()) loadAutoStock();
+  else window.addEventListener('pywebviewready', loadAutoStock, { once: true });
+  homeAutoStock.addEventListener('change', () => {
+    getApi().set_auto_stock_launcher(homeAutoStock.checked).catch(() => {});
   });
 }
 

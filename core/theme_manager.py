@@ -35,6 +35,7 @@ STAGE_PREFIX = "/data/local/tmp/smarttvmanager-theme"
 
 CONFIG_NAME = "config.json"
 WALLPAPER_NAME = "wallpaper.jpg"
+STOCK_LAUNCHER_PKG = "com.google.android.apps.tv.launcherx"
 COLLECTION = "wallpapers"
 CAPTIONS_NAME = "captions.txt"
 REVISION_NAME = "theme_revision"
@@ -209,6 +210,8 @@ class ThemeManager:
             adb_commands.HOME_RESOLVE_CMD,
             "echo @@STV:ROLE@@",
             adb_commands.HOME_ROLE_CMD,
+            "echo @@STV:STOCK@@",
+            f"pm list packages -d {STOCK_LAUNCHER_PKG} 2>&1",
             "echo @@STV:END@@",
         ]
         out = self._shell("; ".join(parts), timeout_s=adb_client.SHELL_DEFAULT_TIMEOUT)
@@ -255,6 +258,11 @@ class ThemeManager:
             "current_home": home,
             "compatible": installed,
             "error": None,
+            "stock_pkg": STOCK_LAUNCHER_PKG,
+            "stock_disabled": any(
+                ln.strip() == f"package:{STOCK_LAUNCHER_PKG}"
+                for ln in sections.get("STOCK", "").splitlines()
+            ),
         }
         return {
             "launcher": launcher,
@@ -262,6 +270,35 @@ class ThemeManager:
             "revision": pick(sections.get("REV_CR", ""), sections.get("REV_CAT", "")),
             "wallpapers": wallpapers,
             "provider": bool(self._provider_supported),
+        }
+
+    # ----------------------------------------------------- stock launcher switch
+
+    def enable_stock_launcher(self) -> Dict[str, Any]:
+        """Re-enable the stock Google TV launcher (back to the TV's original state)."""
+        out = (self._shell(f"pm enable --user 0 {STOCK_LAUNCHER_PKG} 2>&1") or "").strip()
+        launcher = self.read_state()["launcher"]
+        return {"ok": not launcher["stock_disabled"], "output": out, "launcher": launcher}
+
+    def disable_stock_launcher(self) -> Dict[str, Any]:
+        """Disable the stock launcher so the remote's HOME key opens Gathin.
+
+        Verified: HOME must resolve to Gathin afterwards, otherwise the stock launcher is
+        re-enabled again (rolled_back=True). Refuses when Gathin is not installed.
+        """
+        state = self.read_state()["launcher"]
+        if state.get("installed") is not True:
+            raise Exception("TV chưa cài CleanYourTV (com.gathin.tvhome) — không tắt launcher gốc.")
+        if state["stock_disabled"] and state.get("current_home") == PKG:
+            return {"ok": True, "already": True, "output": "", "launcher": state}
+        out = (self._shell(f"pm disable-user --user 0 {STOCK_LAUNCHER_PKG} 2>&1") or "").strip()
+        launcher = self.read_state()["launcher"]
+        if launcher.get("current_home") == PKG:
+            return {"ok": True, "output": out, "launcher": launcher}
+        self._shell(f"pm enable --user 0 {STOCK_LAUNCHER_PKG} 2>&1")
+        return {
+            "ok": False, "rolled_back": True, "output": out,
+            "launcher": self.read_state()["launcher"],
         }
 
     def _read_overlay_text(self, rel: str) -> str:
@@ -579,8 +616,9 @@ class ThemeManager:
         theme: Dict[str, Any],
         *,
         config_overlay: Optional[Dict[str, Any]] = None,
+        restart: bool = True,
     ) -> Dict[str, Any]:
-        """Write config + wallpapers, bump the revision and restart Home."""
+        """Write config + wallpapers, bump the revision and (optionally) restart Home."""
         name = theme.get("name") or theme.get("id") or "theme"
         self._step("validate", name)
         check = self.validate_theme(theme)
@@ -633,9 +671,10 @@ class ThemeManager:
 
         self._step("revision", REVISION_NAME)
         self._write_revision()
-        self._step("restart_launcher", PKG)
-        if not self.restart_launcher():
-            raise Exception("Không khởi động lại launcher (adb shell timeout hoặc lỗi am/settings)")
+        if restart:
+            self._step("restart_launcher", PKG)
+            if not self.restart_launcher():
+                raise Exception("Không khởi động lại launcher (adb shell timeout hoặc lỗi am/settings)")
         self._step("done", name)
         return {"ok": True, "warnings": check["warnings"]}
 
@@ -783,6 +822,14 @@ class ThemeManager:
         actually changes).
         """
         script = (
+            # HomeKeyService (Settings/Home keys) + InputKeyService (TV / input switcher key) must
+            # both be on the enabled list; a force stop or firmware reset often leaves only one.
+            "cur=$(settings get secure enabled_accessibility_services); "
+            '[ "$cur" = null ] && cur=""; '
+            f'for s in HomeKeyService InputKeyService; do case "$cur" in *{PKG}/.$s*) ;; '
+            f'*) cur="${{cur:+$cur:}}{PKG}/.$s" ;; esac; done; '
+            'settings put secure enabled_accessibility_services "$cur"; '
+            "settings put secure accessibility_enabled 1; "
             "a=$(settings get secure enabled_accessibility_services); "
             f"am force-stop {PKG}; "
             "case \"$(cmd package resolve-activity --brief -a android.intent.action.MAIN "
