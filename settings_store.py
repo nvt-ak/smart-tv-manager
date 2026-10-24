@@ -5,6 +5,7 @@ import os
 from adb_client import KEY_DIR
 
 SETTINGS_PATH = os.path.join(KEY_DIR, "settings.json")
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 
 def load() -> dict:
@@ -42,7 +43,37 @@ def set_openai_api_key(key: str | None) -> None:
     save(data)
 
 
+def get_openai_base_url() -> str:
+    raw = (load().get("openai_base_url") or "").strip()
+    return raw or DEFAULT_OPENAI_BASE_URL
+
+
+def set_openai_base_url(url: str | None) -> None:
+    data = load()
+    url = (url or "").strip()
+    if url:
+        data["openai_base_url"] = url
+    else:
+        data.pop("openai_base_url", None)
+    save(data)
+
+
+def get_openai_model() -> str:
+    return (load().get("openai_model") or "").strip() or "gpt-4o-mini"
+
+
+def set_openai_model(model: str | None) -> None:
+    data = load()
+    model = (model or "").strip()
+    if model:
+        data["openai_model"] = model
+    else:
+        data.pop("openai_model", None)
+    save(data)
+
+
 def public_settings() -> dict:
+    data = load()
     key = get_openai_api_key()
     hint = ""
     if len(key) >= 8:
@@ -50,5 +81,6 @@ def public_settings() -> dict:
     return {
         "openai_configured": bool(key),
         "openai_key_hint": hint,
-        "openai_model": load().get("openai_model") or "gpt-4o-mini",
+        "openai_model": get_openai_model(),
+        "openai_base_url": get_openai_base_url(),
     }

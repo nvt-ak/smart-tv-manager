@@ -540,23 +540,27 @@
         </header>
 
         <div class="smart-clean-workspace">
-          <section class="smart-clean-ai-card">
-            <div class="smart-clean-ai-glow" aria-hidden="true"></div>
-            <div class="smart-clean-ai-top">
-              <div class="smart-clean-ai-heading">
-                <div class="smart-clean-ai-icon">
-                  <span class="material-symbols-outlined">bolt</span>
-                </div>
-                <div>
-                  <div class="smart-clean-ai-title-row">
-                    <h2 id="smartCleanTitle" class="smart-clean-ai-title">Gợi ý AI &amp; tối ưu thông minh</h2>
-                    <span class="smart-clean-gpt-badge">GPT-4O READY</span>
-                  </div>
-                  <p class="smart-clean-ai-lead">
-                    Phân tích tự động danh sách package trên Android TV để đề xuất gỡ bỏ hoặc vô hiệu hóa ứng dụng rác, bloatware giúp TV chạy mượt mà hơn.
-                  </p>
-                </div>
+          <details id="smartCleanAiPanel" class="smart-clean-ai-card smart-clean-ai-panel">
+            <summary class="smart-clean-ai-summary" aria-labelledby="smartCleanTitle">
+              <div class="smart-clean-ai-glow" aria-hidden="true"></div>
+              <div class="smart-clean-ai-icon smart-clean-ai-icon--summary">
+                <span class="material-symbols-outlined">bolt</span>
               </div>
+              <div class="smart-clean-ai-summary-text">
+                <div class="smart-clean-ai-title-row">
+                  <h2 id="smartCleanTitle" class="smart-clean-ai-title">Gợi ý AI &amp; tối ưu thông minh</h2>
+                  <span class="smart-clean-gpt-badge">GPT-4O READY</span>
+                </div>
+                <p class="smart-clean-ai-summary-hint">Mặc định dùng Offline DB — mở để cấu hình API / quét AI</p>
+              </div>
+              <span class="material-symbols-outlined smart-clean-ai-chevron" aria-hidden="true">expand_more</span>
+            </summary>
+
+            <div class="smart-clean-ai-panel-body">
+            <div class="smart-clean-ai-top">
+              <p class="smart-clean-ai-lead">
+                Phân tích tự động danh sách package trên Android TV để đề xuất gỡ bỏ hoặc vô hiệu hóa ứng dụng rác, bloatware giúp TV chạy mượt mà hơn.
+              </p>
               <div class="smart-clean-security">
                 <span class="smart-clean-security-label">Bảo mật:</span>
                 <span class="smart-clean-security-pill">
@@ -584,6 +588,18 @@
               <button type="button" id="smartCleanTestPing" class="smart-clean-key-side-btn smart-clean-key-side-btn--muted">
                 Test Ping
               </button>
+            </div>
+            <div class="smart-clean-endpoint-row">
+              <div class="smart-clean-key-field smart-clean-endpoint-field">
+                <span class="material-symbols-outlined smart-clean-key-icon">link</span>
+                <input id="smartCleanApiBase" class="smart-clean-key-input smart-clean-url-input" type="text" spellcheck="false" placeholder="https://api.openai.com/v1 hoặc proxy OpenAI-compatible…" autocomplete="off">
+              </div>
+              <div class="smart-clean-model-wrap">
+                <label class="smart-clean-model-label" for="smartCleanModel">Model</label>
+                <select id="smartCleanModel" class="smart-clean-model-select" disabled>
+                  <option value="">Test Ping để tải danh sách model…</option>
+                </select>
+              </div>
             </div>
 
             <div class="smart-clean-mode-grid">
@@ -614,7 +630,8 @@
             </div>
             <button type="button" id="smartCleanAnalyzeLocal" class="sr-only" tabindex="-1" aria-hidden="true">Scan offline</button>
             <button type="button" id="smartCleanAnalyzeAi" class="sr-only" tabindex="-1" aria-hidden="true">Scan AI</button>
-          </section>
+            </div>
+          </details>
 
           <section class="smart-clean-toolbar">
             <div class="smart-clean-metrics-row">

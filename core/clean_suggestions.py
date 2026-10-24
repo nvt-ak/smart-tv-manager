@@ -137,6 +137,10 @@ class CleanSuggestionEngine:
                 continue
             cur["tier"] = tier
             cur["reason"] = (row.get("reason") or cur.get("reason") or "Gợi ý AI.").strip()
+            if row.get("category"):
+                cur["ai_category"] = row.get("category")
+            if row.get("confidence"):
+                cur["ai_confidence"] = row.get("confidence")
             cur["source"] = "ai"
             cur["selected"] = tier == "recommend"
         return sort_suggestions_by_tier(list(by_pkg.values()))

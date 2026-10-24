@@ -12,18 +12,27 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ### Added
 
+- Smart Clean AI: override **Base URL** OpenAI-compatible (`settings.json`), **Test Ping** trả danh sách model và chọn model trong dropdown trước khi quét AI.
 - **Smart Clean** (tab Quản lý ứng dụng): gợi ý offline [`data/clean_heuristics.json`](data/clean_heuristics.json), tùy chọn phân tích **OpenAI API key** (lưu `~/.smarttv-manager/settings.json`), chọn và **vô hiệu hóa hàng loạt** qua lớp `safety`.
 - UI Smart Clean: Debloat Advisor (titlebar, AI card, metric pills, package cards, footer ADB) theo mock; `smart-clean.css`.
 
 ### Changed
 
+- Smart Clean AI: system prompt phân loại package (tier/category/confidence, quy tắc skip cứng); user payload gồm `current_home_package`, `label`, `is_system`, `has_launcher_icon`; parse `results[]`; merge lưu `ai_category` / `ai_confidence`.
+- Smart Clean: modal **gần full màn hình** (viền 4px); thẻ package, toolbar, footer và panel AI **compact** hơn; panel AI mở có scroll nội bộ để ưu tiên diện tích danh sách.
+- Smart Clean: panel «Gợi ý AI & tối ưu thông minh» thu gọn (`<details>`), **mặc định đóng** — danh sách gói chiếm phần lớn màn hình; viền thẻ package gọn (một `border-left`).
 - Smart Clean: ô API key và tìm kiếm package — một lớp viền; loại trừ input/button Smart Clean khỏi style global trong `main.css` (tránh viền lồng).
 
 ### Fixed
 
+- Smart Clean: quét AI dùng **model + Base URL** từ form (tránh 401 `gpt-4o-mini` trên proxy local); loading danh sách + «đang quét…» trên nút Offline/AI; đổi model tự lưu settings.
+- Smart Clean: Test Ping không ghi đè dropdown model sau sync; proxy local (1500+ model) giới hạn ~200 mục (`auto/*` ưu tiên); HTTP localhost không bắt SSL.
+- Smart Clean / OpenAI: HTTPS dùng CA bundle `certifi` (hết `SSL: CERTIFICATE_VERIFY_FAILED` trên macOS Python); thông báo lỗi SSL gợi ý cài cert.
+- Smart Clean: **Lưu Key** / **Test Ping** — spinner «Đang lưu…» / «Đang ping…»; Test Ping trả `{ok, error}` (không traceback khi thiếu key); lưu settings không xóa key khi ô key trống.
 - Smart Clean: `merge_ai` giữ thứ tự tier (recommend → review → skip) như `analyze`.
 - Tab Apps: đồng bộ phiên bản theo lô (tối đa 100 gói, 40/lần) thay vì chỉ 20 gói đầu.
 - `list_devices`: chuẩn hóa `check` rỗng/khoảng trắng → `adb`; mode lạ fallback `adb`.
+- `device_shell` / gõ text remote: timeout shell 25–45s, reconnect một lần, xóa cache ADB khi timeout — message tiếng Việt thay traceback.
 - `list_devices` song song: ghi `devices.json` một lần (`batch_update_online`) + khóa/temp file riêng — hết `FileNotFoundError` khi thay `.tmp`.
 - Khởi động nhanh hơn: mở thẳng `index.html` + overlay boot (không splash riêng), `list_devices('cache'|'port'|'adb')` — lần đầu không chặn pywebview bằng ADB; tải phiên bản app trì hoãn (tối đa 20 gói).
 - ADB Wi‑Fi: `PackageManager` dùng timeout/reconnect (tới 45s cho `pm list packages`), gộp 3 lệnh list trong một shell; timeout → xóa cache kết nối và báo lỗi tiếng Việt thay vì traceback `TcpTimeoutException`.

@@ -93,6 +93,23 @@ class Api:
         msg = str(err).lower()
         return "timed out" in msg or "tcptimeout" in msg.replace("_", "")
 
+    def _adb_shell_error(self, host, port, err: Exception) -> Exception:
+        if self._adb_timeout_error(err):
+            return Exception(
+                f"ADB timeout — TV {host}:{port} không phản hồi (Wi‑Fi chậm, TV ngủ, hoặc mất kết nối). "
+                "Thử bật màn hình TV, tab Thiết bị → Làm mới / Kết nối lại."
+            )
+        return Exception(str(err))
+
+    def _run_device_shell(self, host, port, command: str) -> str:
+        dev = self._get_dev(host, int(port))
+        try:
+            return adb_client.run_shell(dev, command)
+        except Exception as e:
+            if self._adb_timeout_error(e):
+                self._drop_dev(host, port)
+            raise
+
     def list_devices(self, check="adb"):
         """List saved TVs. check: cache (instant) | port (TCP 5555) | adb (full handshake)."""
         devices = store.load()
@@ -153,23 +170,23 @@ class Api:
         if not text:
             raise Exception("Nội dung trống")
         escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace(" ", "%s")
-        dev = self._get_dev(host, int(port))
-        try:
-            dev.shell(f'input text "{escaped}"')
-            return {"ok": True}
-        except Exception as e:
-            raise Exception(str(e))
+        with self._dev_op_lock(host, port):
+            try:
+                self._run_device_shell(host, port, f'input text "{escaped}"')
+                return {"ok": True}
+            except Exception as e:
+                raise self._adb_shell_error(host, port, e) from e
 
     def device_shell(self, host, port=5555, command=""):
         command = (command or "").strip()
         if not command:
             raise Exception("Lệnh trống")
-        dev = self._get_dev(host, int(port))
-        try:
-            out = dev.shell(command) or ""
-            return {"output": out.strip()}
-        except Exception as e:
-            raise Exception(str(e))
+        with self._dev_op_lock(host, port):
+            try:
+                out = self._run_device_shell(host, port, command) or ""
+                return {"output": out.strip()}
+            except Exception as e:
+                raise self._adb_shell_error(host, port, e) from e
 
     def list_apps(self, host, port=5555):
         with self._dev_op_lock(host, port):
@@ -220,23 +237,55 @@ class Api:
     def get_app_settings(self):
         return settings_store.public_settings()
 
-    def save_app_settings(self, openai_api_key=None, openai_model=None):
+    def save_app_settings(
+        self,
+        openai_api_key=None,
+        openai_model=None,
+        openai_base_url=None,
+    ):
         if openai_api_key is not None:
-            settings_store.set_openai_api_key(openai_api_key)
-        if openai_model:
-            data = settings_store.load()
-            data["openai_model"] = str(openai_model).strip() or "gpt-4o-mini"
-            settings_store.save(data)
+            stripped = (openai_api_key or "").strip()
+            if stripped:
+                settings_store.set_openai_api_key(stripped)
+            # None / chuỗi rỗng: giữ key đã lưu (tránh xóa khi chỉ cập nhật URL/model)
+        if openai_model is not None:
+            settings_store.set_openai_model(str(openai_model).strip() or None)
+        if openai_base_url is not None:
+            settings_store.set_openai_base_url(str(openai_base_url).strip() or None)
         return settings_store.public_settings()
 
-    def test_openai_connection(self):
-        key = settings_store.get_openai_api_key()
+    def test_openai_connection(self, openai_api_key=None, openai_base_url=None):
+        typed = (openai_api_key or "").strip() if openai_api_key is not None else ""
+        key = typed or settings_store.get_openai_api_key()
         if not key:
-            raise Exception("Chưa lưu OpenAI API key")
-        ai_clean.ping_openai(api_key=key)
-        return {"ok": True}
+            return {
+                "ok": False,
+                "error": "Chưa có API key — dán vào ô key hoặc bấm Lưu Key trước.",
+                "models": [],
+            }
+        base = (openai_base_url or "").strip() if openai_base_url else ""
+        base = base or settings_store.get_openai_base_url()
+        try:
+            models = ai_clean.fetch_models(api_key=key, base_url=base)
+            normalized = ai_clean.normalize_base_url(base)
+            return {
+                "ok": True,
+                "models": models,
+                "base_url": normalized,
+                "error": None,
+                "models_total": len(models),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e), "models": []}
 
-    def smart_clean_suggest(self, host, port=5555, use_ai=False):
+    def smart_clean_suggest(
+        self,
+        host,
+        port=5555,
+        use_ai=False,
+        openai_model=None,
+        openai_base_url=None,
+    ):
         listed = self.list_apps(host, port)
         apps = listed.get("apps") or []
         pm = self._get_pm(host, port)
@@ -249,22 +298,53 @@ class Api:
                 ai_error = "Chưa lưu OpenAI API key — dùng gợi ý nhanh (offline) hoặc dán key bên dưới."
             else:
                 try:
-                    candidates = [
-                        s["package"]
-                        for s in suggestions
-                        if s.get("enabled") and s.get("can_disable") and s.get("tier") != "blocked"
-                    ]
+                    apps_by_pkg = {a.get("package"): a for a in apps if a.get("package")}
+                    current_home = listed.get("current_home") or ""
+                    launcher_pkgs: set = set()
+                    try:
+                        launcher_pkgs = pm.get_launcher_package_set()
+                    except Exception:
+                        pass
+                    package_items = []
+                    for s in suggestions:
+                        if not (
+                            s.get("enabled")
+                            and s.get("can_disable")
+                            and s.get("tier") != "blocked"
+                        ):
+                            continue
+                        pkg = s["package"]
+                        app = apps_by_pkg.get(pkg) or {}
+                        package_items.append(
+                            {
+                                "package": pkg,
+                                "label": app.get("label") or "",
+                                "is_system": app.get("type") == "system",
+                                "has_launcher_icon": bool(
+                                    app.get("is_home") or pkg in launcher_pkgs
+                                ),
+                            }
+                        )
                     pub = settings_store.public_settings()
+                    llm_model = (openai_model or "").strip() or pub.get("openai_model") or "gpt-4o-mini"
+                    base_url = (openai_base_url or "").strip() or pub.get("openai_base_url")
                     ai_rows = ai_clean.suggest_with_openai(
                         api_key=key,
-                        model=pub.get("openai_model") or "gpt-4o-mini",
+                        model=llm_model,
                         manufacturer=manufacturer,
                         model_name=model,
-                        packages=candidates,
+                        package_items=package_items,
+                        current_home_package=current_home,
+                        base_url=base_url,
                     )
                     suggestions = self._clean_engine.merge_ai(suggestions, ai_rows)
                 except Exception as e:
-                    ai_error = str(e)
+                    msg = str(e)
+                    if "HTTP 401" in msg and "gpt-4o" in llm_model.lower():
+                        msg += " — proxy local thường không hỗ trợ tên OpenAI mặc định; chọn model sau Test Ping và Lưu Key."
+                    elif "HTTP 401" in msg:
+                        msg += f" — kiểm tra API key và model «{llm_model}» trên Base URL đã cấu hình."
+                    ai_error = msg
         counts = {"recommend": 0, "review": 0, "skip": 0, "blocked": 0}
         for s in suggestions:
             counts[s.get("tier") or "skip"] = counts.get(s.get("tier") or "skip", 0) + 1

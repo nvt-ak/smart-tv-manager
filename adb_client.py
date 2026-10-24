@@ -18,6 +18,8 @@ from app_brand import user_data_dir
 
 PORT = 5555
 CONNECT_TIMEOUT = 8.0
+# Most TV shell commands over Wi‑Fi need more than 8s; default read timeout for generic shell.
+SHELL_DEFAULT_TIMEOUT = 25.0
 # `pm list packages` on a TV over Wi‑Fi can exceed 8s when the link is busy.
 SHELL_HEAVY_TIMEOUT = 45.0
 # Wi‑Fi ADB on TVs is often << 1 MB/s; 30s is too tight even for ~150 KB wallpapers.
@@ -66,6 +68,53 @@ def ensure_connected(device, timeout=CONNECT_TIMEOUT):
         except Exception:
             pass
     reconnect(device, timeout=timeout)
+
+
+def shell_timeout_for(command: str) -> float:
+    c = (command or "").lower()
+    heavy = (
+        "dumpsys",
+        "pm list",
+        "pm install",
+        "pm path",
+        "pkg ",
+        "logcat",
+        " backup",
+        "restore",
+        "df ",
+        "du ",
+        "getevent",
+        "screenrecord",
+        "am start",
+    )
+    if any(m in c for m in heavy):
+        return SHELL_HEAVY_TIMEOUT
+    return SHELL_DEFAULT_TIMEOUT
+
+
+def run_shell(device, command: str, timeout: float | None = None) -> str:
+    """Run adb shell with Wi‑Fi-friendly timeouts and one reconnect retry."""
+    t = float(timeout if timeout is not None else shell_timeout_for(command))
+    last_err: Exception | None = None
+    for attempt in range(2):
+        try:
+            ensure_connected(device, timeout=min(t, 15.0))
+            return device.shell(
+                command,
+                transport_timeout_s=t,
+                read_timeout_s=t,
+                timeout_s=t,
+            )
+        except Exception as e:
+            last_err = e
+            if attempt == 0:
+                try:
+                    reconnect(device, timeout=min(t, 15.0))
+                except Exception:
+                    pass
+    assert last_err is not None
+    raise last_err
+
 
 KEY_DIR = user_data_dir()
 KEY_PATH = os.path.join(KEY_DIR, "adbkey")

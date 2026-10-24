@@ -101,6 +101,27 @@ class PackageManager:
                 result[pkg] = {"package": pkg}
         return result
 
+    def get_launcher_package_set(self) -> set[str]:
+        """Packages with MAIN+LAUNCHER or LEANBACK_LAUNCHER activities (one round-trip per query)."""
+        found: set[str] = set()
+        for category in (
+            "android.intent.category.LAUNCHER",
+            "android.intent.category.LEANBACK_LAUNCHER",
+        ):
+            try:
+                out = self._shell(
+                    "cmd package query-intent-activities "
+                    f"-a android.intent.action.MAIN -c {category} 2>&1",
+                    timeout=adb_client.SHELL_HEAVY_TIMEOUT,
+                )
+                for line in (out or "").splitlines():
+                    m = re.search(r"([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)/", line, re.I)
+                    if m:
+                        found.add(m.group(1))
+            except Exception:
+                continue
+        return found
+
     def get_current_home(self) -> str:
         try:
             out = self._shell(
