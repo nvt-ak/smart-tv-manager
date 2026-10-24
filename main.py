@@ -18,11 +18,11 @@ from core.cleanyourtv_themes import CleanyourtvThemes
 from core.clean_suggestions import CleanSuggestionEngine
 from core import ai_clean
 from core import home_widgets
-from core import host_location
 import settings_store
 import base64
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -39,6 +39,10 @@ class Api:
         self._apply_jobs = {}
         self._apply_jobs_lock = threading.Lock()
         self._dev_locks = {}
+        # Dedicated light connection for remote key presses: not blocked by long operations
+        # and reused (a fresh TCP + auth handshake per key press was slow).
+        self._key_devs = {}
+        self._key_locks = {}
         self._home_cache = {}
         self._clean_engine = CleanSuggestionEngine()
 
@@ -65,6 +69,12 @@ class Api:
 
     def shutdown(self):
         """Close every cached ADB session (call when the app exits)."""
+        for kd in list(self._key_devs.values()):
+            try:
+                kd.close()
+            except Exception:
+                pass
+        self._key_devs.clear()
         keys = set(self._dev_cache.keys()) | set(self._pm_cache.keys())
         for key in list(keys):
             host, _, port_s = key.rpartition(":")
@@ -136,6 +146,27 @@ class Api:
                 self._drop_dev(host, port)
             raise
 
+    def _online_via_cache(self, host, port):
+        """Reuse an already-open ADB session instead of a fresh handshake.
+
+        Returns True/False when the cached session answers (or is busy with a real operation,
+        which proves it is alive), or None when there is no cached session to ask.
+        """
+        key = f"{host}:{int(port)}"
+        dev = self._dev_cache.get(key)
+        if dev is None or not getattr(dev, "available", False):
+            return None
+        lock = self._dev_op_lock(host, port)
+        if not lock.acquire(blocking=False):
+            return True  # another operation is using the session right now
+        try:
+            if self._ping_cached_dev(dev):
+                return True
+            self._drop_dev(host, port)
+            return None  # session was dead: fall back to a fresh check
+        finally:
+            lock.release()
+
     def list_devices(self, check="adb"):
         """List saved TVs. check: cache (instant) | port (TCP 5555) | adb (full handshake)."""
         devices = store.load()
@@ -154,7 +185,9 @@ class Api:
             if mode == "port":
                 online = adb_client.port_reachable(host, port)
             else:
-                online = adb_client.quick_check(host, port)
+                online = self._online_via_cache(host, port)
+                if online is None:
+                    online = adb_client.quick_check(host, port)
             nd = dict(d)
             nd["online"] = online
             return host, online, nd
@@ -170,8 +203,43 @@ class Api:
         # Return all found devices (including already saved) so user can see them
         return found
 
+    def _connect_and_cache(self, host, port):
+        with self._dev_op_lock(host, port):
+            self._drop_dev(host, port)
+            dev = adb_client.connect(host, int(port), timeout=30.0)
+            try:
+                info = {
+                    "model": adb_client.run_shell(dev, "getprop ro.product.model").strip(),
+                    "android": adb_client.run_shell(dev, "getprop ro.build.version.release").strip(),
+                    "build": adb_client.run_shell(dev, "getprop ro.build.display.id").strip(),
+                }
+            except Exception:
+                try:
+                    dev.close()
+                except Exception:
+                    pass
+                raise
+            try:  # later calls without explicit timeouts should not inherit the 30s connect wait
+                dev._default_transport_timeout_s = adb_client.CONNECT_TIMEOUT
+            except Exception:
+                pass
+            self._dev_cache[f"{host}:{int(port)}"] = dev
+            return info
+
     def connect(self, host, port=5555, name=None):
-        info = adb_client.probe(host, int(port))
+        try:
+            # Timeout dài hơn để kịp bấm "Cho phép" trên TV ở lần kết nối đầu.
+            # Kết nối vừa mở được giữ lại trong cache để các thao tác sau dùng tiếp.
+            info = self._connect_and_cache(host, int(port))
+        except Exception as e:
+            if self._adb_timeout_error(e):
+                raise Exception(
+                    f"Không kết nối được {host}:{port} — TV không trả lời bắt tay ADB. "
+                    "Kiểm tra: (1) TV đang bật màn hình, (2) đã bật Gỡ lỗi USB/Gỡ lỗi mạng (ADB over network), "
+                    "(3) nếu TV hiện hộp thoại \"Cho phép gỡ lỗi USB?\" thì chọn Luôn cho phép, "
+                    "(4) máy tính và TV cùng mạng Wi‑Fi/LAN. Sau đó bấm Kết nối lại."
+                ) from e
+            raise
         store.upsert(host, int(port), name or info["model"] or host)
         return info
 
@@ -185,11 +253,39 @@ class Api:
         return store.remove(host)
 
     def remote_key(self, host, port=5555, keycode=4):
-        try:
-            adb_client.send_key(host, int(port), int(keycode))
-            return {"ok": True}
-        except Exception as e:
-            raise Exception(str(e))
+        keycode = int(keycode)
+        cmd = f"input keyevent {keycode}"
+        if keycode == 3:
+            # `input keyevent 3` is injected, so it bypasses Gathin's HomeKeyService and the
+            # firmware routes it to the stock launcher. Open Gathin directly when installed.
+            pkg = LauncherDetector.GATHIN_PKG
+            cmd = (
+                f"pm path {pkg} >/dev/null 2>&1 && "
+                f"am start -a android.intent.action.MAIN -c android.intent.category.HOME "
+                f"-n {pkg}/.MainActivity >/dev/null 2>&1 || input keyevent 3"
+            )
+        key = f"{host}:{int(port)}"
+        lock = self._key_locks.setdefault(key, threading.Lock())
+        with lock:
+            last = None
+            for attempt in range(2):
+                dev = self._key_devs.get(key)
+                try:
+                    if dev is None or not getattr(dev, "available", False):
+                        dev = adb_client.connect(host, int(port))
+                        self._key_devs[key] = dev
+                    dev.shell(cmd, transport_timeout_s=8.0, read_timeout_s=8.0, timeout_s=8.0)
+                    adb_client.mark_ok(dev)
+                    return {"ok": True}
+                except Exception as e:
+                    last = e
+                    self._key_devs.pop(key, None)
+                    try:
+                        if dev:
+                            dev.close()
+                    except Exception:
+                        pass
+            raise self._adb_shell_error(host, port, last)
 
     def send_input_text(self, host, port=5555, text=""):
         text = (text or "").strip()
@@ -542,10 +638,17 @@ class Api:
                 pass
 
     def detect_launcher(self, host, port=5555):
-        dev = self._get_dev(host, port)
-        det = LauncherDetector(dev)
-        info = det.detect_gathin()
-        disc = det.discover_config()
+        # Phải giữ lock: adb-shell không thread-safe, 2 lệnh song song trên 1 kết nối sẽ làm hỏng stream.
+        with self._dev_op_lock(host, port):
+            try:
+                dev = self._get_dev(host, port)
+                det = LauncherDetector(dev)
+                info = det.detect_gathin()
+                disc = det.discover_config() if info.get("installed") is not None else {"candidates": []}
+            except Exception as e:
+                if self._adb_timeout_error(e):
+                    self._drop_dev(host, port)
+                raise self._adb_shell_error(host, port, e) from e
         return {"info": info, "discovery": disc}
 
     def _backup_root(self, host, port):
@@ -553,10 +656,21 @@ class Api:
         os.makedirs(root, exist_ok=True)
         return root
 
+    def _launcher_op(self, host, port, fn):
+        """Run fn(ThemeManager) under the per-device lock with friendly timeout errors."""
+        with self._dev_op_lock(host, port):
+            try:
+                dev = self._get_dev(host, port)
+                return fn(ThemeManager(dev))
+            except Exception as e:
+                if self._adb_timeout_error(e):
+                    self._drop_dev(host, port)
+                raise self._adb_shell_error(host, port, e) from e
+
     def backup_launcher(self, host, port=5555):
-        dev = self._get_dev(host, port)
-        tm = ThemeManager(dev)
-        return tm.backup_config(self._backup_root(host, port))
+        return self._launcher_op(
+            host, port, lambda tm: tm.backup_config(self._backup_root(host, port))
+        )
 
     def list_launcher_backups(self, host, port=5555):
         root = self._backup_root(host, port)
@@ -586,38 +700,111 @@ class Api:
         path = os.path.join(root, os.path.basename(backup_id))
         if not os.path.isdir(path):
             raise Exception("Không tìm thấy bản sao lưu")
-        dev = self._get_dev(host, port)
-        return ThemeManager(dev).restore_backup(path)
+        return self._launcher_op(host, port, lambda tm: tm.restore_backup(path))
 
     def reset_launcher(self, host, port=5555):
-        dev = self._get_dev(host, port)
-        tm = ThemeManager(dev)
-        backup = tm.backup_config(self._backup_root(host, port))
-        result = tm.reset()
-        result["backup"] = backup
-        return result
+        def run(tm):
+            backup = tm.backup_config(self._backup_root(host, port))
+            result = tm.reset()
+            result["backup"] = backup
+            return result
+
+        return self._launcher_op(host, port, run)
 
     def restart_launcher(self, host, port=5555):
-        dev = self._get_dev(host, port)
-        tm = ThemeManager(dev)
-        return {"ok": tm.restart_launcher()}
+        return self._launcher_op(host, port, lambda tm: {"ok": tm.restart_launcher()})
 
     def current_launcher_theme(self, host, port=5555, include_wallpaper=True):
-        dev = self._get_dev(host, port)
-        tm = ThemeManager(dev)
-        config = tm.read_config()
-        revision = tm.read_revision()
-        wallpapers = tm.list_wallpapers()
-        wallpaper_b64 = None
-        if include_wallpaper:
-            wallpaper_b64 = tm.read_wallpaper_preview_b64()
+        """Overlay state in one ADB round trip. Raises when the TV is unreachable.
+
+        The wallpaper preview (up to 1.5 MB) is slow: the UI asks for it separately via
+        launcher_wallpaper_preview(); include_wallpaper=True keeps the old one-call behaviour.
+        """
+        def run(tm):
+            state = tm.read_state()
+            wallpaper_b64 = tm.read_wallpaper_preview_b64() if include_wallpaper else None
+            state["wallpaper_b64"] = wallpaper_b64
+            state["has_overlay"] = (
+                bool(state["config"]) or bool(state["revision"]) or bool(wallpaper_b64)
+            )
+            return state
+
+        return self._launcher_op(host, port, run)
+
+    def set_default_home(self, host, port=5555):
+        """Make com.gathin.tvhome the default Home (what the remote's HOME key opens) and verify."""
+        pkg = LauncherDetector.GATHIN_PKG
+        attempts = [
+            f"cmd package set-home-activity {pkg}/{pkg}.MainActivity",
+            f"cmd role add-role-holder --user 0 android.app.role.HOME {pkg}",
+        ]
+
+        def run(tm):
+            log = []
+            state = None
+            for cmd in attempts:
+                try:
+                    out = (tm._shell(f"{cmd} 2>&1") or "").strip()
+                except Exception as e:
+                    out = f"lỗi: {e}"
+                log.append({"cmd": cmd, "output": out})
+                state = tm.read_state()
+                if state["launcher"]["is_default_home"]:
+                    return {"ok": True, "log": log, "launcher": state["launcher"], "resumed": None}
+            # Last resort: press HOME and see which app comes to the foreground. NB: this is an
+            # injected key, so it does NOT go through HomeKeyService (physical remote may differ).
+            resumed = None
+            try:
+                out = tm._shell(
+                    "input keyevent 3; sleep 2; "
+                    "dumpsys activity activities 2>&1 | grep -E 'ResumedActivity' | head -3",
+                    timeout_s=30.0,
+                )
+                m = re.search(r"([a-zA-Z][\w.]*)/", out or "")
+                resumed = m.group(1) if m else None
+            except Exception:
+                pass
+            state = tm.read_state()
+            return {
+                "ok": bool(state["launcher"]["is_default_home"] or resumed == pkg),
+                "log": log,
+                "launcher": state["launcher"],
+                "resumed": resumed,
+            }
+
+        return self._launcher_op(host, port, run)
+
+    def diagnose_home(self, host, port=5555):
+        """Read-only dump to see how HOME is routed on this TV (copyable in the UI)."""
+        pkg = LauncherDetector.GATHIN_PKG
+        probes = [
+            ("HOME candidates", "cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME 2>&1"),
+            ("resolve HOME", "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME 2>&1"),
+            ("enabled_accessibility_services", "settings get secure enabled_accessibility_services 2>&1"),
+            ("accessibility_enabled", "settings get secure accessibility_enabled 2>&1"),
+            ("gathin accessibility services", f"cmd package query-services --brief -a android.accessibilityservice.AccessibilityService 2>&1 | grep -i {pkg}"),
+            ("gathin in dumpsys accessibility", f"dumpsys accessibility 2>&1 | grep -iE '{pkg}|requestFilterKeyEvents|FLAG_REQUEST_FILTER' | head -15"),
+            ("sdk / brand", "getprop ro.build.version.sdk; getprop ro.product.brand; getprop ro.product.model"),
+        ]
+
+        def run(tm):
+            lines = []
+            for title, cmd in probes:
+                try:
+                    out = (tm._shell(cmd, timeout_s=30.0) or "").strip()
+                except Exception as e:
+                    out = f"(lỗi: {e})"
+                lines.append(f"### {title}\n{out or '(trống)'}\n")
+            return {"text": "\n".join(lines)}
+
+        return self._launcher_op(host, port, run)
+
+    def launcher_wallpaper_preview(self, host, port=5555):
+        """Best-effort wallpaper preview pulled from the TV (None when absent)."""
         return {
-            "config": config,
-            "revision": revision,
-            "wallpapers": wallpapers,
-            "provider": tm.provider_supported(),
-            "wallpaper_b64": wallpaper_b64,
-            "has_overlay": bool(config) or bool(revision) or bool(wallpaper_b64),
+            "wallpaper_b64": self._launcher_op(
+                host, port, lambda tm: tm.read_wallpaper_preview_b64()
+            )
         }
 
     def list_gathin_themes(self):
@@ -791,37 +978,6 @@ class Api:
             cfg = home_widgets.normalize_widgets({**cfg, **payload})
         return home_widgets.preview(cfg)
 
-    def geocode_home_weather_city(self, city=""):
-        lat, lon, err = home_widgets.geocode_city(city)
-        if err:
-            raise Exception(err)
-        return {"lat": lat, "lon": lon, "city": (city or "").strip()}
-
-    def reverse_geocode_home_weather(self, lat, lon):
-        try:
-            lat_f = float(lat)
-            lon_f = float(lon)
-        except (TypeError, ValueError) as e:
-            raise Exception("Tọa độ không hợp lệ") from e
-        city, err = home_widgets.reverse_geocode(lat_f, lon_f)
-        if err:
-            return {"lat": lat_f, "lon": lon_f, "city": city, "warning": err}
-        return {"lat": lat_f, "lon": lon_f, "city": city}
-
-    def get_home_widget_host_location(self):
-        """Native host GPS/Wi‑Fi (CoreLocation on macOS) — shows system permission dialog."""
-        lat, lon, err = host_location.get_host_location()
-        if err:
-            raise Exception(err)
-        city, warn = home_widgets.reverse_geocode(lat, lon)
-        out = {"lat": lat, "lon": lon, "city": city}
-        if warn:
-            out["warning"] = warn
-        return out
-
-    def open_location_privacy_settings(self):
-        return {"ok": host_location.open_location_privacy_settings()}
-
     def apply_home_widgets_to_tv(self, host, port=5555, restart=True):
         patch, sidecar, prev = self._home_widgets_tv_bundle()
         if not patch:
@@ -852,9 +1008,6 @@ class Api:
 if __name__ == "__main__":
     import atexit
     import sys
-
-    if sys.platform == "darwin":
-        host_location._darwin_inject_location_usage_description()
 
     api = Api()
     atexit.register(api.shutdown)

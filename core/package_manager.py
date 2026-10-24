@@ -63,14 +63,17 @@ class PackageManager:
         for attempt in range(2):
             try:
                 adb_client.ensure_connected(self.device, timeout=timeout)
-                return self.device.shell(
+                out = self.device.shell(
                     cmd,
                     transport_timeout_s=timeout,
                     read_timeout_s=timeout,
                     timeout_s=timeout,
                 )
+                adb_client.mark_ok(self.device)
+                return out
             except Exception as e:
                 last_err = e
+                adb_client.mark_bad(self.device)
                 if attempt == 0:
                     try:
                         adb_client.reconnect(self.device, timeout=min(timeout, 15.0))
@@ -167,26 +170,17 @@ class PackageManager:
 
     def get_current_home(self) -> str:
         try:
-            out = self._shell(
-                "cmd package resolve-activity -a android.intent.action.MAIN "
-                "-c android.intent.category.HOME 2>&1 | grep -m1 'name='",
-                timeout=adb_client.SHELL_HEAVY_TIMEOUT,
+            resolve_out = self._shell(
+                adb_commands.HOME_RESOLVE_CMD, timeout=adb_client.SHELL_HEAVY_TIMEOUT
             )
-            m = re.search(r"name=([^\s/]+/[^\s}]+)", out)
-            if m:
-                comp = m.group(1)
-                if "/" in comp:
-                    return comp.split("/")[0]
-            out2 = self._shell(
-                "dumpsys activity activities | grep -A2 mResumedActivity | head -5",
-                timeout=adb_client.SHELL_HEAVY_TIMEOUT,
-            )
-            m2 = re.search(r"([a-zA-Z0-9_.]+)/", out2)
-            if m2:
-                return m2.group(1)
+            role_out = ""
+            try:
+                role_out = self._shell(adb_commands.HOME_ROLE_CMD)
+            except Exception:
+                pass
+            return adb_commands.parse_home_package(resolve_out, role_out)
         except Exception:
-            pass
-        return None
+            return None
 
     def open_app(self, package: str) -> bool:
         try:

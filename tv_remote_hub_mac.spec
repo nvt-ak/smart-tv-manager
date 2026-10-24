@@ -62,9 +62,4 @@ app = BUNDLE(
     name="SmartTV Manager.app",
     icon="assets/app-icon.icns",
     bundle_identifier="com.vinaco.smarttvmanager",
-    info_plist={
-        "NSLocationWhenInUseUsageDescription": (
-            "SmartTV Manager dùng vị trí máy tính để lấy thời tiết cho widget Home trên TV."
-        ),
-    },
 )

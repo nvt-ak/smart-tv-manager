@@ -12,9 +12,12 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ### Added
 
-- Tab **Home & Theme**: panel **Widget tuỳ chọn** — tên, thời tiết (Open-Meteo), vàng, xăng dầu; lưu cấu hình và **Áp dụng lên TV** qua `config.json` CleanYourTV (`greeting_name`, `show_stats`, module cards).
-- Widget Home: thời tiết theo **vị trí máy tính** qua CoreLocation (macOS), không dùng `navigator.geolocation` (pywebview không hiện hộp thoại quyền); nút mở System Settings khi bị từ chối.
+- Tab **Home & Theme**: panel **Widget tuỳ chọn** — tên, vàng, xăng dầu; lưu cấu hình và **Áp dụng lên TV** qua `config.json` CleanYourTV (`greeting_name`, `show_stats`, module cards).
 - Thoát app: đóng mọi phiên ADB TCP đang cache (`shutdown` khi đóng cửa sổ).
+
+### Removed
+
+- Widget Home: bỏ hoàn toàn **thời tiết** và **lấy vị trí máy tính** (CoreLocation, Open-Meteo, geocode); gỡ `core/host_location.py`, phụ thuộc `pyobjc-framework-CoreLocation`/`libdispatch` và quyền vị trí trong Info.plist macOS.
 
 ### Changed
 

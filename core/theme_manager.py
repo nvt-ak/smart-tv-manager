@@ -25,6 +25,7 @@ import uuid
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import adb_client
+from . import adb_commands
 from adb_shell.adb_device import AdbDeviceTcp
 
 PKG = "com.gathin.tvhome"
@@ -89,7 +90,7 @@ class ThemeManager:
         for attempt in range(3):
             try:
                 adb_client.ensure_connected(self.device)
-                return (
+                out = (
                     self.device.shell(
                         cmd,
                         transport_timeout_s=timeout,
@@ -98,10 +99,18 @@ class ThemeManager:
                     )
                     or ""
                 )
+                adb_client.mark_ok(self.device)
+                return out
             except Exception as e:
                 last = e
+                adb_client.mark_bad(self.device)
                 msg = str(e).lower()
-                if attempt >= 2 or "timed out" not in msg:
+                retryable = any(
+                    k in msg
+                    for k in ("timed out", "broken pipe", "connection reset",
+                              "connection aborted", "closed", "not available", "errno")
+                )
+                if attempt >= 2 or not retryable:
                     break
                 try:
                     adb_client.reconnect(self.device)
@@ -173,6 +182,87 @@ class ThemeManager:
         return ok
 
     # ------------------------------------------------------------ device paths
+
+    def read_state(self) -> Dict[str, Any]:
+        """Provider support + config + revision + wallpaper list in ONE shell round trip.
+
+        Raises when the TV cannot be reached (so the UI never mistakes a timeout for
+        "no overlay"). An empty value therefore really means the TV answered "nothing".
+        """
+        parts = [
+            "echo @@STV:PROV@@",
+            f"cmd package resolve-content-provider --uri {THEME_URI} 2>&1",
+        ]
+        for tag, rel in (("CFG", CONFIG_NAME), ("REV", REVISION_NAME)):
+            parts += [
+                f"echo @@STV:{tag}_CR@@",
+                f"content read --uri {THEME_URI}/{rel} 2>/dev/null",
+                f"echo @@STV:{tag}_CAT@@",
+                f"cat {HOME_DIR}/{rel} 2>/dev/null",
+            ]
+        parts += [
+            "echo @@STV:WALL@@",
+            f"ls {HOME_DIR}/{COLLECTION} 2>/dev/null",
+            "echo @@STV:PM@@",
+            f"pm list packages {PKG} 2>&1",
+            "echo @@STV:HOMER@@",
+            adb_commands.HOME_RESOLVE_CMD,
+            "echo @@STV:ROLE@@",
+            adb_commands.HOME_ROLE_CMD,
+            "echo @@STV:END@@",
+        ]
+        out = self._shell("; ".join(parts), timeout_s=adb_client.SHELL_DEFAULT_TIMEOUT)
+        chunks = re.split(r"@@STV:(\w+)@@", out)
+        sections = {chunks[i]: chunks[i + 1] for i in range(1, len(chunks) - 1, 2)}
+        if "END" not in {chunks[i] for i in range(1, len(chunks), 2)}:
+            raise Exception("TV trả dữ liệu không đầy đủ (kết nối bị ngắt giữa chừng)")
+
+        def pick(cr: str, cat: str) -> str:
+            for text in (cr, cat):
+                text = (text or "").strip()
+                if text and "Error" not in text[:40]:
+                    return text
+            return ""
+
+        prov = sections.get("PROV", "")
+        lo = prov.lower()
+        self._provider_supported = (
+            PKG in prov and "could not find" not in lo and "unknown authority" not in lo
+        )
+        config: Dict[str, Any] = {}
+        cfg_text = pick(sections.get("CFG_CR", ""), sections.get("CFG_CAT", ""))
+        if cfg_text:
+            try:
+                config = json.loads(cfg_text)
+            except Exception:
+                config = {}
+        wallpapers = sorted(
+            n for n in (ln.strip() for ln in sections.get("WALL", "").splitlines())
+            if n and IMAGE_RE.match(n)
+        )
+        installed = any(
+            ln.strip() == f"package:{PKG}" for ln in sections.get("PM", "").splitlines()
+        )
+        home = adb_commands.parse_home_package(
+            sections.get("HOMER", ""), sections.get("ROLE", "")
+        )
+        launcher = {
+            "raw_resolve": sections.get("HOMER", "").strip()[-200:],
+            "raw_role": sections.get("ROLE", "").strip()[:200],
+            "pkg": PKG,
+            "installed": installed,
+            "is_default_home": home == PKG,
+            "current_home": home,
+            "compatible": installed,
+            "error": None,
+        }
+        return {
+            "launcher": launcher,
+            "config": config,
+            "revision": pick(sections.get("REV_CR", ""), sections.get("REV_CAT", "")),
+            "wallpapers": wallpapers,
+            "provider": bool(self._provider_supported),
+        }
 
     def _read_overlay_text(self, rel: str) -> str:
         """Read a text overlay via ThemeProvider, then direct path (Android 11+)."""

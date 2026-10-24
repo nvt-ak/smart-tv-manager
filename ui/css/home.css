@@ -67,20 +67,6 @@
   grid-column: 1 / -1;
 }
 
-.home-widgets-location-toggle {
-  margin: var(--space-xs) 0;
-}
-
-.home-widgets-location-status {
-  margin: 0 0 var(--space-sm);
-  font-size: 13px;
-  color: var(--color-on-surface-variant, #9aa0a6);
-}
-
-.home-widgets-field--manual {
-  margin-top: var(--space-sm);
-}
-
 .home-widgets-toggles {
   display: flex;
   flex-wrap: wrap;
@@ -988,4 +974,10 @@
   color: var(--color-on-surface);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.home-pre {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }

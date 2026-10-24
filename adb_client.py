@@ -8,6 +8,7 @@ import ipaddress
 import os
 import socket
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from adb_shell.adb_device import AdbDeviceTcp
@@ -29,6 +30,26 @@ PUSH_TIMEOUT_MAX = 600.0
 PUSH_ASSUMED_BPS = 48 * 1024
 SCAN_PORT_TIMEOUT = 0.3
 QUICK_CHECK_TIMEOUT = 2.5
+# Skip the `echo ok` liveness probe when this session answered a command this recently.
+IDLE_PING_S = 10.0
+
+
+def mark_ok(device):
+    try:
+        device._stv_last_ok = time.monotonic()
+    except Exception:
+        pass
+
+
+def mark_bad(device):
+    try:
+        device._stv_last_ok = 0.0
+    except Exception:
+        pass
+
+
+def _recently_ok(device) -> bool:
+    return (time.monotonic() - getattr(device, "_stv_last_ok", 0.0)) < IDLE_PING_S
 
 
 def transfer_timeout_s(size_bytes: int) -> float:
@@ -50,6 +71,7 @@ def push_timeout_int(size_bytes: int) -> int:
 
 def reconnect(device, timeout=CONNECT_TIMEOUT):
     """Re-open TCP ADB after a filesync timeout leaves the session stuck."""
+    mark_bad(device)
     try:
         device.close()
     except Exception:
@@ -57,11 +79,14 @@ def reconnect(device, timeout=CONNECT_TIMEOUT):
     device.connect(rsa_keys=[get_signer()], auth_timeout_s=timeout)
     if not device.available:
         raise Exception("Không kết nối lại được ADB tới TV (connect thất bại)")
+    mark_ok(device)
 
 
 def ensure_connected(device, timeout=CONNECT_TIMEOUT):
     """Raise if the device cannot accept shell/sync (reconnect when needed)."""
     if getattr(device, "available", False):
+        if _recently_ok(device):
+            return
         try:
             device.shell(
                 "echo ok",
@@ -69,9 +94,10 @@ def ensure_connected(device, timeout=CONNECT_TIMEOUT):
                 read_timeout_s=timeout,
                 timeout_s=timeout,
             )
+            mark_ok(device)
             return
         except Exception:
-            pass
+            mark_bad(device)
     reconnect(device, timeout=timeout)
 
 
@@ -104,14 +130,17 @@ def run_shell(device, command: str, timeout: float | None = None) -> str:
     for attempt in range(2):
         try:
             ensure_connected(device, timeout=min(t, 15.0))
-            return device.shell(
+            out = device.shell(
                 command,
                 transport_timeout_s=t,
                 read_timeout_s=t,
                 timeout_s=t,
             )
+            mark_ok(device)
+            return out
         except Exception as e:
             last_err = e
+            mark_bad(device)
             if attempt == 0:
                 try:
                     reconnect(device, timeout=min(t, 15.0))
@@ -143,6 +172,7 @@ def connect(host, port=PORT, timeout=CONNECT_TIMEOUT):
     grant that the person hasn't accepted on the TV's screen yet)."""
     dev = AdbDeviceTcp(host, port, default_transport_timeout_s=timeout)
     dev.connect(rsa_keys=[get_signer()], auth_timeout_s=timeout)
+    mark_ok(dev)
     return dev
 
 

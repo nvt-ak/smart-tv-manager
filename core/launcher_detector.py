@@ -4,6 +4,9 @@ from typing import Any, Dict, Optional
 
 from adb_shell.adb_device import AdbDeviceTcp
 
+import adb_client
+from . import adb_commands
+
 
 class LauncherDetector:
     GATHIN_PKG = "com.gathin.tvhome"
@@ -12,44 +15,50 @@ class LauncherDetector:
         self.device = device
 
     def _shell(self, cmd: str) -> str:
+        # Dùng run_shell: timeout theo lệnh (25-45s) + reconnect/retry như tab Packages.
+        # Trước đây dùng device.shell() timeout mặc định ~8s nên lỗi mạng bị nuốt thành "chưa cài".
         try:
-            return self.device.shell(cmd)
+            return adb_client.run_shell(self.device, cmd)
         except Exception as e:
             raise Exception(f"Shell error: {e}")
 
     def is_installed(self, pkg: str) -> bool:
-        try:
-            out = self._shell(f"pm list packages | grep {pkg}")
-            return pkg in out
-        except Exception:
-            return False
+        """True/False khi TV trả lời; RAISE nếu không hỏi được (không đoán là 'chưa cài')."""
+        out = self._shell(f"pm list packages {pkg} 2>&1")
+        return any(line.strip() == f"package:{pkg}" for line in out.splitlines())
 
     def get_default_home(self) -> Optional[str]:
+        resolve_out = self._shell(adb_commands.HOME_RESOLVE_CMD)
+        role_out = ""
         try:
-            out = self._shell("cmd package resolve-activity -a android.intent.action.MAIN -c android.intent.category.HOME 2>&1 | grep -m1 'name='")
-            m = re.search(r"name=([^\s/]+/[^\s}]+)", out)
-            if m:
-                comp = m.group(1)
-                if "/" in comp:
-                    return comp.split("/")[0]
-            out2 = self._shell("dumpsys package resolver 2>&1 | grep -A 15 'preferredActivities' | head -20")
-            m2 = re.search(r"([a-zA-Z0-9_.]+)/[a-zA-Z0-9_.]+", out2)
-            if m2:
-                return m2.group(1)
+            role_out = self._shell(adb_commands.HOME_ROLE_CMD)
         except Exception:
-            pass
-        return None
+            pass  # Android < 10 has no role service
+        return adb_commands.parse_home_package(resolve_out, role_out)
 
     def detect_gathin(self) -> Dict[str, Any]:
-        installed = self.is_installed(self.GATHIN_PKG)
-        home = self.get_default_home()
+        error = None
+        try:
+            installed: Optional[bool] = self.is_installed(self.GATHIN_PKG)
+        except Exception as e:
+            installed, error = None, str(e)  # None = không xác định
+        home = None
+        if installed is not None:
+            try:
+                home = self.get_default_home()
+            except Exception as e:
+                error = error or str(e)
         is_default = home == self.GATHIN_PKG
+        # Gathin đang là launcher mặc định thì chắc chắn đã cài.
+        if installed is None and is_default:
+            installed, error = True, None
         return {
             "pkg": self.GATHIN_PKG,
             "installed": installed,
             "is_default_home": is_default,
             "current_home": home,
-            "compatible": installed,
+            "compatible": bool(installed),
+            "error": error,
         }
 
     def discover_config(self) -> Dict[str, Any]:
@@ -63,11 +72,15 @@ class LauncherDetector:
             "/sdcard/Android/data/com.gathin.tvhome",
             "/sdcard/Android/data/com.gathin.tvhome/files",
         ]
-        for p in candidates:
-            try:
-                out = self._shell(f"ls -la {p} 2>&1 | head -15")
-                if "No such file" not in out and "Permission denied" not in out or "drwx" in out:
-                    paths.append({"path": p, "listing": out})
-            except Exception:
-                pass
+        # Một lần gọi shell thay vì 6 lần (mỗi lần = 1 round-trip qua Wi-Fi).
+        script = "; ".join(f"echo '##{p}'; ls -la {p} 2>&1 | head -15" for p in candidates)
+        try:
+            out = self._shell(script)
+        except Exception:
+            return {"candidates": paths}
+        for chunk in out.split("##")[1:]:
+            p, _, listing = chunk.partition("\n")
+            p = p.strip()
+            if "No such file" not in listing and "Permission denied" not in listing or "drwx" in listing:
+                paths.append({"path": p, "listing": listing})
         return {"candidates": paths}

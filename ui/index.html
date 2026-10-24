@@ -927,6 +927,7 @@
         </div>
 
         <div id="homeStatus" class="status-line" role="status"></div>
+        <button type="button" id="homeStatusCopy" class="btn btn--ghost" hidden>Sao chép nội dung trạng thái</button>
         <details id="homeApplyLogWrap" class="home-apply-log-wrap" hidden>
           <summary>Nhật ký áp dụng theme</summary>
           <p id="homeApplyLogHint" class="home-apply-log-hint"></p>
@@ -957,7 +958,12 @@
                 <span class="material-symbols-outlined">home</span>
                 Đặt làm Home mặc định
               </button>
+              <button type="button" id="homeDiagBtn" class="btn btn--ghost">
+                <span class="material-symbols-outlined">bug_report</span>
+                Chẩn đoán phím HOME
+              </button>
             </div>
+            <pre id="homeDiagOut" class="home-pre" hidden></pre>
           </div>
 
           <div class="home-panel home-panel--active glass-card">
@@ -1014,7 +1020,7 @@
           <p class="home-widgets-lead">
             Dữ liệu lấy trên máy tính (Wi‑Fi), gộp vào <code>config.json</code> khi bạn <strong>áp dụng theme</strong>
             hoặc bấm «Áp dụng lên TV» bên dưới.
-            Bảng giá hiển thị gọn cạnh lời chào; thời tiết chi tiết: cài add-on Weather trên TV và bật Module cards.
+            Bảng giá hiển thị gọn cạnh lời chào.
           </p>
           <label class="home-widgets-master">
             <input type="checkbox" id="homeWidgetsEnabled">
@@ -1025,32 +1031,6 @@
               <span class="field-label">Tên hiển thị</span>
               <input type="text" id="homeWidgetDisplayName" class="field-input" placeholder="VD: Gia đình nhà Trịnh" maxlength="48">
             </label>
-            <div class="field home-widgets-field home-widgets-field--full">
-              <span class="field-label">Thời tiết theo vị trí máy tính</span>
-              <label class="home-widgets-master home-widgets-location-toggle">
-                <input type="checkbox" id="homeWidgetUseLocation" checked>
-                Dùng vị trí hiện tại (macOS/Windows sẽ hỏi quyền)
-              </label>
-              <p id="homeWidgetLocationStatus" class="home-widgets-location-status" aria-live="polite">
-                Chưa lấy vị trí
-              </p>
-              <div class="home-widgets-inline">
-                <button type="button" id="homeWidgetLocationBtn" class="btn btn--surface">
-                  <span class="material-symbols-outlined">my_location</span>
-                  Lấy vị trí
-                </button>
-                <button type="button" id="homeWidgetLocationSettingsBtn" class="btn btn--ghost" hidden>
-                  Mở Cài đặt quyền
-                </button>
-              </div>
-              <label class="field home-widgets-field home-widgets-field--manual">
-                <span class="field-label">Tên địa điểm tuỳ chọn (nếu không dùng GPS)</span>
-                <div class="home-widgets-inline">
-                  <input type="text" id="homeWidgetWeatherCity" class="field-input" placeholder="Để trống = tự đặt theo vị trí">
-                  <button type="button" id="homeWidgetGeocodeBtn" class="btn btn--surface">Tìm theo tên</button>
-                </div>
-              </label>
-            </div>
             <label class="field home-widgets-field">
               <span class="field-label">Mã vàng (vang.today)</span>
               <input type="text" id="homeWidgetGoldCode" class="field-input" placeholder="VNGSJC" maxlength="24">
@@ -1077,12 +1057,11 @@
           </div>
           <div class="home-widgets-toggles">
             <label><input type="checkbox" id="homeWidgetShowName" checked> Tên</label>
-            <label><input type="checkbox" id="homeWidgetShowWeather" checked> Thời tiết</label>
             <label><input type="checkbox" id="homeWidgetShowGold" checked> Vàng</label>
             <label><input type="checkbox" id="homeWidgetShowFuel" checked> Xăng dầu</label>
             <label><input type="checkbox" id="homeWidgetShowStats"> CPU / RAM / bộ nhớ</label>
             <label><input type="checkbox" id="homeWidgetShowAppNames"> Tên dưới mọi icon app</label>
-            <label><input type="checkbox" id="homeWidgetModuleCards" checked> Module cards (Weather add-on)</label>
+            <label><input type="checkbox" id="homeWidgetModuleCards" checked> Module cards</label>
           </div>
           <div class="home-widgets-preview">
             <span class="apps-stat-label">Xem trước trên TV</span>

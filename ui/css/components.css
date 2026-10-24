@@ -337,3 +337,10 @@
 .terminal-log .log-err {
   color: var(--color-error);
 }
+
+/* Status/log lines must be selectable so errors can be copied. */
+.status-line {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}

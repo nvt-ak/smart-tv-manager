@@ -2710,7 +2710,24 @@ document.getElementById('apkClearHistoryBtn')?.addEventListener('click', () => {
 
 function setHomeStatus(msg) {
   if (homeStatus) homeStatus.textContent = msg || '';
+  const copyBtn = document.getElementById('homeStatusCopy');
+  if (copyBtn) copyBtn.hidden = !msg;
 }
+
+document.getElementById('homeStatusCopy')?.addEventListener('click', async () => {
+  const text = homeStatus?.textContent || '';
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+  }
+  showHomeToast('Đã sao chép', 'content_copy');
+});
 
 function formatApplyStepLine(step) {
   const t = step.t
@@ -2799,89 +2816,31 @@ async function activateHomeTab() {
     return;
   }
   updateHomeChrome();
-  await loadHomeThemes();
-  await loadCurrentTheme();
-  await loadHomeWidgetsUi();
+  // Themes (local) + TV state + widget settings are independent: load them in parallel.
+  // TV state is skipped when the same device was read less than HOME_TV_FRESH_MS ago.
+  await Promise.all([
+    loadHomeThemes(),
+    loadCurrentTheme(null, { useCache: true }),
+    loadHomeWidgetsUi(),
+  ]);
 }
 
-let homeWidgetCoords = { lat: 21.0285, lon: 105.8542 };
-
-function setHomeWidgetLocationStatus(text, tone = 'muted') {
-  const el = document.getElementById('homeWidgetLocationStatus');
-  if (!el) return;
-  el.textContent = text;
-  el.dataset.tone = tone;
-}
-
-function setHomeWidgetLocationSettingsVisible(show) {
-  const btn = document.getElementById('homeWidgetLocationSettingsBtn');
-  if (btn) btn.hidden = !show;
-}
-
-function isLocationPermissionError(msg) {
-  const s = String(msg || '').toLowerCase();
-  return s.includes('từ chối') || s.includes('denied') || s.includes('quyền vị trí');
-}
-
-async function applyHostLocationResult(rev) {
-  homeWidgetCoords.lat = rev.lat;
-  homeWidgetCoords.lon = rev.lon;
-  const cityEl = document.getElementById('homeWidgetWeatherCity');
-  if (cityEl && cityEl.dataset.autoLocation === '1') {
-    cityEl.value = rev.city || '';
-  }
-  setHomeWidgetLocationSettingsVisible(false);
-  setHomeWidgetLocationStatus(
-    `${rev.city || 'Vị trí hiện tại'} · ${homeWidgetCoords.lat.toFixed(4)}, ${homeWidgetCoords.lon.toFixed(4)}`,
-    'ok'
-  );
-  return rev;
-}
-
-async function requestHomeWidgetGeolocation() {
-  setHomeWidgetLocationStatus('macOS sẽ hỏi quyền vị trí (CoreLocation)…', 'pending');
-  if (getApi().get_home_widget_host_location) {
-    try {
-      const rev = await getApi().get_home_widget_host_location();
-      return applyHostLocationResult(rev);
-    } catch (err) {
-      const msg = String(err);
-      setHomeWidgetLocationStatus(msg, 'error');
-      setHomeWidgetLocationSettingsVisible(isLocationPermissionError(msg));
-      throw new Error(msg);
-    }
-  }
-  throw new Error('Cần cập nhật app — thiếu API định vị native.');
-}
-
-async function ensureHomeWidgetLocation({ force = false } = {}) {
-  const useLoc = document.getElementById('homeWidgetUseLocation')?.checked !== false;
-  if (!useLoc && !force) {
-    setHomeWidgetLocationStatus('Đang dùng tọa độ đã lưu hoặc tên thành phố thủ công.', 'muted');
-    return;
-  }
-  try {
-    await requestHomeWidgetGeolocation();
-  } catch {
-    /* status already set */
-  }
-}
+const HOME_TV_FRESH_MS = 60000;
+let homeTvSync = { key: null, at: 0 };
+let homeTvLoading = null;
+// Wallpaper preview is only re-pulled from the TV when the theme revision changes.
+let homeWallCache = { key: null, revision: null, b64: null };
 
 function readHomeWidgetsFormPayload() {
   return {
     enabled: document.getElementById('homeWidgetsEnabled')?.checked ?? false,
     display_name: document.getElementById('homeWidgetDisplayName')?.value?.trim() || '',
-    weather_use_location: document.getElementById('homeWidgetUseLocation')?.checked !== false,
-    weather_city: document.getElementById('homeWidgetWeatherCity')?.value?.trim() || '',
-    weather_lat: homeWidgetCoords.lat,
-    weather_lon: homeWidgetCoords.lon,
     gold_vang_today_code: document.getElementById('homeWidgetGoldCode')?.value?.trim() || 'VNGSJC',
     fuel_zone: Number(document.getElementById('homeWidgetFuelZone')?.value || 1) === 2 ? 2 : 1,
     manual_gold_sjc: document.getElementById('homeWidgetManualGold')?.value?.trim() || '',
     fuel_ron95: document.getElementById('homeWidgetFuelRon')?.value?.trim() || '',
     fuel_diesel: document.getElementById('homeWidgetFuelDie')?.value?.trim() || '',
     show_name: document.getElementById('homeWidgetShowName')?.checked ?? true,
-    show_weather: document.getElementById('homeWidgetShowWeather')?.checked ?? true,
     show_gold: document.getElementById('homeWidgetShowGold')?.checked ?? true,
     show_fuel: document.getElementById('homeWidgetShowFuel')?.checked ?? true,
     show_system_stats: document.getElementById('homeWidgetShowStats')?.checked ?? false,
@@ -2900,12 +2859,6 @@ function fillHomeWidgetsForm(cfg) {
   };
   set('homeWidgetsEnabled', c.enabled);
   set('homeWidgetDisplayName', c.display_name || '');
-  set('homeWidgetUseLocation', c.weather_use_location !== false);
-  const cityEl = document.getElementById('homeWidgetWeatherCity');
-  if (cityEl) {
-    cityEl.value = c.weather_city || '';
-    cityEl.dataset.autoLocation = c.weather_use_location !== false ? '1' : '0';
-  }
   set('homeWidgetGoldCode', c.gold_vang_today_code || 'VNGSJC');
   const fuelZone = document.getElementById('homeWidgetFuelZone');
   if (fuelZone) fuelZone.value = String(Number(c.fuel_zone) === 2 ? 2 : 1);
@@ -2913,14 +2866,11 @@ function fillHomeWidgetsForm(cfg) {
   set('homeWidgetFuelRon', c.fuel_ron95 || '');
   set('homeWidgetFuelDie', c.fuel_diesel || '');
   set('homeWidgetShowName', c.show_name !== false);
-  set('homeWidgetShowWeather', c.show_weather !== false);
   set('homeWidgetShowGold', c.show_gold !== false);
   set('homeWidgetShowFuel', c.show_fuel !== false);
   set('homeWidgetShowStats', c.show_system_stats);
   set('homeWidgetShowAppNames', c.always_show_app_names);
   set('homeWidgetModuleCards', c.module_cards !== false);
-  homeWidgetCoords.lat = Number(c.weather_lat) || 21.0285;
-  homeWidgetCoords.lon = Number(c.weather_lon) || 105.8542;
 }
 
 function renderHomeWidgetsPreview(prev) {
@@ -2953,14 +2903,6 @@ async function loadHomeWidgetsUi() {
   try {
     const cfg = await getApi().get_home_widgets_settings();
     fillHomeWidgetsForm(cfg);
-    if (cfg.weather_use_location !== false) {
-      await ensureHomeWidgetLocation();
-    } else {
-      setHomeWidgetLocationStatus(
-        `Tọa độ đã lưu: ${homeWidgetCoords.lat.toFixed(4)}, ${homeWidgetCoords.lon.toFixed(4)}`,
-        'muted'
-      );
-    }
     const prev = await getApi().preview_home_widgets(readHomeWidgetsFormPayload());
     renderHomeWidgetsPreview(prev);
   } catch {
@@ -2971,87 +2913,10 @@ async function loadHomeWidgetsUi() {
 const homeWidgetPreviewBtn = document.getElementById('homeWidgetPreviewBtn');
 const homeWidgetSaveBtn = document.getElementById('homeWidgetSaveBtn');
 const homeWidgetApplyBtn = document.getElementById('homeWidgetApplyBtn');
-const homeWidgetGeocodeBtn = document.getElementById('homeWidgetGeocodeBtn');
-const homeWidgetLocationBtn = document.getElementById('homeWidgetLocationBtn');
-const homeWidgetLocationSettingsBtn = document.getElementById('homeWidgetLocationSettingsBtn');
-const homeWidgetUseLocation = document.getElementById('homeWidgetUseLocation');
-const homeWidgetWeatherCity = document.getElementById('homeWidgetWeatherCity');
-
-if (homeWidgetLocationSettingsBtn) {
-  homeWidgetLocationSettingsBtn.addEventListener('click', async () => {
-    try {
-      if (getApi().open_location_privacy_settings) {
-        await getApi().open_location_privacy_settings();
-        showHomeToast('Đã mở Location Services — bật quyền rồi bấm «Lấy vị trí» lại', 'settings');
-      }
-    } catch (err) {
-      showHomeToast(String(err), 'error');
-    }
-  });
-}
-
-if (homeWidgetWeatherCity) {
-  homeWidgetWeatherCity.addEventListener('input', () => {
-    homeWidgetWeatherCity.dataset.autoLocation = '0';
-  });
-}
-
-if (homeWidgetUseLocation) {
-  homeWidgetUseLocation.addEventListener('change', async () => {
-    if (homeWidgetUseLocation.checked) {
-      if (homeWidgetWeatherCity) homeWidgetWeatherCity.dataset.autoLocation = '1';
-      await ensureHomeWidgetLocation({ force: true });
-    } else {
-      setHomeWidgetLocationStatus('Tắt GPS — dùng tọa độ đã lưu hoặc «Tìm theo tên».', 'muted');
-    }
-  });
-}
-
-if (homeWidgetLocationBtn) {
-  homeWidgetLocationBtn.addEventListener('click', async () => {
-    if (homeWidgetUseLocation) homeWidgetUseLocation.checked = true;
-    if (homeWidgetWeatherCity) homeWidgetWeatherCity.dataset.autoLocation = '1';
-    setButtonLoading(homeWidgetLocationBtn, true, 'Đang lấy…');
-    try {
-      await requestHomeWidgetGeolocation();
-      showHomeToast('Đã cập nhật vị trí', 'my_location');
-    } catch (err) {
-      showHomeToast(String(err), 'error');
-    }
-    setButtonLoading(homeWidgetLocationBtn, false);
-  });
-}
-
-if (homeWidgetGeocodeBtn) {
-  homeWidgetGeocodeBtn.addEventListener('click', async () => {
-    const city = document.getElementById('homeWidgetWeatherCity')?.value?.trim();
-    if (!city) {
-      showHomeToast('Nhập tên thành phố hoặc bấm «Lấy vị trí»', 'info');
-      return;
-    }
-    if (homeWidgetUseLocation) homeWidgetUseLocation.checked = false;
-    setButtonLoading(homeWidgetGeocodeBtn, true, 'Đang tìm…');
-    try {
-      const res = await getApi().geocode_home_weather_city(city);
-      homeWidgetCoords.lat = res.lat;
-      homeWidgetCoords.lon = res.lon;
-      setHomeWidgetLocationStatus(
-        `${city} · ${res.lat.toFixed(4)}, ${res.lon.toFixed(4)} (theo tên)`,
-        'ok'
-      );
-      showHomeToast(`Tọa độ: ${res.lat.toFixed(2)}, ${res.lon.toFixed(2)}`, 'location_on');
-    } catch (err) {
-      showHomeToast(String(err), 'error');
-    }
-    setButtonLoading(homeWidgetGeocodeBtn, false);
-  });
-}
-
 if (homeWidgetPreviewBtn) {
   homeWidgetPreviewBtn.addEventListener('click', async () => {
     setButtonLoading(homeWidgetPreviewBtn, true, 'Đang tải…');
     try {
-      await ensureHomeWidgetLocation();
       const prev = await getApi().preview_home_widgets(readHomeWidgetsFormPayload());
       renderHomeWidgetsPreview(prev);
       setHomeStatus('Đã cập nhật xem trước widget.');
@@ -3066,7 +2931,6 @@ if (homeWidgetSaveBtn) {
   homeWidgetSaveBtn.addEventListener('click', async () => {
     setButtonLoading(homeWidgetSaveBtn, true, 'Đang lưu…');
     try {
-      await ensureHomeWidgetLocation();
       await getApi().save_home_widgets_settings(readHomeWidgetsFormPayload());
       showHomeToast('Đã lưu cấu hình widget', 'save');
     } catch (err) {
@@ -3084,7 +2948,6 @@ if (homeWidgetApplyBtn) {
     }
     setButtonLoading(homeWidgetApplyBtn, true, 'Đang áp dụng…');
     try {
-      await ensureHomeWidgetLocation();
       await getApi().save_home_widgets_settings(readHomeWidgetsFormPayload());
       const res = await getApi().apply_home_widgets_to_tv(activeDevice.host, activeDevice.port, true);
       showHomeToast('Đã ghi widget lên TV — Home khởi động lại', 'cast');
@@ -3182,8 +3045,15 @@ function renderHomeDetect(info) {
   if (!info) return;
   if (pkgEl) pkgEl.textContent = info.pkg || '—';
   if (instEl) {
-    instEl.textContent = info.installed ? 'Đã cài' : 'Chưa cài';
-    instEl.className = `home-kpi-value ${info.installed ? 'ok' : 'err'}`;
+    if (info.installed === null || info.installed === undefined) {
+      instEl.textContent = 'Không xác định (TV chưa phản hồi)';
+      instEl.title = info.error || '';
+      instEl.className = 'home-kpi-value';
+    } else {
+      instEl.textContent = info.installed ? 'Đã cài' : 'Chưa cài';
+      instEl.title = '';
+      instEl.className = `home-kpi-value ${info.installed ? 'ok' : 'err'}`;
+    }
   }
   if (defEl) {
     if (info.is_default_home) {
@@ -3195,13 +3065,16 @@ function renderHomeDetect(info) {
     }
   }
   if (compatEl) {
-    compatEl.textContent = info.compatible ? '100% — sẵn sàng' : 'Không tương thích';
+    compatEl.textContent = info.installed == null ? 'Chưa kiểm tra được' : (info.compatible ? '100% — sẵn sàng' : 'Không tương thích');
     compatEl.className = `home-kpi-value ${info.compatible ? 'ok' : 'err'}`;
   }
   if (badge) {
     if (info.installed && info.compatible) {
       badge.textContent = 'Sẵn sàng ADB';
       badge.className = 'home-adb-badge';
+    } else if (info.installed == null) {
+      badge.textContent = 'Không đọc được TV — thử lại';
+      badge.className = 'home-adb-badge home-adb-badge--warn';
     } else {
       badge.textContent = 'Cần cài launcher';
       badge.className = 'home-adb-badge home-adb-badge--warn';
@@ -3357,41 +3230,80 @@ async function syncFromTv(btn) {
   if (btn) setButtonLoading(btn, true, 'Đang đồng bộ...');
   if (!homeThemes.length) await loadHomeThemes();
   await runHomeDetect(null);
-  await loadCurrentTheme();
+  await loadCurrentTheme(null, { forceWallpaper: true });
   await loadHomeBackups();
   if (btn) setButtonLoading(btn, false);
   showHomeToast('Đã đồng bộ trạng thái từ TV', 'sync');
 }
 
-async function loadCurrentTheme(btn) {
+async function loadCurrentTheme(btn, opts = {}) {
   if (!activeDevice) {
     setHomeStatus('Vui lòng chọn thiết bị trước');
     return;
   }
-  if (btn) setButtonLoading(btn, true, 'Đang tải...');
-  setHomeStatus('Đang đọc theme và wallpaper từ TV...');
-  try {
-    const cur = await getApi().current_launcher_theme(activeDevice.host, activeDevice.port);
-    const matched =
-      homeThemes.find(
-        (t) => stableThemeJson(t.config || {}) === stableThemeJson(cur.config || {})
-      ) || null;
-    renderActiveThemePanel(cur, matched);
-    if (homeThemes.length) renderHomeThemeGrid();
-    const keyCount = Object.keys(cur.config || {}).length;
-    if (keyCount || cur.wallpaper_b64) {
-      setHomeStatus(
-        `Đã đồng bộ: ${keyCount} khoá config${cur.wallpaper_b64 ? ', có preview wallpaper' : ''}.`
-      );
-    } else if (cur.has_overlay) {
-      setHomeStatus('TV có overlay nhưng chưa đọc được config — thử bật ThemeProvider / đồng bộ lại.');
-    } else {
-      setHomeStatus('Chưa có theme overlay trên TV (launcher mặc định).');
-    }
-  } catch (err) {
-    setHomeStatus(`Lỗi đọc theme: ${err}`);
+  const { host, port } = activeDevice;
+  const key = `${host}:${port}`;
+  if (opts.useCache) {
+    if (homeTvSync.key === key && Date.now() - homeTvSync.at < HOME_TV_FRESH_MS) return;
+    if (homeTvLoading && homeTvLoading.key === key) return homeTvLoading.promise;
   }
-  if (btn) setButtonLoading(btn, false);
+  const run = async () => {
+    if (btn) setButtonLoading(btn, true, 'Đang tải...');
+    setHomeStatus('Đang đọc theme từ TV...');
+    try {
+      // Phase 1: config + revision + wallpaper list + provider in one ADB round trip.
+      const cur = await getApi().current_launcher_theme(host, port, false);
+      if (cur.launcher) renderHomeDetect(cur.launcher);
+      if (!homeThemes.length && homeThemesLoading) await homeThemesLoading;
+      if (!activeDevice || `${activeDevice.host}:${activeDevice.port}` !== key) return;
+      const stableCfg = stableThemeJson(cur.config || {});
+      const matched = homeThemes.find((t) => stableThemeJson(t.config || {}) === stableCfg) || null;
+      const cachedWall =
+        !opts.forceWallpaper && homeWallCache.key === key && homeWallCache.revision === (cur.revision || '')
+          ? homeWallCache.b64
+          : null;
+      cur.wallpaper_b64 = cachedWall;
+      renderActiveThemePanel(cur, matched);
+      if (homeThemes.length) renderHomeThemeGrid();
+      homeTvSync = { key, at: Date.now() };
+      const keyCount = Object.keys(cur.config || {}).length;
+      const hasOverlay = keyCount || cur.revision || (cur.wallpapers || []).length;
+      setHomeStatus(
+        hasOverlay
+          ? `Đã đồng bộ: ${keyCount} khoá config.`
+          : 'Chưa có theme overlay trên TV (launcher mặc định).'
+      );
+
+      // Phase 2: wallpaper preview (slow, up to 1.5 MB) — never blocks the panel above.
+      if (!cachedWall) {
+        try {
+          const w = await getApi().launcher_wallpaper_preview(host, port);
+          if (!activeDevice || `${activeDevice.host}:${activeDevice.port}` !== key) return;
+          homeWallCache = { key, revision: cur.revision || '', b64: w.wallpaper_b64 || null };
+          if (w.wallpaper_b64) {
+            cur.wallpaper_b64 = w.wallpaper_b64;
+            renderActiveThemePanel(cur, matched);
+            setHomeStatus(`Đã đồng bộ: ${keyCount} khoá config, có preview wallpaper.`);
+          }
+        } catch {
+          /* preview is best-effort */
+        }
+      } else {
+        setHomeStatus(`Đã đồng bộ: ${keyCount} khoá config, có preview wallpaper.`);
+      }
+    } catch (err) {
+      homeTvSync = { key: null, at: 0 };
+      setHomeStatus(`Lỗi đọc theme: ${err}`);
+    } finally {
+      if (btn) setButtonLoading(btn, false);
+    }
+  };
+  const promise = run();
+  homeTvLoading = { key, promise };
+  promise.finally(() => {
+    if (homeTvLoading && homeTvLoading.promise === promise) homeTvLoading = null;
+  });
+  return promise;
 }
 
 async function loadHomeBackups(btn) {
@@ -3527,16 +3439,47 @@ if (homeDetectBtn) {
   homeDetectBtn.addEventListener('click', () => runHomeDetect(homeDetectBtn));
 }
 
+const homeDiagBtn = document.getElementById('homeDiagBtn');
+if (homeDiagBtn) {
+  homeDiagBtn.addEventListener('click', async () => {
+    if (!activeDevice) return;
+    const out = document.getElementById('homeDiagOut');
+    setButtonLoading(homeDiagBtn, true, 'Đang đọc...');
+    try {
+      const res = await getApi().diagnose_home(activeDevice.host, activeDevice.port);
+      if (out) {
+        out.textContent = res.text;
+        out.hidden = false;
+      }
+      setHomeStatus('Đã đọc xong chẩn đoán HOME — bôi đen nội dung bên dưới để sao chép.');
+    } catch (err) {
+      setHomeStatus(`Lỗi chẩn đoán: ${err}`);
+    }
+    setButtonLoading(homeDiagBtn, false);
+  });
+}
+
 if (homeSetDefaultBtn) {
   homeSetDefaultBtn.addEventListener('click', async () => {
     if (!activeDevice) return;
     if (!confirm('Đặt com.gathin.tvhome làm launcher mặc định?')) return;
     setButtonLoading(homeSetDefaultBtn, true, 'Đang gửi...');
-    const cmd = 'cmd package set-home-activity com.gathin.tvhome/com.gathin.tvhome.MainActivity';
     try {
-      await getApi().device_shell(activeDevice.host, activeDevice.port, cmd);
-      showHomeToast('Đã gửi lệnh đặt Home mặc định', 'home');
-      await runHomeDetect(null);
+      const res = await getApi().set_default_home(activeDevice.host, activeDevice.port);
+      if (res.launcher) renderHomeDetect(res.launcher);
+      homeTvSync = { key: null, at: 0 };
+      if (res.ok) {
+        showHomeToast('Đã đặt com.gathin.tvhome làm Home mặc định', 'home');
+        setHomeStatus('Home mặc định: com.gathin.tvhome. Phím HOME trên remote sẽ mở launcher này.');
+      } else {
+        const l = res.launcher || {};
+        setHomeStatus(
+          `Firmware TV này không cho đổi Home mặc định qua ADB (launcher gốc ưu tiên cao hơn). ` +
+          `Hãy thử bấm phím HOME trên remote thật: nếu HomeKeyService của Gathin đang bật, phím vật lý có thể đã mở Gathin. ` +
+          `Nút Home trong app giờ mở Gathin trực tiếp. [resolve=${l.raw_resolve || ''} · foreground=${res.resumed || '?'}]`
+        );
+        showHomeToast('Không đặt được Home mặc định — xem trạng thái', 'error');
+      }
     } catch (err) {
       setHomeStatus(`Lỗi: ${err}`);
     }

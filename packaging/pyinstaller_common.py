@@ -29,7 +29,6 @@ def analysis_bundle(extra_datas=None):
     hiddenimports = collect_submodules("adb_shell") + [
         "paths",
         "certifi",
-        "core.host_location",
         "cryptography.hazmat.backends.openssl",
         "cryptography.hazmat.bindings._rust",
     ]
@@ -39,11 +38,18 @@ def analysis_bundle(extra_datas=None):
     binaries += wv_binaries
     hiddenimports += wv_hidden
 
+    # Windows backend (WinForms/WebView2) loads Python.Runtime.dll via pythonnet + clr_loader;
+    # bundle them explicitly or "Failed to resolve Python.Runtime.Loader.Initialize" occurs.
+    if sys.platform == "win32":
+        for pkg in ("pythonnet", "clr_loader"):
+            d, b, h = collect_all(pkg)
+            datas += d
+            binaries += b
+            hiddenimports += h
+        hiddenimports += ["clr", "clr_loader"]
+
     ag_datas, _, ag_hidden = _androguard_bundle()
     datas += ag_datas
     hiddenimports += ag_hidden
-
-    if sys.platform == "darwin":
-        hiddenimports += ["CoreLocation"]
 
     return datas, binaries, hiddenimports

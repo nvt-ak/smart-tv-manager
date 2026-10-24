@@ -1,7 +1,7 @@
 """Optional Home screen widgets — fetch on desktop, push via gathin.tvhome config.json.
 
 CleanYourTV shows `greeting_name` beside the clock greeting and `show_stats` under it.
-Market/weather snippets are folded into `greeting_name` (short ticker) until the launcher
+Market snippets are folded into `greeting_name` (short ticker) until the launcher
 supports a dedicated board key.
 """
 from __future__ import annotations
@@ -18,16 +18,11 @@ DEFAULT_WIDGETS: Dict[str, Any] = {
     "enabled": False,
     "display_name": "",
     "show_name": True,
-    "show_weather": True,
     "show_gold": True,
     "show_fuel": True,
     "show_system_stats": False,
     "always_show_app_names": False,
     "module_cards": True,
-    "weather_use_location": True,
-    "weather_city": "",
-    "weather_lat": 21.0285,
-    "weather_lon": 105.8542,
     "fuel_zone": 1,
     "fuel_ron95": "",
     "fuel_diesel": "",
@@ -86,7 +81,6 @@ def normalize_widgets(raw: Any) -> Dict[str, Any]:
     out["enabled"] = bool(out.get("enabled"))
     for b in (
         "show_name",
-        "show_weather",
         "show_gold",
         "show_fuel",
         "show_system_stats",
@@ -95,15 +89,6 @@ def normalize_widgets(raw: Any) -> Dict[str, Any]:
     ):
         out[b] = bool(out.get(b))
     out["display_name"] = str(out.get("display_name") or "").strip()
-    out["weather_use_location"] = bool(
-        out.get("weather_use_location", DEFAULT_WIDGETS["weather_use_location"])
-    )
-    out["weather_city"] = str(out.get("weather_city") or "").strip()
-    try:
-        out["weather_lat"] = float(out.get("weather_lat") or 21.0285)
-        out["weather_lon"] = float(out.get("weather_lon") or 105.8542)
-    except (TypeError, ValueError):
-        out["weather_lat"], out["weather_lon"] = 21.0285, 105.8542
     try:
         z = int(out.get("fuel_zone") or 1)
         out["fuel_zone"] = 2 if z == 2 else 1
@@ -133,69 +118,6 @@ def _fmt_num(n: float, decimals: int = 1) -> str:
     if abs(n) >= 10_000:
         return f"{n / 1_000:.{decimals}f}k"
     return f"{n:.{decimals}f}"
-
-
-def fetch_weather(lat: float, lon: float, city: str) -> Tuple[Optional[str], Optional[str]]:
-    try:
-        q = urllib.parse.urlencode(
-            {
-                "latitude": lat,
-                "longitude": lon,
-                "current": "temperature_2m,weather_code",
-                "timezone": "auto",
-            }
-        )
-        data = _http_json(f"https://api.open-meteo.com/v1/forecast?{q}")
-        cur = (data or {}).get("current") or {}
-        temp = cur.get("temperature_2m")
-        if temp is None:
-            return None, "Không đọc được nhiệt độ"
-        label = city.split(",")[0].strip() or "Thời tiết"
-        return f"{label} {float(temp):.0f}°C", None
-    except Exception as e:
-        return None, str(e)
-
-
-def geocode_city(city: str) -> Tuple[Optional[float], Optional[float], Optional[str]]:
-    name = (city or "").strip()
-    if not name:
-        return None, None, "Thiếu tên thành phố"
-    try:
-        q = urllib.parse.urlencode({"name": name, "count": 1, "language": "vi"})
-        data = _http_json(f"https://geocoding-api.open-meteo.com/v1/search?{q}")
-        results = (data or {}).get("results") or []
-        if not results:
-            return None, None, f"Không tìm thấy «{name}»"
-        hit = results[0]
-        return float(hit["latitude"]), float(hit["longitude"]), None
-    except Exception as e:
-        return None, None, str(e)
-
-
-def reverse_geocode(lat: float, lon: float) -> Tuple[str, Optional[str]]:
-    """Human label for coordinates (Open-Meteo reverse geocoding)."""
-    try:
-        q = urllib.parse.urlencode(
-            {"latitude": lat, "longitude": lon, "language": "vi", "count": 1}
-        )
-        data = _http_json(f"https://geocoding-api.open-meteo.com/v1/reverse?{q}")
-        results = (data or {}).get("results") or []
-        if not results:
-            return f"{lat:.2f}°, {lon:.2f}°", None
-        hit = results[0]
-        name = (hit.get("name") or hit.get("admin1") or "").strip()
-        return name or f"{lat:.2f}°, {lon:.2f}°", None
-    except Exception as e:
-        return f"{lat:.2f}°, {lon:.2f}°", str(e)
-
-
-def weather_place_label(cfg: Dict[str, Any]) -> str:
-    cfg = normalize_widgets(cfg)
-    city = (cfg.get("weather_city") or "").strip()
-    if city:
-        return city.split(",")[0].strip()
-    label, _ = reverse_geocode(cfg["weather_lat"], cfg["weather_lon"])
-    return label.split(",")[0].strip() or "Thời tiết"
 
 
 def _format_vnd_per_luong(amount: float) -> str:
@@ -456,17 +378,6 @@ def build_board_lines(cfg: Dict[str, Any]) -> Tuple[List[str], Dict[str, str]]:
     lines: List[str] = []
     errors: Dict[str, str] = {}
 
-    if cfg["show_weather"]:
-        line, err = fetch_weather(
-            cfg["weather_lat"],
-            cfg["weather_lon"],
-            weather_place_label(cfg),
-        )
-        if line:
-            lines.append(line)
-        elif err:
-            errors["weather"] = err
-
     if cfg["show_gold"]:
         line, err = fetch_gold_sjc(
             str(cfg.get("manual_gold_sjc") or ""),
@@ -548,7 +459,6 @@ def preview(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "launcher_patch": {k: v for k, v in patch.items() if v is not None},
         "errors": errors,
         "note": (
-            "Trên TV (CleanYourTV): ticker hiện gộp vào dòng chào (`greeting_name`). "
-            "Thời tiết chi tiết: cài add-on Weather trên TV và bật Module cards."
+            "Trên TV (CleanYourTV): ticker hiện gộp vào dòng chào (`greeting_name`)."
         ),
     }
