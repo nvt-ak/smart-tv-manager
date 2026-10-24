@@ -867,7 +867,14 @@ class Api:
     # under "remote_keys": {"settings_key_keycodes": [...], "app_keys": [...]}.
     DEFAULT_REMOTE_KEYS = {
         "settings_key_keycodes": [4077],
-        "app_keys": ["4001:com.tcl.tv"],
+        "app_keys": [
+            "4001:com.tcl.tv",  # TV
+            "4062:com.netflix.ninja",
+            "4065:com.google.android.youtube.tv",
+            "4099:com.amazon.amazonvideo.livingroom",
+            "4057:com.tcl.ui_mediaCenter",  # Media
+            # 4020 (TCL Channel) is NOT mapped: the system starts com.tcl.partnercustomizer.tkey itself.
+        ],
     }
 
     def _remote_key_overrides(self, theme):

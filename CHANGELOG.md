@@ -10,6 +10,25 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-24
+
+### Added
+
+- Panel **Phát hiện Launcher** gọn lại: trạng thái CleanYourTV / launcher gốc / phím HOME, nút «Đặt lại launcher gốc» (bật lại Google TV Launcher).
+- Áp dụng theme **tự tắt launcher gốc** (`com.google.android.apps.tv.launcherx`) để phím HOME vật lý mở Gathin; kiểm tra HOME → Gathin, tự bật lại nếu không được; ô tick «Tự tắt launcher gốc khi áp dụng theme».
+- Gán sẵn phím remote TCL: Settings (`4077`), TV (`4001` → `com.tcl.tv`), Netflix, YouTube, Prime Video, Media (`app_keys`); mở rộng qua `remote_keys` trong `settings.json`.
+- Widget vàng/xăng: theme không có ảnh nền (VD Default) được vẽ lên nền `background_color` và tự bật `wallpaper: true`; báo lỗi rõ khi không vẽ được.
+
+### Changed
+
+- Áp dụng theme khởi động lại Home đúng một lần ở cuối (sau khi tắt launcher gốc), có thử lại.
+- Ô «Theme nền» của widget bám theme đang áp dụng; nhận diện theme đang dùng ưu tiên theme vừa áp dụng.
+- Khởi động lại Home luôn bật cả `HomeKeyService` và `InputKeyService` (nút TV / nguồn vào).
+
+### Removed
+
+- Nút «Đặt làm Home mặc định» (firmware TV không cho đổi qua ADB) và nút «Sao chép nội dung trạng thái».
+
 ## [1.3.1] - 2026-10-24
 
 ### Added
