@@ -12,6 +12,18 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ### Added
 
+### Changed
+
+### Fixed
+
+---
+
+## [1.1.0] - 2026-10-24
+
+Smart Clean / Debloat Advisor, cải thiện ADB & khởi động, sửa build CI PyInstaller.
+
+### Added
+
 - Smart Clean AI: override **Base URL** OpenAI-compatible (`settings.json`), **Test Ping** trả danh sách model và chọn model trong dropdown trước khi quét AI.
 - **Smart Clean** (tab Quản lý ứng dụng): gợi ý offline [`data/clean_heuristics.json`](data/clean_heuristics.json), tùy chọn phân tích **OpenAI API key** (lưu `~/.smarttv-manager/settings.json`), chọn và **vô hiệu hóa hàng loạt** qua lớp `safety`.
 - UI Smart Clean: Debloat Advisor (titlebar, AI card, metric pills, package cards, footer ADB) theo mock; `smart-clean.css`.
@@ -26,6 +38,7 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ### Fixed
 
+- CI/release: `packaging/pyinstaller_common.py` (tracked) — spec import từ `packaging/` thay `build/` (gitignore) để PyInstaller trên GitHub Actions không lỗi `ModuleNotFoundError`.
 - `get_package_info`: lệnh `pm list packages -e` dùng `SHELL_HEAVY_TIMEOUT` (45s) thay 8s trên Wi‑Fi chậm.
 - `_device_props`: `getprop` có timeout `SHELL_DEFAULT_TIMEOUT` (25s).
 - `store.py`: `upsert` / `rename` / `remove` / `batch_update_online` trả snapshot list (không alias nội bộ); ghi file qua `_write_devices_file` trong lock (không gọi `save()` lồng lock — không deadlock).
@@ -81,5 +94,6 @@ Phát hành công khai đầu tiên — **SmartTV Manager** (desktop, Android TV
 
 ---
 
-[Unreleased]: https://github.com/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/releases/tag/v1.0.0

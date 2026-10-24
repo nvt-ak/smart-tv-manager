@@ -3,7 +3,7 @@
 
 import sys
 
-sys.path.insert(0, "build")
+sys.path.insert(0, "packaging")
 from pyinstaller_common import analysis_bundle
 
 block_cipher = None
