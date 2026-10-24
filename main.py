@@ -266,7 +266,7 @@ class Api:
         base = (openai_base_url or "").strip() if openai_base_url else ""
         base = base or settings_store.get_openai_base_url()
         try:
-            models = ai_clean.fetch_models(api_key=key, base_url=base)
+            models = ai_clean.fetch_models(api_key=key, base_url=base, max_models=0)
             normalized = ai_clean.normalize_base_url(base)
             return {
                 "ok": True,
@@ -326,8 +326,15 @@ class Api:
                             }
                         )
                     pub = settings_store.public_settings()
-                    llm_model = (openai_model or "").strip() or pub.get("openai_model") or "gpt-4o-mini"
                     base_url = (openai_base_url or "").strip() or pub.get("openai_base_url")
+                    llm_model = settings_store.resolve_openai_model(
+                        explicit=openai_model,
+                        base_url=base_url,
+                    )
+                    if not llm_model:
+                        raise ValueError(
+                            "Chưa chọn model — bấm Test Ping, tìm model trong ô Model và chọn (hoặc Lưu Key)."
+                        )
                     ai_rows = ai_clean.suggest_with_openai(
                         api_key=key,
                         model=llm_model,

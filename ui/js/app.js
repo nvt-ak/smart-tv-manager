@@ -732,6 +732,7 @@ let smartCleanSearchQuery = '';
 let smartCleanScanMode = 'offline';
 let smartCleanDismissed = new Set();
 let smartCleanModelsCache = [];
+let smartCleanModelsFetchGen = 0;
 
 const smartCleanModal = document.getElementById('smartCleanModal');
 const smartCleanList = document.getElementById('smartCleanList');
@@ -886,8 +887,126 @@ function readSmartCleanAiForm() {
   return {
     key: document.getElementById('smartCleanApiKey')?.value?.trim() || '',
     base: document.getElementById('smartCleanApiBase')?.value?.trim() || '',
-    model: document.getElementById('smartCleanModel')?.value?.trim() || '',
+    model: getSmartCleanModelValue(),
   };
+}
+
+function getSmartCleanModelValue() {
+  return document.getElementById('smartCleanModel')?.value?.trim() || '';
+}
+
+function isSmartCleanModelCommitted(modelId) {
+  const id = (modelId || '').trim();
+  return Boolean(id && smartCleanModelsCache.includes(id));
+}
+
+function syncSmartCleanModelSearchToSelection() {
+  const search = document.getElementById('smartCleanModelSearch');
+  const selected = getSmartCleanModelValue();
+  if (!search) return;
+  if (selected && isSmartCleanModelCommitted(selected)) {
+    search.value = selected;
+    return;
+  }
+  const q = search.value.trim();
+  if (q && smartCleanModelsCache.includes(q)) {
+    setSmartCleanModelValue(q, { syncSearch: true });
+  } else if (selected) {
+    search.value = selected;
+  }
+}
+
+function updateSmartCleanModelChrome() {
+  const model = getSmartCleanModelValue();
+  const committed = isSmartCleanModelCommitted(model);
+  const badge = document.getElementById('smartCleanModelBadge');
+  const modeTag = document.getElementById('smartCleanAiModeTag');
+  const meta = document.getElementById('smartCleanModelMeta');
+  const pickerField = document.querySelector('.smart-clean-model-picker-field');
+  const total = smartCleanModelsCache.length;
+  pickerField?.classList.toggle('is-selected', committed);
+  if (badge) {
+    badge.classList.toggle('is-selected', committed);
+    if (committed) {
+      const short = model.length > 28 ? `${model.slice(0, 26)}…` : model;
+      badge.textContent = short;
+      badge.title = model;
+    } else if (model && total) {
+      badge.textContent = 'Model không hợp lệ';
+      badge.title = model;
+    } else {
+      badge.textContent = total ? 'Chưa chọn' : 'Chưa tải model';
+      badge.title = '';
+    }
+  }
+  if (modeTag) {
+    modeTag.textContent = committed ? model : total ? 'Chưa chọn' : 'Ping';
+    modeTag.title = committed ? model : '';
+    modeTag.classList.toggle('is-selected', committed);
+  }
+  if (meta) {
+    if (total) {
+      meta.hidden = false;
+      if (committed) {
+        meta.textContent = `✓ Đã chọn · ${total} model · gõ lọc danh sách`;
+      } else {
+        meta.textContent = `${total} model · chọn dòng hoặc Enter khi khớp 1 kết quả`;
+      }
+    } else {
+      meta.hidden = true;
+      meta.textContent = '';
+    }
+  }
+}
+
+function setSmartCleanModelValue(modelId, { syncSearch = true } = {}) {
+  const hidden = document.getElementById('smartCleanModel');
+  const search = document.getElementById('smartCleanModelSearch');
+  const id = (modelId || '').trim();
+  if (hidden) hidden.value = id;
+  if (syncSearch && search) search.value = id;
+  updateSmartCleanModelChrome();
+}
+
+function filterSmartCleanModels(query) {
+  const q = (query || '').trim().toLowerCase();
+  let list = smartCleanModelsCache;
+  if (q) list = list.filter((id) => id.toLowerCase().includes(q));
+  return list.slice(0, 120);
+}
+
+function renderSmartCleanModelDropdown(items) {
+  const box = document.getElementById('smartCleanModelDropdown');
+  const search = document.getElementById('smartCleanModelSearch');
+  if (!box) return;
+  if (!items.length) {
+    box.innerHTML = '<p class="smart-clean-model-dropdown-empty">Không khớp model nào</p>';
+    box.hidden = false;
+    if (search) search.setAttribute('aria-expanded', 'true');
+    return;
+  }
+  const current = getSmartCleanModelValue();
+  box.innerHTML = items
+    .map((id) => {
+      const active = id === current ? ' is-active' : '';
+      return `<button type="button" class="smart-clean-model-option${active}" role="option" aria-selected="${id === current}" data-model="${escapeAttr(id)}">${escapeHtml(id)}</button>`;
+    })
+    .join('');
+  box.hidden = false;
+  if (search) search.setAttribute('aria-expanded', 'true');
+}
+
+function closeSmartCleanModelDropdown() {
+  const box = document.getElementById('smartCleanModelDropdown');
+  const search = document.getElementById('smartCleanModelSearch');
+  if (box) box.hidden = true;
+  if (search) search.setAttribute('aria-expanded', 'false');
+}
+
+function openSmartCleanModelDropdown() {
+  if (!smartCleanModelsCache.length) return;
+  const search = document.getElementById('smartCleanModelSearch');
+  renderSmartCleanModelDropdown(filterSmartCleanModels(search?.value));
 }
 
 function pickSmartCleanModelId(list, preferredId) {
@@ -898,49 +1017,117 @@ function pickSmartCleanModelId(list, preferredId) {
   return notDefaultOpenAi || list[0];
 }
 
-function populateSmartCleanModelSelect(models, preferredId) {
-  const sel = document.getElementById('smartCleanModel');
-  if (!sel) return;
+function populateSmartCleanModelPicker(
+  models,
+  preferredId,
+  { autoPick = true, respectCurrent = true } = {},
+) {
+  const search = document.getElementById('smartCleanModelSearch');
   const list = Array.isArray(models) ? models.filter(Boolean) : [];
-  sel.innerHTML = '';
+  smartCleanModelsCache = list.slice();
   if (!list.length) {
-    sel.disabled = true;
-    const opt = document.createElement('option');
-    opt.value = '';
-    opt.textContent = 'Test Ping để tải danh sách model…';
-    sel.appendChild(opt);
+    setSmartCleanModelValue('', { syncSearch: true });
+    if (search) {
+      search.disabled = true;
+      search.placeholder = 'Test Ping để tải danh sách model…';
+    }
+    closeSmartCleanModelDropdown();
+    updateSmartCleanModelChrome();
     return;
   }
-  for (const id of list) {
-    const opt = document.createElement('option');
-    opt.value = id;
-    opt.textContent = id;
-    sel.appendChild(opt);
+  if (search) {
+    search.disabled = false;
+    search.placeholder = 'Gõ để tìm model (vd. auto/, gpt-)…';
   }
-  sel.disabled = false;
-  const pick = pickSmartCleanModelId(list, preferredId);
-  sel.value = pick;
-  smartCleanModelsCache = list.slice();
+  const pref = (preferredId || '').trim();
+  const current = getSmartCleanModelValue();
+  let pick = '';
+  // Luôn giữ model user vừa chọn trên form — không ghi đè bằng default/settings.
+  if (respectCurrent && current && list.includes(current)) {
+    pick = current;
+  } else if (pref && list.includes(pref)) {
+    pick = pref;
+  } else if (autoPick) {
+    pick = pickSmartCleanModelId(list, pref);
+  } else if (pref) {
+    pick = pref;
+  }
+  if (pick !== current) {
+    setSmartCleanModelValue(pick, { syncSearch: true });
+  } else {
+    updateSmartCleanModelChrome();
+  }
+}
+
+async function refreshSmartCleanModels({
+  key = '',
+  base = '',
+  preferred = '',
+  autoPick = false,
+  toastOnError = false,
+} = {}) {
+  const gen = ++smartCleanModelsFetchGen;
+  const settings = await getApi().get_app_settings();
+  if (!settings.openai_configured && !key) return { ok: false, skipped: true };
+  const res = await getApi().test_openai_connection(key || null, base || null);
+  if (gen !== smartCleanModelsFetchGen) {
+    return { ok: false, stale: true };
+  }
+  if (!res?.ok) {
+    if (toastOnError) showAppsToast(res?.error || 'Không tải được model', 'error');
+    return res;
+  }
+  const baseEl = document.getElementById('smartCleanApiBase');
+  if (baseEl && res.base_url) baseEl.value = res.base_url;
+  const current = getSmartCleanModelValue();
+  const want =
+    (current && (res.models || []).includes(current) ? current : '') ||
+    preferred ||
+    settings.openai_model ||
+    '';
+  populateSmartCleanModelPicker(res.models || [], want, {
+    autoPick,
+    respectCurrent: true,
+  });
+  updateSmartCleanModelChrome();
+  return res;
 }
 
 async function syncSmartCleanAiFormFromSettings() {
   try {
     const s = await getApi().get_app_settings();
     const baseEl = document.getElementById('smartCleanApiBase');
-    if (baseEl) baseEl.value = s.openai_base_url || 'https://api.openai.com/v1';
+    const base = s.openai_base_url || 'https://api.openai.com/v1';
+    if (baseEl) baseEl.value = base;
     if (smartCleanKeyHint) {
       if (s.openai_configured) {
         smartCleanKeyHint.hidden = false;
-        smartCleanKeyHint.textContent = 'Đã lưu key';
+        smartCleanKeyHint.textContent = 'Đã lưu';
       } else {
         smartCleanKeyHint.hidden = true;
         smartCleanKeyHint.textContent = '';
       }
     }
     if (smartCleanModelsCache.length) {
-      populateSmartCleanModelSelect(smartCleanModelsCache, s.openai_model);
+      populateSmartCleanModelPicker(smartCleanModelsCache, s.openai_model, {
+        autoPick: false,
+        respectCurrent: true,
+      });
+    } else if (s.openai_configured) {
+      const search = document.getElementById('smartCleanModelSearch');
+      if (search) {
+        search.disabled = true;
+        search.placeholder = 'Đang tải danh sách model…';
+      }
+      await refreshSmartCleanModels({
+        base,
+        preferred: s.openai_model || '',
+        autoPick: false,
+      });
     } else if (s.openai_model) {
-      populateSmartCleanModelSelect([s.openai_model], s.openai_model);
+      populateSmartCleanModelPicker([s.openai_model], s.openai_model, { autoPick: false });
+    } else {
+      updateSmartCleanModelChrome();
     }
   } catch {
     if (smartCleanKeyHint) smartCleanKeyHint.hidden = true;
@@ -974,6 +1161,13 @@ async function runSmartCleanAnalyze(useAi) {
   if (useAi) {
     const panel = document.getElementById('smartCleanAiPanel');
     if (panel && !panel.open) panel.open = true;
+    if (!isSmartCleanModelCommitted(model)) {
+      showAppsToast('Chọn model hợp lệ từ danh sách (click hoặc Enter)', 'info');
+      setSmartCleanStatus('Cần chọn model trong ô Model trước khi quét AI.');
+      syncSmartCleanModelSearchToSelection();
+      updateSmartCleanModelChrome();
+      return;
+    }
     if (model || base) {
       try {
         await getApi().save_app_settings(null, model || null, base || null);
@@ -1027,7 +1221,7 @@ async function runSmartCleanAnalyze(useAi) {
   }
 }
 
-function openSmartCleanModal() {
+async function openSmartCleanModal() {
   if (!activeDevice) {
     showAppsToast('Chọn thiết bị và tải app trước', 'info');
     return;
@@ -1037,7 +1231,7 @@ function openSmartCleanModal() {
   document.body.classList.add('smart-clean-modal-open');
   const aiPanel = document.getElementById('smartCleanAiPanel');
   if (aiPanel) aiPanel.removeAttribute('open');
-  syncSmartCleanAiFormFromSettings();
+  await syncSmartCleanAiFormFromSettings();
   requestAnimationFrame(() => {
     smartCleanList?.scrollTo(0, 0);
   });
@@ -1088,14 +1282,63 @@ smartCleanModal?.addEventListener('click', (e) => {
 document.getElementById('smartCleanModeOffline')?.addEventListener('click', () => runSmartCleanAnalyze(false));
 document.getElementById('smartCleanModeAi')?.addEventListener('click', () => runSmartCleanAnalyze(true));
 
-document.getElementById('smartCleanModel')?.addEventListener('change', async () => {
+async function persistSmartCleanModelChoice({ quiet = false } = {}) {
   const { model, base } = readSmartCleanAiForm();
-  if (!model) return;
+  if (!isSmartCleanModelCommitted(model)) return;
   try {
     await getApi().save_app_settings(null, model, base || null);
-    showAppsToast(`Model: ${model}`, 'check_circle');
+    updateSmartCleanModelChrome();
+    if (!quiet) showAppsToast(`Đã chọn: ${model}`, 'check_circle');
   } catch (err) {
     showAppsToast(String(err), 'error');
+  }
+}
+
+function applySmartCleanModelChoice(modelId) {
+  const id = (modelId || '').trim();
+  if (!id || !smartCleanModelsCache.includes(id)) return false;
+  setSmartCleanModelValue(id, { syncSearch: true });
+  return true;
+}
+
+const smartCleanModelSearchEl = document.getElementById('smartCleanModelSearch');
+smartCleanModelSearchEl?.addEventListener('focus', () => openSmartCleanModelDropdown());
+smartCleanModelSearchEl?.addEventListener('input', () => openSmartCleanModelDropdown());
+smartCleanModelSearchEl?.addEventListener('keydown', async (e) => {
+  if (e.key === 'Escape') {
+    closeSmartCleanModelDropdown();
+    return;
+  }
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const q = smartCleanModelSearchEl.value.trim();
+    const matches = filterSmartCleanModels(q);
+    if (matches.length === 1 && applySmartCleanModelChoice(matches[0])) {
+      closeSmartCleanModelDropdown();
+      await persistSmartCleanModelChoice();
+    } else if (matches.length > 1 && applySmartCleanModelChoice(q)) {
+      closeSmartCleanModelDropdown();
+      await persistSmartCleanModelChoice();
+    }
+  }
+});
+
+document.getElementById('smartCleanModelDropdown')?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-model]');
+  if (!btn) return;
+  if (!applySmartCleanModelChoice(btn.dataset.model)) return;
+  closeSmartCleanModelDropdown();
+  await persistSmartCleanModelChoice();
+});
+
+document.getElementById('smartCleanModelPicker')?.addEventListener('focusout', (e) => {
+  const picker = document.getElementById('smartCleanModelPicker');
+  if (picker && !picker.contains(e.relatedTarget)) {
+    closeSmartCleanModelDropdown();
+    window.setTimeout(() => {
+      syncSmartCleanModelSearchToSelection();
+      updateSmartCleanModelChrome();
+    }, 120);
   }
 });
 
@@ -1163,7 +1406,12 @@ document.getElementById('smartCleanSaveKey')?.addEventListener('click', async ()
       base || null,
     );
     if (input) input.value = '';
-    await syncSmartCleanAiFormFromSettings();
+    const s = await getApi().get_app_settings();
+    if (smartCleanKeyHint && s.openai_configured) {
+      smartCleanKeyHint.hidden = false;
+      smartCleanKeyHint.textContent = 'Đã lưu';
+    }
+    updateSmartCleanModelChrome();
     showAppsToast('Đã lưu cấu hình AI (key, URL, model)', 'key');
   } catch (err) {
     showAppsToast(String(err), 'error');
@@ -1174,7 +1422,6 @@ document.getElementById('smartCleanSaveKey')?.addEventListener('click', async ()
 
 document.getElementById('smartCleanTestPing')?.addEventListener('click', async () => {
   const input = document.getElementById('smartCleanApiKey');
-  const baseEl = document.getElementById('smartCleanApiBase');
   const btn = document.getElementById('smartCleanTestPing');
   const { key, base } = readSmartCleanAiForm();
   setButtonLoading(btn, true, 'Đang ping…');
@@ -1182,29 +1429,30 @@ document.getElementById('smartCleanTestPing')?.addEventListener('click', async (
     if (key) {
       await getApi().save_app_settings(key, null, base || null);
     }
-    const res = await getApi().test_openai_connection(key, base);
-    if (!res?.ok) {
-      showAppsToast(res?.error || 'Không kết nối được API', 'error');
-      return;
-    }
     const settings = await getApi().get_app_settings();
-    const preferred = readSmartCleanAiForm().model || settings.openai_model;
-    populateSmartCleanModelSelect(res.models || [], preferred);
-    if (baseEl && res.base_url) baseEl.value = res.base_url;
-    const pickedModel = readSmartCleanAiForm().model;
-    const pickedBase = baseEl?.value?.trim() || base || null;
-    if (pickedModel) {
+    const preferred = getSmartCleanModelValue() || settings.openai_model || '';
+    const res = await refreshSmartCleanModels({
+      key,
+      base,
+      preferred,
+      autoPick: !preferred,
+      toastOnError: true,
+    });
+    if (!res?.ok) return;
+    const pickedModel = getSmartCleanModelValue();
+    const pickedBase = readSmartCleanAiForm().base || null;
+    if (isSmartCleanModelCommitted(pickedModel)) {
       await getApi().save_app_settings(null, pickedModel, pickedBase);
     }
-    const n = (res.models || []).length;
+    const n = res.models_total ?? (res.models || []).length;
     showAppsToast(
-      n ? `Kết nối OK — ${n} model trong dropdown` : 'Kết nối OK (không có model trong response)',
+      n ? `Kết nối OK — ${n} model (gõ để tìm)` : 'Kết nối OK (không có model trong response)',
       'cloud_done',
     );
     if (input && key) input.value = '';
-    if (smartCleanKeyHint && key) {
+    if (smartCleanKeyHint && (key || settings.openai_configured)) {
       smartCleanKeyHint.hidden = false;
-      smartCleanKeyHint.textContent = 'Đã lưu key';
+      smartCleanKeyHint.textContent = 'Đã lưu';
     }
   } catch (err) {
     showAppsToast(String(err), 'error');

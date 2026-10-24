@@ -186,8 +186,16 @@ def _trim_models_for_ui(ids: List[str], *, max_models: int = 200) -> List[str]:
     return out
 
 
-def fetch_models(*, api_key: str, base_url: str | None = None, max_models: int = 200) -> List[str]:
-    """List model ids from OpenAI-compatible GET /v1/models."""
+def fetch_models(
+    *,
+    api_key: str,
+    base_url: str | None = None,
+    max_models: int | None = 200,
+) -> List[str]:
+    """List model ids from OpenAI-compatible GET /v1/models.
+
+    max_models <= 0 or None: trả về toàn bộ (dùng cache + tìm kiếm trên UI).
+    """
     if not api_key:
         raise ValueError("Chưa cấu hình API key")
     req = urllib.request.Request(
@@ -204,6 +212,8 @@ def fetch_models(*, api_key: str, base_url: str | None = None, max_models: int =
         if isinstance(row, dict) and row.get("id"):
             ids.append(str(row["id"]))
     sorted_ids = _sort_model_ids(ids)
+    if max_models is None or max_models <= 0:
+        return sorted_ids
     return _trim_models_for_ui(sorted_ids, max_models=max_models)
 
 

@@ -19,12 +19,16 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 ### Changed
 
 - Smart Clean AI: system prompt phân loại package (tier/category/confidence, quy tắc skip cứng); user payload gồm `current_home_package`, `label`, `is_system`, `has_launcher_icon`; parse `results[]`; merge lưu `ai_category` / `ai_confidence`.
+- Smart Clean: panel cấu hình AI **lưới gọn** (API key + nút Lưu/Ping; Base URL / Model **50–50**); bỏ khối mô tả trùng; badge model không uppercase.
 - Smart Clean: modal **gần full màn hình** (viền 4px); thẻ package, toolbar, footer và panel AI **compact** hơn; panel AI mở có scroll nội bộ để ưu tiên diện tích danh sách.
 - Smart Clean: panel «Gợi ý AI & tối ưu thông minh» thu gọn (`<details>`), **mặc định đóng** — danh sách gói chiếm phần lớn màn hình; viền thẻ package gọn (một `border-left`).
 - Smart Clean: ô API key và tìm kiếm package — một lớp viền; loại trừ input/button Smart Clean khỏi style global trong `main.css` (tránh viền lồng).
 
 ### Fixed
 
+- Smart Clean: chọn model không bị ghi đè bởi default/settings khi fetch nền hoặc sync; bỏ sync form sau Lưu Key (tránh nhảy model).
+- Smart Clean: trạng thái **Đã chọn** model (viền xanh, badge, dòng meta); blur ô tìm sync lại; quét AI chỉ khi model nằm trong danh sách đã tải; **tự fetch model** khi mở modal nếu key đã lưu.
+- Smart Clean: Test Ping tải **toàn bộ** model (không cắt 200); combobox **tìm kiếm** model; badge/mode tag hiển thị model đã chọn; proxy/local **không** fallback `gpt-4o-mini` — bắt chọn model sau Ping.
 - Smart Clean: quét AI dùng **model + Base URL** từ form (tránh 401 `gpt-4o-mini` trên proxy local); loading danh sách + «đang quét…» trên nút Offline/AI; đổi model tự lưu settings.
 - Smart Clean: Test Ping không ghi đè dropdown model sau sync; proxy local (1500+ model) giới hạn ~200 mục (`auto/*` ưu tiên); HTTP localhost không bắt SSL.
 - Smart Clean / OpenAI: HTTPS dùng CA bundle `certifi` (hết `SSL: CERTIFICATE_VERIFY_FAILED` trên macOS Python); thông báo lỗi SSL gợi ý cài cert.

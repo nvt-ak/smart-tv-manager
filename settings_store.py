@@ -59,7 +59,27 @@ def set_openai_base_url(url: str | None) -> None:
 
 
 def get_openai_model() -> str:
-    return (load().get("openai_model") or "").strip() or "gpt-4o-mini"
+    """Model đã lưu (có thể rỗng nếu user chưa chọn)."""
+    return (load().get("openai_model") or "").strip()
+
+
+def default_openai_model_for_base(base_url: str | None = None) -> str:
+    """Chỉ gợi ý mặc định OpenAI chính thức; proxy/local để trống — bắt chọn sau Test Ping."""
+    u = (base_url or get_openai_base_url() or "").strip().lower()
+    if "api.openai.com" in u:
+        return "gpt-4o-mini"
+    return ""
+
+
+def resolve_openai_model(
+    *,
+    explicit: str | None = None,
+    base_url: str | None = None,
+) -> str:
+    m = (explicit or "").strip() or get_openai_model()
+    if m:
+        return m
+    return default_openai_model_for_base(base_url)
 
 
 def set_openai_model(model: str | None) -> None:
@@ -81,6 +101,6 @@ def public_settings() -> dict:
     return {
         "openai_configured": bool(key),
         "openai_key_hint": hint,
-        "openai_model": get_openai_model(),
+        "openai_model": resolve_openai_model(base_url=get_openai_base_url()),
         "openai_base_url": get_openai_base_url(),
     }

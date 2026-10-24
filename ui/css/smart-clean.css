@@ -229,7 +229,7 @@ body.smart-clean-modal-open {
 }
 
 .smart-clean-ai-panel[open] .smart-clean-ai-panel-body {
-  max-height: min(36vh, 17.5rem);
+  max-height: min(32vh, 15rem);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -250,19 +250,73 @@ body.smart-clean-modal-open {
   pointer-events: none;
 }
 
-.smart-clean-ai-top {
+/* Cấu hình AI — lưới gọn, Base URL / Model cùng tỉ lệ */
+.smart-clean-ai-config {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
-  padding-top: var(--space-xs);
+  gap: 6px;
+  padding-top: 4px;
 }
 
-@media (min-width: 1024px) {
-  .smart-clean-ai-top {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-sm);
+.smart-clean-config-row--key {
+  display: grid;
+  grid-template-columns: 3.75rem minmax(0, 1fr);
+  gap: 6px 8px;
+  align-items: center;
+}
+
+.smart-clean-config-keyline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  min-width: 0;
+}
+
+.smart-clean-config-grow {
+  min-width: 0;
+}
+
+.smart-clean-config-btns {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.smart-clean-config-row--split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.smart-clean-config-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.smart-clean-config-lbl {
+  font: 600 9px/1 var(--font-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-outline);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .smart-clean-config-row--key,
+  .smart-clean-config-row--split {
+    grid-template-columns: 1fr;
+  }
+
+  .smart-clean-config-row--key .smart-clean-config-lbl,
+  .smart-clean-config-row--split > .smart-clean-config-lbl {
+    display: none;
+  }
+
+  .smart-clean-config-row--split {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -294,10 +348,14 @@ body.smart-clean-modal-open {
 }
 
 .smart-clean-gpt-badge {
-  font: 600 10px/1 var(--font-mono, var(--font-display));
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 2px 8px;
+  font: 600 10px/1.2 var(--font-mono, monospace);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 6px;
   border-radius: var(--radius-sm);
   background: rgba(6, 182, 212, 0.15);
   color: var(--color-primary);
@@ -342,22 +400,6 @@ body.smart-clean-modal-open {
 .smart-clean-security-pill .material-symbols-outlined {
   font-size: 14px;
   color: #34d399;
-}
-
-/* API key row — input + Lưu Key + Test Ping (mock) */
-.smart-clean-key-block {
-  margin-top: var(--space-sm);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-}
-
-@media (min-width: 768px) {
-  .smart-clean-key-block {
-    flex-direction: row;
-    align-items: stretch;
-    gap: var(--space-sm);
-  }
 }
 
 .smart-clean-key-side-btn {
@@ -424,10 +466,8 @@ body.smart-clean-modal-open {
   background: #202d44;
 }
 
-@media (min-width: 768px) {
-  .smart-clean-key-side-btn {
-    min-width: 6.75rem;
-  }
+.smart-clean-key-side-btn .smart-clean-btn-text {
+  display: inline;
 }
 
 .smart-clean-key-field {
@@ -447,9 +487,10 @@ body.smart-clean-modal-open {
 }
 
 .smart-clean-key-icon {
-  margin-left: var(--space-sm);
+  margin-left: 6px;
   color: var(--color-outline);
-  font-size: 18px;
+  font-size: 15px;
+  flex-shrink: 0;
 }
 
 .smart-clean-key-input {
@@ -506,70 +547,120 @@ body.smart-clean-modal-open {
   color: var(--color-on-surface);
 }
 
-.smart-clean-endpoint-row {
-  margin-top: var(--space-sm);
-  display: grid;
-  gap: var(--space-sm);
-}
-
-@media (min-width: 768px) {
-  .smart-clean-endpoint-row {
-    grid-template-columns: 1fr minmax(11rem, 15rem);
-    align-items: end;
-  }
-}
-
-.smart-clean-endpoint-field {
-  min-width: 0;
-}
-
-.smart-clean-model-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2xs);
-  min-width: 0;
-}
-
-.smart-clean-model-label {
-  font: 600 10px/1 var(--font-display);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-outline);
-}
-
-.smart-clean-model-select {
+.smart-clean-model-picker {
+  position: relative;
   width: 100%;
+}
+
+.smart-clean-model-picker-field {
+  display: flex;
+  align-items: center;
   min-height: 2rem;
-  padding: 0 var(--space-md) 0 var(--space-xs);
   border: 1px solid #334155;
   border-radius: var(--radius-md);
   background: #0e131d;
-  color: #e2e8f0;
-  font: var(--text-code-sm);
-  outline: none;
-  cursor: pointer;
-  appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, #64748b 50%), linear-gradient(135deg, #64748b 50%, transparent 50%);
-  background-position: calc(100% - 16px) calc(50% - 3px), calc(100% - 11px) calc(50% - 3px);
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
 }
 
-.smart-clean-model-select:focus {
+.smart-clean-model-picker-field:focus-within {
   border-color: rgba(0, 240, 255, 0.5);
 }
 
-.smart-clean-model-select:disabled {
-  opacity: 0.6;
+.smart-clean-model-picker-field.is-selected {
+  border-color: rgba(52, 211, 153, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.15);
+}
+
+.smart-clean-gpt-badge.is-selected {
+  color: #6ee7b7;
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(6, 78, 59, 0.35);
+}
+
+.smart-clean-mode-tag.is-selected {
+  color: #c084fc;
+}
+
+.smart-clean-model-search {
+  flex: 1;
+  min-width: 0;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0.35rem var(--space-xs) 0.35rem 0;
+  font: 11px/1.35 var(--font-mono, monospace);
+  color: #e2e8f0;
+  outline: none;
+}
+
+.smart-clean-model-search:disabled {
+  opacity: 0.65;
   cursor: not-allowed;
+}
+
+.smart-clean-model-search::placeholder {
+  color: #64748b;
+}
+
+.smart-clean-model-dropdown {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 11rem;
+  overflow-y: auto;
+  border: 1px solid #334155;
+  border-radius: var(--radius-md);
+  background: #0e131d;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+.smart-clean-model-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border: none;
+  background: transparent;
+  color: #e2e8f0;
+  font: 11px/1.35 var(--font-mono, monospace);
+  cursor: pointer;
+}
+
+.smart-clean-model-option:hover,
+.smart-clean-model-option:focus {
+  background: rgba(0, 240, 255, 0.12);
+  color: var(--color-primary);
+  outline: none;
+}
+
+.smart-clean-model-option.is-active {
+  background: rgba(52, 211, 153, 0.14);
+  color: #6ee7b7;
+}
+
+.smart-clean-model-dropdown-empty {
+  margin: 0;
+  padding: var(--space-sm);
+  font: 11px/1.35 var(--font-display);
+  color: var(--color-outline);
+}
+
+.smart-clean-model-meta {
+  margin: 0;
+  font: 9px/1.25 var(--font-display);
+  color: var(--color-outline);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Scan mode cards */
 .smart-clean-mode-grid {
-  margin-top: var(--space-xs);
+  margin-top: 6px;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--space-xs);
+  gap: 6px;
 }
 
 @media (max-width: 640px) {
@@ -669,9 +760,13 @@ body.smart-clean-modal-open {
 }
 
 .smart-clean-mode-tag {
-  font: var(--text-code-sm);
+  font: 9px/1.2 var(--font-mono, monospace);
   color: var(--color-outline);
-  flex-shrink: 0;
+  flex-shrink: 1;
+  max-width: 6.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .smart-clean-mode.is-active .smart-clean-mode-tag {

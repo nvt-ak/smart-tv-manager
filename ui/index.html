@@ -549,7 +549,7 @@
               <div class="smart-clean-ai-summary-text">
                 <div class="smart-clean-ai-title-row">
                   <h2 id="smartCleanTitle" class="smart-clean-ai-title">Gợi ý AI &amp; tối ưu thông minh</h2>
-                  <span class="smart-clean-gpt-badge">GPT-4O READY</span>
+                  <span id="smartCleanModelBadge" class="smart-clean-gpt-badge">Chưa chọn model</span>
                 </div>
                 <p class="smart-clean-ai-summary-hint">Mặc định dùng Offline DB — mở để cấu hình API / quét AI</p>
               </div>
@@ -557,48 +557,61 @@
             </summary>
 
             <div class="smart-clean-ai-panel-body">
-            <div class="smart-clean-ai-top">
-              <p class="smart-clean-ai-lead">
-                Phân tích tự động danh sách package trên Android TV để đề xuất gỡ bỏ hoặc vô hiệu hóa ứng dụng rác, bloatware giúp TV chạy mượt mà hơn.
-              </p>
-              <div class="smart-clean-security">
-                <span class="smart-clean-security-label">Bảo mật:</span>
-                <span class="smart-clean-security-pill">
-                  <span class="material-symbols-outlined">verified_user</span>
-                  Zero-Cloud Leak (Gửi trực tiếp)
-                </span>
-              </div>
-            </div>
-
-            <div class="smart-clean-key-block">
-              <div class="smart-clean-key-field">
-                <span class="material-symbols-outlined smart-clean-key-icon">key</span>
-                <input id="smartCleanApiKey" class="smart-clean-key-input" type="password" placeholder="Nhập OpenAI API Key (sk-…) để dùng GPT-4o deep scan…" autocomplete="off">
-                <div class="smart-clean-key-actions">
-                  <span id="smartCleanKeyHint" class="smart-clean-key-saved" hidden>Đã lưu key</span>
-                  <button type="button" id="smartCleanToggleKey" class="smart-clean-key-eye" title="Ẩn/hiện key" aria-label="Ẩn/hiện key">
-                    <span class="material-symbols-outlined">visibility</span>
-                  </button>
+            <div class="smart-clean-ai-config">
+              <div class="smart-clean-config-row smart-clean-config-row--key">
+                <label class="smart-clean-config-lbl" for="smartCleanApiKey">API key</label>
+                <div class="smart-clean-config-keyline">
+                  <div class="smart-clean-key-field smart-clean-config-grow">
+                    <span class="material-symbols-outlined smart-clean-key-icon">key</span>
+                    <input id="smartCleanApiKey" class="smart-clean-key-input" type="password" placeholder="sk-… hoặc key proxy" autocomplete="off">
+                    <div class="smart-clean-key-actions">
+                      <span id="smartCleanKeyHint" class="smart-clean-key-saved" hidden>Đã lưu</span>
+                      <button type="button" id="smartCleanToggleKey" class="smart-clean-key-eye" title="Ẩn/hiện key" aria-label="Ẩn/hiện key">
+                        <span class="material-symbols-outlined">visibility</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="smart-clean-config-btns">
+                    <button type="button" id="smartCleanSaveKey" class="smart-clean-key-side-btn" title="Lưu key, URL, model">
+                      <span class="material-symbols-outlined">check</span>
+                      <span class="smart-clean-btn-text">Lưu</span>
+                    </button>
+                    <button type="button" id="smartCleanTestPing" class="smart-clean-key-side-btn smart-clean-key-side-btn--muted" title="Test Ping &amp; tải model">
+                      Ping
+                    </button>
+                  </div>
                 </div>
               </div>
-              <button type="button" id="smartCleanSaveKey" class="smart-clean-key-side-btn">
-                <span class="material-symbols-outlined">check</span>
-                Lưu Key
-              </button>
-              <button type="button" id="smartCleanTestPing" class="smart-clean-key-side-btn smart-clean-key-side-btn--muted">
-                Test Ping
-              </button>
-            </div>
-            <div class="smart-clean-endpoint-row">
-              <div class="smart-clean-key-field smart-clean-endpoint-field">
-                <span class="material-symbols-outlined smart-clean-key-icon">link</span>
-                <input id="smartCleanApiBase" class="smart-clean-key-input smart-clean-url-input" type="text" spellcheck="false" placeholder="https://api.openai.com/v1 hoặc proxy OpenAI-compatible…" autocomplete="off">
-              </div>
-              <div class="smart-clean-model-wrap">
-                <label class="smart-clean-model-label" for="smartCleanModel">Model</label>
-                <select id="smartCleanModel" class="smart-clean-model-select" disabled>
-                  <option value="">Test Ping để tải danh sách model…</option>
-                </select>
+              <div class="smart-clean-config-row smart-clean-config-row--split">
+                <div class="smart-clean-config-cell">
+                  <label class="smart-clean-config-lbl" for="smartCleanApiBase">Base URL</label>
+                  <div class="smart-clean-key-field">
+                    <span class="material-symbols-outlined smart-clean-key-icon">link</span>
+                    <input id="smartCleanApiBase" class="smart-clean-key-input smart-clean-url-input" type="text" spellcheck="false" placeholder="https://api.openai.com/v1" autocomplete="off">
+                  </div>
+                </div>
+                <div class="smart-clean-config-cell">
+                  <label class="smart-clean-config-lbl" for="smartCleanModelSearch">Model</label>
+                  <div class="smart-clean-model-picker" id="smartCleanModelPicker">
+                    <div class="smart-clean-model-picker-field">
+                      <span class="material-symbols-outlined smart-clean-key-icon">smart_toy</span>
+                      <input
+                        id="smartCleanModelSearch"
+                        type="search"
+                        class="smart-clean-model-search"
+                        placeholder="Ping → gõ tìm model…"
+                        autocomplete="off"
+                        disabled
+                        aria-expanded="false"
+                        aria-controls="smartCleanModelDropdown"
+                        role="combobox"
+                      />
+                    </div>
+                    <div id="smartCleanModelDropdown" class="smart-clean-model-dropdown" hidden role="listbox"></div>
+                    <input type="hidden" id="smartCleanModel" value="" />
+                  </div>
+                  <p id="smartCleanModelMeta" class="smart-clean-model-meta" hidden></p>
+                </div>
               </div>
             </div>
 
@@ -625,7 +638,7 @@
                     <div class="smart-clean-mode-desc">Phân loại theo ngữ cảnh TV &amp; đánh giá rủi ro crash hệ thống</div>
                   </div>
                 </div>
-                <span class="smart-clean-mode-tag">GPT-4o</span>
+                <span id="smartCleanAiModeTag" class="smart-clean-mode-tag">Model đã chọn</span>
               </button>
             </div>
             <button type="button" id="smartCleanAnalyzeLocal" class="sr-only" tabindex="-1" aria-hidden="true">Scan offline</button>
