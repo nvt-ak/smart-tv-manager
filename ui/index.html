@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TV Remote Hub</title>
+  <style>
+    html { color-scheme: dark; background: #0b0e14; }
+    body { margin: 0; background: #0b0e14; color: #e1e2eb; }
+    [hidden] { display: none !important; }
+  </style>
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/app-icon-180.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -64,12 +69,30 @@
             <p class="page-desc">Quét mạng LAN và điều khiển thiết bị qua giao thức không dây ADB (Port 5555)</p>
           </div>
           <div style="display:flex;gap:var(--space-sm);flex-wrap:wrap;">
+            <button type="button" id="devGuideOpenBtn" class="btn btn--surface">
+              <span class="material-symbols-outlined">bolt</span>
+              Hướng dẫn bật ADB
+            </button>
             <button type="button" id="scanQuickBtn" class="btn btn--surface">
               <span class="material-symbols-outlined">radar</span>
               Quét mạng tự động
             </button>
           </div>
         </header>
+
+        <div id="devGuideBanner" class="dev-guide-banner glass-card" hidden>
+          <div class="dev-guide-banner-text">
+            <span class="material-symbols-outlined dev-guide-banner-icon">live_tv</span>
+            <div>
+              <strong>Lần đầu kết nối TV?</strong>
+              <p class="device-meta" style="margin:4px 0 0;">Bật chế độ nhà phát triển và gỡ lỗi USB trên Android TV trước khi quét ADB.</p>
+            </div>
+          </div>
+          <div class="dev-guide-banner-actions">
+            <button type="button" id="devGuideBannerStart" class="btn btn--primary">Hướng Dẫn</button>
+            <button type="button" id="devGuideBannerDismiss" class="btn btn--ghost">Để sau</button>
+          </div>
+        </div>
 
         <div class="dual-grid">
           <div class="dual-grid-main">
@@ -805,6 +828,141 @@
       <div id="footerMeta">TV Remote Hub</div>
     </div>
   </footer>
+
+  <div id="devGuideModal" class="home-modal-backdrop dev-guide-modal" hidden>
+    <div class="home-modal dev-guide-dialog dev-guide-dialog--wide" role="dialog" aria-labelledby="devGuideTitle" aria-modal="true">
+      <div class="home-modal-head">
+        <div class="home-modal-head-text">
+          <span class="material-symbols-outlined">developer_mode</span>
+          <div>
+            <h3 id="devGuideTitle">Kích hoạt Developer Mode &amp; Gỡ lỗi USB</h3>
+            <p id="devGuideSubtitle" class="home-modal-desc">Hướng dẫn kết nối · TCL Smart TV / Google TV · Android 9–14</p>
+          </div>
+        </div>
+        <button type="button" id="devGuideClose" class="btn btn--ghost" aria-label="Đóng">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="home-modal-body dev-guide-body dev-guide-scroll">
+        <div class="dev-guide-hero">
+          <p class="dev-guide-eyebrow">Hướng dẫn kết nối / Bật chế độ nhà phát triển &amp; ADB</p>
+          <p class="dev-guide-hero-text">
+            Mở cổng Android Debug Bridge (<code class="dev-guide-code">port 5555</code>) trên TV để TV Remote Hub quét LAN, kết nối và điều khiển không dây.
+          </p>
+        </div>
+        <div class="dev-guide-brands" id="devGuideBrands">
+          <span class="dev-guide-brands-label">Dòng thiết bị:</span>
+          <button type="button" class="dev-guide-brand is-active" data-brand="tcl">TCL Smart TV / Google TV</button>
+          <button type="button" class="dev-guide-brand" data-brand="sony">Sony Bravia Android TV</button>
+          <button type="button" class="dev-guide-brand" data-brand="xiaomi">Xiaomi Mi TV / Mi Box</button>
+          <button type="button" class="dev-guide-brand" data-brand="casper">Casper / Google TV</button>
+          <button type="button" class="dev-guide-brand" data-brand="other">Khác (AOSP / Android Box)</button>
+        </div>
+        <p id="devGuideBrandHint" class="dev-guide-brand-hint"></p>
+
+        <article class="dev-guide-step-card" id="devGuideStep1">
+          <header class="dev-guide-step-head">
+            <span class="dev-guide-step-num">01</span>
+            <div>
+              <h4 class="dev-guide-step-title">Cài đặt → Hệ thống → Giới thiệu (About)</h4>
+              <p class="dev-guide-step-sub">Xác định menu thông tin thiết bị trên Smart TV</p>
+            </div>
+          </header>
+          <div class="dev-guide-step-grid">
+            <div class="dev-guide-step-copy">
+              <p>Trên remote, mở <strong>Cài đặt</strong> (Settings). Chọn <strong>Hệ thống (System)</strong> → <strong>Giới thiệu (About)</strong>.</p>
+              <ul class="dev-guide-tips">
+                <li>D-Pad <strong>Down</strong> để cuộn, phím <strong>OK</strong> để chọn.</li>
+                <li>Google TV: <em>Cài đặt → Hệ thống → Giới thiệu → Bản dựng hệ điều hành Android TV</em> (cuối trang).</li>
+              </ul>
+            </div>
+            <figure class="dev-guide-figure">
+              <img src="assets/guide/dev-options-system.png" alt="Menu Hệ thống và Tùy chọn nhà phát triển trên TCL" class="dev-guide-shot" loading="lazy">
+              <figcaption class="dev-guide-caption">Sau bước 2, mục Tùy chọn nhà phát triển xuất hiện trong Hệ thống.</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="dev-guide-step-card dev-guide-step-card--hero" id="devGuideStep2">
+          <span class="dev-guide-core-badge">Thao tác cốt lõi</span>
+          <header class="dev-guide-step-head">
+            <span class="dev-guide-step-num dev-guide-step-num--hero">02</span>
+            <div>
+              <h4 class="dev-guide-step-title">Nhấn OK liên tục 7 lần vào «Bản dựng hệ điều hành Android TV»</h4>
+              <p class="dev-guide-step-sub">Android TV OS Build · mở quyền nhà phát triển</p>
+            </div>
+          </header>
+          <div class="dev-guide-step-grid">
+            <div class="dev-guide-step-copy">
+              <p>Tại trang <strong>Giới thiệu</strong>, chọn dòng <strong>Bản dựng hệ điều hành Android TV</strong> (ví dụ <code class="dev-guide-code">RP1A.200622.001 release-keys</code>) và nhấn <strong>OK</strong> nhanh, liên tục <strong>7 lần</strong>.</p>
+              <div class="dev-guide-simulator">
+                <div class="dev-guide-simulator-head">
+                  <span>Mô phỏng trên remote (thử trên TV thật)</span>
+                  <span id="devGuideClickTag" class="dev-guide-click-tag">Còn 7 lần</span>
+                </div>
+                <div class="dev-guide-simulator-row">
+                  <button type="button" id="devGuideSimOk" class="btn btn--primary dev-guide-ok-btn">Phím OK TV</button>
+                  <div class="dev-guide-simulator-progress">
+                    <div id="devGuideClickBar" class="dev-guide-click-bar"></div>
+                  </div>
+                </div>
+                <p id="devGuideClickToast" class="dev-guide-click-toast">Bấm nút mô phỏng — trên TV bạn dùng remote OK.</p>
+              </div>
+              <p class="dev-guide-note">Từ lần thứ 3, TV thường báo «Bạn còn X bước nữa…». Đủ 7 lần: <strong>«Bạn hiện đã là nhà phát triển!»</strong></p>
+            </div>
+            <figure class="dev-guide-figure dev-guide-figure--highlight">
+              <img src="assets/guide/about-build.png" alt="Màn Giới thiệu TCL với Bản dựng được chọn" class="dev-guide-shot" loading="lazy">
+              <figcaption class="dev-guide-caption">Nhấn OK 7 lần vào dòng đang được chọn (highlight).</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="dev-guide-step-card" id="devGuideStep3">
+          <header class="dev-guide-step-head">
+            <span class="dev-guide-step-num">03</span>
+            <div>
+              <h4 class="dev-guide-step-title">Bật «Gỡ lỗi qua USB» (USB debugging)</h4>
+              <p class="dev-guide-step-sub">Kích hoạt ADB — sau đó quay lại tab Thiết bị để kết nối</p>
+            </div>
+          </header>
+          <div class="dev-guide-step-grid">
+            <div class="dev-guide-step-copy">
+              <ol class="dev-guide-ordered">
+                <li>Bấm <strong>Back</strong> → <strong>Hệ thống</strong> → mở <strong>Tùy chọn nhà phát triển</strong>.</li>
+                <li>Bật <strong>Bật tùy chọn nhà phát triển</strong> (nếu chưa).</li>
+                <li>Trong nhóm <strong>Gỡ lỗi</strong>, bật <strong>Gỡ lỗi qua USB</strong> sang ON.</li>
+              </ol>
+              <div class="dev-guide-warn">
+                <span class="material-symbols-outlined">warning</span>
+                <div>
+                  <strong>Hộp thoại RSA lần đầu kết nối</strong>
+                  <p>Khi bấm «Thêm &amp; Kết nối» trong app, TV hỏi «Cho phép gỡ lỗi USB?» — tick <strong>Luôn cho phép từ máy tính này</strong> rồi OK.</p>
+                </div>
+              </div>
+              <p class="dev-guide-note">TV và máy tính cùng Wi‑Fi. IP TV thường ở <em>Cài đặt → Mạng → Wi‑Fi đang dùng</em> (vd. <code class="dev-guide-code">192.168.1.4:5555</code>).</p>
+            </div>
+            <figure class="dev-guide-figure">
+              <img src="assets/guide/usb-debugging.png" alt="Gỡ lỗi qua USB đang bật" class="dev-guide-shot" loading="lazy">
+              <figcaption class="dev-guide-caption">Gỡ lỗi qua USB phải ở trạng thái Bật.</figcaption>
+            </figure>
+          </div>
+        </article>
+      </div>
+      <div class="home-modal-foot dev-guide-foot">
+        <label class="dev-guide-skip">
+          <input type="checkbox" id="devGuideDontShow">
+          <span>Không hiện gợi ý khi mở app</span>
+        </label>
+        <div class="dev-guide-nav">
+          <button type="button" id="devGuideMarkDone" class="btn btn--surface">
+            <span class="material-symbols-outlined">check</span>
+            Đánh dấu đã hoàn thành
+          </button>
+          <button type="button" id="devGuideDoneClose" class="btn btn--primary">Đóng — quay lại kết nối</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="themeModal" class="home-modal-backdrop" hidden>
     <div class="home-modal" role="dialog" aria-labelledby="themeModalTitle">

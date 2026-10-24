@@ -11,6 +11,7 @@ function getApi() {
 }
 
 function bootApp() {
+  initDevGuide();
   refreshList().catch((err) => {
     setStatus(String(err.message || err));
   });
@@ -2265,8 +2266,158 @@ if (themeModalApply) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && themeModal && !themeModal.hidden) closeThemeModal();
+  if (e.key !== 'Escape') return;
+  if (typeof closeDevGuide === 'function' && devGuideModal && !devGuideModal.hidden) {
+    closeDevGuide();
+    return;
+  }
+  if (themeModal && !themeModal.hidden) closeThemeModal();
 });
+
+const DEV_GUIDE_STORAGE = 'tvremotehub.devGuideBanner.v1';
+
+const DEV_GUIDE_BRAND_HINTS = {
+  tcl: 'TCL / Google TV: Cài đặt → Hệ thống → Giới thiệu → Bản dựng hệ điều hành Android TV.',
+  sony: 'Sony Bravia: Cài đặt → Device Preferences → About → Build.',
+  xiaomi: 'Xiaomi: có thể cần bấm «Số phiên bản (Build)» thay vì dòng Android TV OS Build.',
+  casper: 'Casper Google TV: tương tự TCL — mục Build trong Giới thiệu.',
+  other: 'Android Box / AOSP: tìm About → Build number, bấm OK 7 lần.',
+};
+
+let devGuideClicksLeft = 7;
+const devGuideModal = document.getElementById('devGuideModal');
+const devGuideBanner = document.getElementById('devGuideBanner');
+
+function devGuideBannerHidden() {
+  try {
+    return localStorage.getItem(DEV_GUIDE_STORAGE) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setDevGuideBannerHidden(hidden) {
+  try {
+    if (hidden) localStorage.setItem(DEV_GUIDE_STORAGE, '1');
+    else localStorage.removeItem(DEV_GUIDE_STORAGE);
+  } catch {
+    /* ignore */
+  }
+}
+
+function resetDevGuideSimulator() {
+  devGuideClicksLeft = 7;
+  const tag = document.getElementById('devGuideClickTag');
+  const bar = document.getElementById('devGuideClickBar');
+  const toast = document.getElementById('devGuideClickToast');
+  const btn = document.getElementById('devGuideSimOk');
+  if (tag) {
+    tag.textContent = 'Còn 7 lần';
+    tag.classList.remove('is-done');
+  }
+  if (bar) bar.style.width = '0%';
+  if (toast) {
+    toast.textContent = 'Bấm nút mô phỏng — trên TV bạn dùng remote OK.';
+    toast.className = 'dev-guide-click-toast';
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = 'Phím OK TV';
+  }
+}
+
+function updateDevGuideBrandHint(brand) {
+  const el = document.getElementById('devGuideBrandHint');
+  const sub = document.getElementById('devGuideSubtitle');
+  if (el) el.textContent = DEV_GUIDE_BRAND_HINTS[brand] || '';
+  if (sub && brand === 'tcl') {
+    sub.textContent = 'Hướng dẫn kết nối · TCL Smart TV / Google TV · Android 9–14';
+  }
+}
+
+function openDevGuide() {
+  if (!devGuideModal) return;
+  resetDevGuideSimulator();
+  const scroll = devGuideModal.querySelector('.dev-guide-scroll');
+  if (scroll) scroll.scrollTop = 0;
+  devGuideModal.hidden = false;
+}
+
+function closeDevGuide() {
+  if (!devGuideModal) return;
+  const dontShow = document.getElementById('devGuideDontShow');
+  if (dontShow && dontShow.checked) setDevGuideBannerHidden(true);
+  devGuideModal.hidden = true;
+  if (devGuideBanner) devGuideBanner.hidden = devGuideBannerHidden();
+}
+
+function initDevGuide() {
+  if (devGuideBanner) {
+    devGuideBanner.hidden = devGuideBannerHidden();
+  }
+  document.getElementById('devGuideOpenBtn')?.addEventListener('click', () => openDevGuide());
+  document.getElementById('devGuideBannerStart')?.addEventListener('click', () => openDevGuide());
+  document.getElementById('devGuideBannerDismiss')?.addEventListener('click', () => {
+    setDevGuideBannerHidden(true);
+    if (devGuideBanner) devGuideBanner.hidden = true;
+  });
+  document.getElementById('devGuideClose')?.addEventListener('click', closeDevGuide);
+  document.getElementById('devGuideDoneClose')?.addEventListener('click', () => {
+    closeDevGuide();
+    setStatus('Đã xem hướng dẫn — nhập IP TV và bấm Thêm & Kết nối.');
+    document.getElementById('manualHost')?.focus();
+  });
+  document.getElementById('devGuideMarkDone')?.addEventListener('click', () => {
+    setDevGuideBannerHidden(true);
+    if (devGuideBanner) devGuideBanner.hidden = true;
+    closeDevGuide();
+    setStatus('Đã đánh dấu hoàn thành hướng dẫn Developer Mode.');
+  });
+  devGuideModal?.addEventListener('click', (e) => {
+    if (e.target === devGuideModal) closeDevGuide();
+  });
+
+  document.querySelectorAll('.dev-guide-brand').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.dev-guide-brand').forEach((b) => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      updateDevGuideBrandHint(btn.dataset.brand || 'tcl');
+    });
+  });
+  updateDevGuideBrandHint('tcl');
+
+  document.getElementById('devGuideSimOk')?.addEventListener('click', () => {
+    if (devGuideClicksLeft <= 0) return;
+    devGuideClicksLeft -= 1;
+    const tag = document.getElementById('devGuideClickTag');
+    const bar = document.getElementById('devGuideClickBar');
+    const toast = document.getElementById('devGuideClickToast');
+    const btn = document.getElementById('devGuideSimOk');
+    const pct = ((7 - devGuideClicksLeft) / 7) * 100;
+    if (bar) bar.style.width = `${pct}%`;
+    if (devGuideClicksLeft > 0) {
+      if (tag) tag.textContent = `Còn ${devGuideClicksLeft} lần`;
+      if (toast) {
+        toast.textContent = `TV: "Bạn còn ${devGuideClicksLeft} bước nữa để trở thành nhà phát triển."`;
+        toast.className = 'dev-guide-click-toast is-warn';
+      }
+    } else {
+      if (tag) {
+        tag.textContent = 'ĐÃ MỞ KHÓA';
+        tag.classList.add('is-done');
+      }
+      if (toast) {
+        toast.textContent = 'TV: "Bạn hiện đã là nhà phát triển!" — chuyển sang Bước 3.';
+        toast.className = 'dev-guide-click-toast is-success';
+      }
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Đã mở khóa';
+      }
+      document.getElementById('devGuideStep3')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  });
+}
 
 if (clearLogsBtn && terminalBodyEl) {
   clearLogsBtn.addEventListener('click', () => {

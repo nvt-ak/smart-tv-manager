@@ -513,6 +513,14 @@ if __name__ == "__main__":
         ico = os.path.join(root, "assets", "app-icon.ico")
         if os.path.isfile(ico):
             icon_path = ico
-    webview.create_window("TV Remote Hub", ui_path, js_api=api, width=1280, height=820, resizable=True)
+    webview.create_window(
+        "TV Remote Hub",
+        ui_path,
+        js_api=api,
+        width=1280,
+        height=820,
+        resizable=True,
+        background_color="#0B0E14",
+    )
     start_kwargs = {"icon": icon_path} if os.path.isfile(icon_path) else {}
     webview.start(**start_kwargs)
