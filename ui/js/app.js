@@ -2266,11 +2266,23 @@ if (themeModalApply) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  if (typeof closeDevGuide === 'function' && devGuideModal && !devGuideModal.hidden) {
-    closeDevGuide();
-    return;
+  if (devGuideModal && !devGuideModal.hidden) {
+    if (e.key === 'Escape') {
+      closeDevGuide();
+      return;
+    }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      devGuideTourStep(-1);
+      return;
+    }
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      devGuideTourStep(1);
+      return;
+    }
   }
+  if (e.key !== 'Escape') return;
   if (themeModal && !themeModal.hidden) closeThemeModal();
 });
 
@@ -2284,6 +2296,19 @@ const DEV_GUIDE_BRAND_HINTS = {
   other: 'Android Box / AOSP: tìm About → Build number, bấm OK 7 lần.',
 };
 
+const DEV_GUIDE_TOUR_IMAGES = [
+  'assets/guide/dev-options-system.png',
+  'assets/guide/about-build.png',
+  'assets/guide/usb-debugging.png',
+];
+
+const DEV_GUIDE_TOUR_SHORT = [
+  'Cài đặt → Giới thiệu',
+  'Nhấn 7 lần vào Bản dựng HĐH',
+  'Bật Gỡ lỗi qua USB',
+];
+
+let devGuideTourIndex = 0;
 let devGuideClicksLeft = 7;
 const devGuideModal = document.getElementById('devGuideModal');
 const devGuideBanner = document.getElementById('devGuideBanner');
@@ -2317,29 +2342,91 @@ function resetDevGuideSimulator() {
   }
   if (bar) bar.style.width = '0%';
   if (toast) {
-    toast.textContent = 'Bấm nút mô phỏng — trên TV bạn dùng remote OK.';
+    toast.textContent = 'Chạm nút để xem hiệu ứng Toast trên TV…';
     toast.className = 'dev-guide-click-toast';
   }
   if (btn) {
     btn.disabled = false;
-    btn.textContent = 'Phím OK TV';
+    btn.innerHTML =
+      '<span class="material-symbols-outlined">radio_button_checked</span> Bấm phím OK thử';
   }
 }
 
 function updateDevGuideBrandHint(brand) {
   const el = document.getElementById('devGuideBrandHint');
-  const sub = document.getElementById('devGuideSubtitle');
   if (el) el.textContent = DEV_GUIDE_BRAND_HINTS[brand] || '';
-  if (sub && brand === 'tcl') {
-    sub.textContent = 'Hướng dẫn kết nối · TCL Smart TV / Google TV · Android 9–14';
+}
+
+function renderDevGuideTour() {
+  const idx = devGuideTourIndex;
+  const stepNum = document.getElementById('devGuideTourStepNum');
+  const stepShort = document.getElementById('devGuideTourStepShort');
+  const img = document.getElementById('devGuideTourImg');
+  const hotspot = document.getElementById('devGuideTourHotspot');
+  const prevBtn = document.getElementById('devGuideTourPrev');
+  const nextBtn = document.getElementById('devGuideTourNext');
+  const doneBtn = document.getElementById('devGuideDoneClose');
+
+  if (stepNum) stepNum.textContent = String(idx + 1);
+  if (stepShort) stepShort.textContent = DEV_GUIDE_TOUR_SHORT[idx] || '';
+  if (img) {
+    img.src = DEV_GUIDE_TOUR_IMAGES[idx] || DEV_GUIDE_TOUR_IMAGES[0];
+    img.alt = DEV_GUIDE_TOUR_SHORT[idx] || 'Ảnh hướng dẫn TV';
   }
+  if (hotspot) hotspot.hidden = idx !== 1;
+
+  document.querySelectorAll('.dev-guide-tour-rail-item').forEach((el) => {
+    const step = Number(el.dataset.tourStep);
+    el.classList.toggle('is-active', step === idx);
+    el.classList.toggle('is-done', step < idx);
+  });
+
+  document.querySelectorAll('.dev-guide-tour-img-tab').forEach((tab) => {
+    tab.classList.toggle('is-active', Number(tab.dataset.tourImg) === idx);
+  });
+
+  for (let i = 0; i < 3; i += 1) {
+    const panel = document.getElementById(`devGuideTourPanel${i}`);
+    if (panel) panel.hidden = i !== idx;
+  }
+
+  if (prevBtn) prevBtn.disabled = idx <= 0;
+  if (nextBtn) {
+    nextBtn.hidden = idx >= 2;
+    const nextLabels = [
+      'Tiếp tục: Bước 2',
+      'Tiếp tục: Bước 3 (USB debugging)',
+    ];
+    const label = nextLabels[idx] || 'Tiếp tục';
+    nextBtn.innerHTML = `${label} <span class="material-symbols-outlined">arrow_forward</span>`;
+  }
+  if (doneBtn) doneBtn.hidden = idx < 2;
+
+  const dpadHint = document.querySelector('.dev-guide-tour-dpad-hint');
+  if (dpadHint) dpadHint.hidden = idx !== 1;
+
+  if (idx === 1) resetDevGuideSimulator();
+}
+
+function setDevGuideTourIndex(nextIndex) {
+  devGuideTourIndex = Math.max(0, Math.min(2, nextIndex));
+  renderDevGuideTour();
+}
+
+function devGuideTourStep(delta) {
+  if (delta > 0 && devGuideTourIndex >= 2) {
+    closeDevGuide();
+    setStatus('Đã hoàn tất tour — nhập IP TV và bấm Thêm & Kết nối.');
+    document.getElementById('manualHost')?.focus();
+    return;
+  }
+  setDevGuideTourIndex(devGuideTourIndex + delta);
 }
 
 function openDevGuide() {
   if (!devGuideModal) return;
-  resetDevGuideSimulator();
-  const scroll = devGuideModal.querySelector('.dev-guide-scroll');
-  if (scroll) scroll.scrollTop = 0;
+  devGuideTourIndex = 0;
+  renderDevGuideTour();
   devGuideModal.hidden = false;
 }
 
@@ -2362,6 +2449,10 @@ function initDevGuide() {
     if (devGuideBanner) devGuideBanner.hidden = true;
   });
   document.getElementById('devGuideClose')?.addEventListener('click', closeDevGuide);
+  document.getElementById('devGuideCloseCompact')?.addEventListener('click', closeDevGuide);
+  document.getElementById('devGuideTourSkip')?.addEventListener('click', closeDevGuide);
+  document.getElementById('devGuideTourPrev')?.addEventListener('click', () => devGuideTourStep(-1));
+  document.getElementById('devGuideTourNext')?.addEventListener('click', () => devGuideTourStep(1));
   document.getElementById('devGuideDoneClose')?.addEventListener('click', () => {
     closeDevGuide();
     setStatus('Đã xem hướng dẫn — nhập IP TV và bấm Thêm & Kết nối.');
@@ -2386,6 +2477,20 @@ function initDevGuide() {
   });
   updateDevGuideBrandHint('tcl');
 
+  document.querySelectorAll('.dev-guide-tour-rail-item').forEach((el) => {
+    el.addEventListener('click', () => {
+      const step = Number(el.dataset.tourStep);
+      if (!Number.isNaN(step)) setDevGuideTourIndex(step);
+    });
+  });
+
+  document.querySelectorAll('.dev-guide-tour-img-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const step = Number(tab.dataset.tourImg);
+      if (!Number.isNaN(step)) setDevGuideTourIndex(step);
+    });
+  });
+
   document.getElementById('devGuideSimOk')?.addEventListener('click', () => {
     if (devGuideClicksLeft <= 0) return;
     devGuideClicksLeft -= 1;
@@ -2398,23 +2503,23 @@ function initDevGuide() {
     if (devGuideClicksLeft > 0) {
       if (tag) tag.textContent = `Còn ${devGuideClicksLeft} lần`;
       if (toast) {
-        toast.textContent = `TV: "Bạn còn ${devGuideClicksLeft} bước nữa để trở thành nhà phát triển."`;
+        toast.textContent = `TV Toast: "Bạn còn ${devGuideClicksLeft} bước nữa để trở thành nhà phát triển."`;
         toast.className = 'dev-guide-click-toast is-warn';
       }
     } else {
       if (tag) {
-        tag.textContent = 'ĐÃ MỞ KHÓA';
+        tag.textContent = 'ĐÃ MỞ KHÓA!';
         tag.classList.add('is-done');
       }
       if (toast) {
-        toast.textContent = 'TV: "Bạn hiện đã là nhà phát triển!" — chuyển sang Bước 3.';
+        toast.textContent = 'TV Toast: "Bạn hiện đã là nhà phát triển!"';
         toast.className = 'dev-guide-click-toast is-success';
       }
       if (btn) {
         btn.disabled = true;
-        btn.textContent = 'Đã mở khóa';
+        btn.innerHTML =
+          '<span class="material-symbols-outlined">check_circle</span> Đã hoàn thành!';
       }
-      document.getElementById('devGuideStep3')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   });
 }
