@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://nvt-ak.github.io/smart-tv-manager/sitemap.xml

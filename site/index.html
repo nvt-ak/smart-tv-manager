@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SmartTV Manager: clean up and customise your Android TV</title>
+<meta name="description" content="Remove ads and unused apps, build your own Home screen and manage your Android TV or Google TV from your computer. Free and open source for Windows and macOS.">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<meta property="og:title" content="SmartTV Manager">
+<meta property="og:description" content="Clean up and customise your Android TV from your computer. Free and open source.">
+<meta property="og:type" content="website">
+<link rel="canonical" href="https://nvt-ak.github.io/smart-tv-manager/">
+<meta property="og:url" content="https://nvt-ak.github.io/smart-tv-manager/">
+<meta property="og:image" content="https://nvt-ak.github.io/smart-tv-manager/assets/img/home-after.webp">
+<meta name="theme-color" content="#edf0f4">
+<link rel="preload" href="assets/fonts/bricolage-grotesque-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+<a class="skip" href="#main" data-i18n="skip">Skip to content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="SmartTV Manager">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#10131a"/><rect x="11" y="16" width="42" height="28" rx="4" fill="none" stroke="#00f0ff" stroke-width="4"/><path d="M24 52h16" stroke="#00f0ff" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="30" r="5" fill="#f2b544"/></svg>
+      SmartTV Manager
+    </a>
+    <nav aria-label="Primary">
+      <a class="navlink" href="#clean" data-i18n="nav_features">Features</a>
+      <a class="navlink" href="#how" data-i18n="nav_how">How it works</a>
+      <a class="navlink" href="#download" data-i18n="nav_download">Download</a>
+      <a class="navlink" href="#faq" data-i18n="nav_faq">FAQ</a>
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="vi" aria-pressed="false">VI</button>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<div class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <h1 data-i18n="h1">Your TV’s home screen, without the clutter.</h1>
+      <p class="lede" data-i18n="lede">Remove ads and apps you never use, build a Home screen of your own, and manage everything from your computer over Wi‑Fi. No commands to type.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" id="heroDl" href="https://github.com/nvt-ak/smart-tv-manager/releases/latest">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 20h16"/></svg>
+          <span id="heroDlText" data-i18n="dl_generic">Download</span>
+        </a>
+        <a class="btn btn-ghost" href="#how" data-i18n="cta_how">See how it works</a>
+      </div>
+      <p class="fine ver"><span id="heroVer"></span><span data-i18n="free">Free and open source</span></p>
+    </div>
+
+    <figure class="tv is-before" id="tv">
+      <div class="tv-bezel">
+        <div class="tv-screen">
+          <img src="assets/img/home-before.webp" alt="" width="1600" height="900" id="sceneBefore">
+          <img src="assets/img/home-after.webp" alt="" width="1600" height="900" id="sceneAfter">
+          <span class="scan" id="scan"></span>
+          <span class="safe" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        </div>
+      </div>
+      <div class="tv-stand" aria-hidden="true"></div>
+      <div class="tv-ctl">
+        <div class="seg" role="group" aria-label="Compare Home screens">
+          <button type="button" data-scene="before" aria-pressed="true" data-i18n="seg_before">Stock launcher</button>
+          <button type="button" data-scene="after" aria-pressed="false" data-i18n="seg_after">With SmartTV Manager</button>
+        </div>
+      </div>
+      <figcaption data-i18n="tv_cap">Illustration of a Home screen. Gold and fuel figures are sample data.</figcaption>
+    </figure>
+  </div>
+</div>
+
+<div class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+
+<section id="clean">
+  <div class="wrap split">
+    <div class="copy">
+      <h2 data-i18n="clean_h">Find what slows your TV down, then switch it off.</h2>
+      <p data-i18n="clean_p">See every app on the TV with a readable name. Search by name or package, and filter by what is on, off or installed by you. Disabled apps come back with one click.</p>
+      <ul class="points">
+        <li><b data-i18n="c1_t">Disable and re-enable</b><span data-i18n="c1_d">System apps stay on the TV, just switched off. Turn them back on whenever you like.</span></li>
+        <li><b data-i18n="c2_t">Uninstall your own apps</b><span data-i18n="c2_d">Apps you installed can be removed after a confirmation.</span></li>
+        <li><b data-i18n="c3_t">Protected apps</b><span data-i18n="c3_d">Core system apps and your active Home screen are locked, so one wrong click can’t break the TV.</span></li>
+        <li><b data-i18n="c4_t">Install APK files</b><span data-i18n="c4_d">Pick a file on your computer and install it, with a live progress log.</span></li>
+      </ul>
+    </div>
+    <div class="win" role="img" aria-label="Illustration of the app list in SmartTV Manager">
+      <div class="win-bar"><i></i><i></i><i></i><span data-i18n="win_title">Apps · Living room TV</span></div>
+      <div class="win-tools">
+        <div class="win-search" data-i18n="win_search">Search by name or package</div>
+        <div class="win-tabs"><span data-i18n="tab_all">All</span><span data-i18n="tab_user">User</span><span class="on" data-i18n="tab_on">Enabled</span><span data-i18n="tab_off">Disabled</span></div>
+      </div>
+      <div class="row"><div><div class="n">YouTube for TV</div><div class="p">com.google.android.youtube.tv</div></div><div class="acts"><span class="chip" data-i18n="a_stop">Force stop</span><span class="chip danger" data-i18n="a_disable">Disable</span></div></div>
+      <div class="row"><div><div class="n">TCL Guard</div><div class="p">com.tcl.guard</div></div><div class="acts"><span class="chip danger" data-i18n="a_disable">Disable</span></div></div>
+      <div class="row"><div><div class="n">Sample player</div><div class="p">com.example.player</div></div><div class="acts"><span class="chip" data-i18n="a_open">Open</span><span class="chip danger" data-i18n="a_uninstall">Uninstall</span></div></div>
+      <div class="row off"><div><div class="n">Sample telemetry service</div><div class="p">com.example.telemetry</div></div><div class="acts"><span class="chip ok" data-i18n="a_enable">Enable</span></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="wide" id="home">
+  <div class="wrap">
+    <h2 data-i18n="home_h">A Home screen that is yours.</h2>
+    <p class="lede" style="margin-top:16px" data-i18n="home_p">SmartTV Manager installs and configures CleanYourTV, an open-source launcher, and applies themes to it from your computer.</p>
+    <figure class="wide-shot" style="margin-top:36px">
+      <img src="assets/img/widgets.webp" width="1460" height="278" loading="lazy" alt="Gold and fuel price widgets drawn on a TV wallpaper">
+    </figure>
+    <figcaption class="fine" style="margin-top:12px;color:var(--on-dark-muted)" data-i18n="home_cap">Gold and fuel prices (Vietnam) drawn into the wallpaper. Sample data.</figcaption>
+    <div class="wide-cols">
+      <ul class="points" style="margin-top:0">
+        <li><b data-i18n="h1_t">Themes</b><span data-i18n="h1_d">Pick a theme and apply it. Your current setup is backed up first, and the Home screen restarts for you.</span></li>
+        <li><b data-i18n="h2_t">Widgets in the wallpaper</b><span data-i18n="h2_d">Prices are drawn onto the wallpaper image, so they cost the TV nothing to run.</span></li>
+      </ul>
+      <ul class="points" style="margin-top:0">
+        <li><b data-i18n="h3_t">Remote buttons keep working</b><span data-i18n="h3_d">Settings, TV, Netflix, YouTube, Prime Video and Media are mapped for TCL remotes.</span></li>
+        <li><b data-i18n="h4_t">Stock launcher, one click back</b><span data-i18n="h4_d">It is switched off while your theme is on, so the Home button opens yours. Bring the original back any time.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2 data-i18n="how_h">Up and running in three steps.</h2>
+    <ol class="steps">
+      <li><h3 data-i18n="s1_t">Turn on debugging on the TV</h3><p data-i18n="s1_d">Settings, Device preferences, About: press OK on Build seven times. Then switch on USB or network debugging in Developer options.</p></li>
+      <li><h3 data-i18n="s2_t">Connect over Wi‑Fi</h3><p data-i18n="s2_d">Type the TV’s IP address into the app and accept the prompt that appears on the TV.</p></li>
+      <li><h3 data-i18n="s3_t">Clean up and customise</h3><p data-i18n="s3_d">Disable apps you don’t need. When asked, let the app install CleanYourTV, then pick a theme.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section class="dl" id="download">
+  <div class="wrap">
+    <h2 data-i18n="dl_h">Download SmartTV Manager</h2>
+    <p class="lede" style="margin-top:14px" data-i18n="dl_p">Free and open source, for Windows and macOS.</p>
+    <div class="dl-grid">
+      <div class="dl-item" id="dlWin">
+        <h3>Windows</h3>
+        <p class="meta" id="metaWin" data-i18n="dl_win">Windows 10 or later, 64-bit. Unzip and run SmartTVManager.exe.</p>
+        <a class="btn btn-primary" id="linkWin" href="https://github.com/nvt-ak/smart-tv-manager/releases/latest"><span data-i18n="dl_zip">Download .zip</span></a>
+      </div>
+      <div class="dl-item" id="dlMac">
+        <h3>macOS</h3>
+        <p class="meta" id="metaMac" data-i18n="dl_mac">Open the .dmg and drag the app to Applications.</p>
+        <a class="btn btn-primary" id="linkMac" href="https://github.com/nvt-ak/smart-tv-manager/releases/latest"><span data-i18n="dl_dmg">Download .dmg</span></a>
+      </div>
+    </div>
+    <p class="fine note" data-i18n="dl_note">The app is not code-signed yet. Windows SmartScreen may warn you (choose More info, then Run anyway), and macOS may ask you to allow it in System Settings, Privacy &amp; Security. The source is public if you would rather check or build it yourself.</p>
+    <p class="fine note links"><a href="https://github.com/nvt-ak/smart-tv-manager/releases" data-i18n="dl_all">All releases</a> <a href="https://github.com/nvt-ak/smart-tv-manager" data-i18n="dl_src">Source code on GitHub</a></p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap"><div class="faq">
+    <h2 style="margin-bottom:22px" data-i18n="faq_h">Questions</h2>
+    <details><summary data-i18n="q1">Is it safe?</summary><p data-i18n="a1">The app runs on your computer and talks to the TV over your local network using ADB. It collects no data. It contacts GitHub to download the launcher and public price sources for the widgets, only when you use those features. Disabling an app is reversible. Uninstalling is not, so the app asks first.</p></details>
+    <details><summary data-i18n="q2">Which TVs does it work with?</summary><p data-i18n="a2">It was built and tested on a TCL Google TV running Android 11. App management and APK install use plain ADB, so other Android TV and Google TV models should work. Remote-key mapping is set up for TCL remotes. The launcher needs Android 8 or later.</p></details>
+    <details><summary data-i18n="q3">Do I need to root the TV?</summary><p data-i18n="a3">No. You only turn on USB or network debugging.</p></details>
+    <details><summary data-i18n="q4">How do I undo my changes?</summary><p data-i18n="a4">Re-enable disabled apps in the app list, use “Reset stock launcher” to bring back the original Home screen, and restore a backup of your previous launcher settings.</p></details>
+    <details><summary data-i18n="q5">Are the widgets only for Vietnam?</summary><p data-i18n="a5">The built-in gold and fuel widgets use Vietnamese sources, in VND. App management, APK install and themes work anywhere.</p></details>
+    <details><summary data-i18n="q6">Is this an official TCL or Google tool?</summary><p data-i18n="a6">No. It is an independent project, not affiliated with TCL, Google or the author of CleanYourTV. CleanYourTV is MIT licensed.</p></details>
+  </div></div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p data-i18n="foot">SmartTV Manager is free software. The launcher it installs is CleanYourTV by Gathin23, under the MIT license. Product names belong to their owners.</p>
+    <p><a href="https://github.com/nvt-ak/smart-tv-manager/issues" data-i18n="foot_issue">Report a problem</a></p>
+  </div>
+</footer>
+
+<script src="assets/js/site.js"></script>
+</body>
+</html>
