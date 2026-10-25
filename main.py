@@ -1002,6 +1002,16 @@ class Api:
             dev = adb_client.connect(host, int(port))
             try:
                 adb_client.ensure_connected(dev)
+                try:
+                    gathin_ok = LauncherDetector(dev).is_installed(LauncherDetector.GATHIN_PKG)
+                except Exception:
+                    gathin_ok = None  # không hỏi được thì không đoán là chưa cài
+                if gathin_ok is False:
+                    on_step("gathin_missing", LauncherDetector.GATHIN_PKG)
+                    raise Exception(
+                        "GATHIN_NOT_INSTALLED: TV chưa cài CleanYourTV (com.gathin.tvhome). "
+                        "Chưa sao lưu hay ghi gì lên TV."
+                    )
                 tm = ThemeManager(dev, on_step=on_step)
                 backup_root = self._backup_root(host, port)
                 on_step("backup", "snapshot config (bỏ qua kéo wallpaper để nhanh hơn)")

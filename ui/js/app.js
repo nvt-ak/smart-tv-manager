@@ -3467,7 +3467,47 @@ function openThemeModal(id) {
   themeModal.hidden = false;
 }
 
-async function applyTheme(id, btn) {
+function pickGathinApk() {
+  return new Promise((resolve) => {
+    const input = document.getElementById('gathinApkInput');
+    if (!input) return resolve(null);
+    input.value = '';
+    input.onchange = () => resolve(input.files && input.files[0] ? input.files[0] : null);
+    input.click();
+  });
+}
+
+/** TV chưa có CleanYourTV: hỏi, chọn APK, kiểm tra package rồi cài. Trả true nếu đã cài xong. */
+async function offerInstallGathin() {
+  if (!activeDevice) return false;
+  if (!confirm(
+    'TV này chưa cài CleanYourTV (com.gathin.tvhome) nên chưa thể áp dụng theme.\n\n' +
+    'Bạn có muốn cài ngay không? Bạn cần chọn file APK của CleanYourTV (bản build từ repo Gathin23/cleanyourtv).'
+  )) return false;
+  const file = await pickGathinApk();
+  if (!file) return false;
+  setHomeStatus('Đang phân tích APK...');
+  const b64 = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(file);
+  });
+  const info = await getApi().analyze_apk(file.name, b64, activeDevice.host, activeDevice.port);
+  if (info.package !== 'com.gathin.tvhome') {
+    alert(`File này là "${info.package || 'không rõ'}", không phải CleanYourTV (com.gathin.tvhome). Đã hủy cài đặt.`);
+    return false;
+  }
+  setHomeStatus('Đang đẩy APK và cài CleanYourTV...');
+  const res = await getApi().install_apk(
+    activeDevice.host, activeDevice.port, info._tmp_path, file.name, true, false, true
+  );
+  if (res && res.ok === false) throw new Error(res.output || 'Cài đặt thất bại');
+  showHomeToast('Đã cài CleanYourTV', 'download_done');
+  return true;
+}
+
+async function applyTheme(id, btn, opts = {}) {
   if (!activeDevice) {
     setHomeStatus('Vui lòng chọn thiết bị trước');
     return;
@@ -3483,6 +3523,7 @@ async function applyTheme(id, btn) {
     ? '\n\nWidget Home đang bật — sẽ gộp vào config và vẽ bảng giá vàng/xăng vào ảnh nền.'
     : '';
   if (
+    !opts.skipConfirm &&
     !confirm(
       `Áp dụng theme "${theme.name}" lên ${activeDevice.name}?\n\nApp sẽ tự động sao lưu cấu hình hiện tại trước khi ghi.${widgetHint}`
     )
@@ -3526,6 +3567,18 @@ async function applyTheme(id, btn) {
   } catch (err) {
     if (btn) setButtonLoading(btn, false);
     const msg = String(err);
+    if (msg.includes('GATHIN_NOT_INSTALLED')) {
+      setHomeStatus('TV chưa cài CleanYourTV.');
+      try {
+        if (await offerInstallGathin()) {
+          return applyTheme(id, btn, { skipConfirm: true });
+        }
+      } catch (e2) {
+        setHomeStatus(`Cài CleanYourTV thất bại: ${e2}`);
+        alert(`Cài CleanYourTV thất bại: ${e2}`);
+      }
+      return;
+    }
     setHomeStatus(`Lỗi áp dụng: ${msg}`);
     alert(`Áp dụng thất bại: ${msg}\n\nXem «Nhật ký áp dụng theme» hoặc ~/.smarttv-manager/theme-apply.log`);
   }

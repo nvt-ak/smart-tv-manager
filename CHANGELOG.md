@@ -10,6 +10,11 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### Sửa
+- Áp dụng theme trên TV chưa cài CleanYourTV (`com.gathin.tvhome`): kiểm tra trước khi sao lưu/ghi, hỏi có muốn cài không và cho chọn file APK để cài rồi tự áp dụng tiếp (thay cho lỗi "Could not find provider").
+
 ## [1.4.0] - 2026-10-24
 
 ### Added
