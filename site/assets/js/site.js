@@ -47,7 +47,13 @@
     q5: "Widget chỉ dành cho Việt Nam?", a5: "Widget vàng và xăng dầu có sẵn dùng nguồn dữ liệu Việt Nam, tính bằng VND. Quản lý app, cài APK và theme dùng được ở mọi nơi.",
     q6: "Đây có phải công cụ chính thức của TCL hay Google không?", a6: "Không. Đây là dự án độc lập, không liên kết với TCL, Google hay tác giả CleanYourTV. CleanYourTV dùng giấy phép MIT.",
     foot: "SmartTV Manager là phần mềm tự do. Launcher mà app cài là CleanYourTV của Gathin23, giấy phép MIT. Tên sản phẩm thuộc về chủ sở hữu của chúng.",
-    foot_issue: "Báo lỗi"
+    foot_issue: "Báo lỗi",
+    foot_support: "Mời mình ly cà phê",
+    sup_h: "Mời mình ly cà phê",
+    sup_p: "SmartTV Manager miễn phí và mã nguồn mở. Nếu app giúp ích được cho bạn, các bác có thể mời mình ly cà phê để mình có thêm động lực phát triển tiếp dự án.",
+    sup_note: "Hoàn toàn không bắt buộc. Một ngôi sao trên GitHub hay một báo cáo lỗi cũng giúp mình rất nhiều. Cảm ơn các bác!",
+    sup_acct: "Chuyển khoản ngân hàng (Việt Nam)",
+    sup_cap: "Quét bằng app ngân hàng bất kỳ có hỗ trợ VietQR."
   };
 
   var EN = {};
