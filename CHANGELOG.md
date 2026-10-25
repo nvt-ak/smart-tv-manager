@@ -10,6 +10,8 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-25
+
 ### Added
 
 - Child lock ("Khoá trẻ em" tab): TV Guard, a small accessibility-service app in `tv-guard/`, enforces a lock schedule on the TV itself, so it still locks when the PC is off. Parent PIN is entered with the TV remote and stored only as a PBKDF2 hash; Settings and app stores always need the PIN. The desktop app installs it, pairs with an HMAC key, sets the PIN and schedule, shows live status, and can lock now, unlock for a while or uninstall. CI builds the APK (`.github/workflows/build-guard.yml`).

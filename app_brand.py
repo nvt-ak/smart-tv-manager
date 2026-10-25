@@ -6,7 +6,7 @@ import os
 import shutil
 
 APP_DISPLAY_NAME = "SmartTV Manager"
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.7.0"
 APP_EXE_NAME = "SmartTVManager"
 APP_MACOS_BUNDLE_NAME = f"{APP_DISPLAY_NAME}.app"
 APP_BUNDLE_ID = "com.vinaco.smarttvmanager"
