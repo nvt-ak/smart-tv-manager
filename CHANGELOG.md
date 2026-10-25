@@ -10,6 +10,17 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+### Added
+
+- Child lock ("Khoá trẻ em" tab): TV Guard, a small accessibility-service app in `tv-guard/`, enforces a lock schedule on the TV itself, so it still locks when the PC is off. Parent PIN is entered with the TV remote and stored only as a PBKDF2 hash; Settings and app stores always need the PIN. The desktop app installs it, pairs with an HMAC key, sets the PIN and schedule, shows live status, and can lock now, unlock for a while or uninstall. CI builds the APK (`.github/workflows/build-guard.yml`).
+- TV Guard diagnostics report with the accessibility service state, app-ops and filtered logcat, selectable and copyable from the tab.
+- Landing page: "Child lock" section with a screenshot (English and Vietnamese).
+
+### Fixed
+
+- Switching the active device from the Devices tab left the Apps tab and Smart Clean showing the previous TV's package list and header.
+- TV Guard did not start on TCL TVs: TclAppBoot refused to bind the accessibility service (`forbid bind service ... OP_AUTO_START`) and also stalled `am broadcast`. Setup now grants `APP_AUTO_START` and background run, then re-adds the service to the enabled list to force a new bind.
+
 ## [1.6.0] - 2026-10-25
 
 ### Added

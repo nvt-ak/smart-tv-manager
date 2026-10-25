@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TV Guard</string>
+    <string name="service_description">Enforces the screen-time schedule set from SmartTV Manager. Only the name of the foreground app is read; no screen content is collected.</string>
+</resources>

@@ -7,6 +7,7 @@
 @import url("smart-clean.css");
 @import url("apk.css");
 @import url("home.css");
+@import url("guard.css");
 
 /* Legacy tab panels — shared panel styling (other screens) */
 .panel {

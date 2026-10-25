@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "mode": "all",
+  "apps": [],
+  "schedules": [
+    {"days": [1, 2, 3, 4, 5, 6, 7], "start": "21:00", "end": "06:30"}
+  ],
+  "failsafe_hours": 12,
+  "unlock_minutes": 30,
+  "tz": "Asia/Ho_Chi_Minh"
+}

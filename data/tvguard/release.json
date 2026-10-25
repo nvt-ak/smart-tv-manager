@@ -1,0 +1,6 @@
+{
+  "release_base": "https://github.com/nvt-ak/smart-tv-manager/releases/download/tv-guard",
+  "apk": "TvGuard.apk",
+  "sha256_file": "TvGuard.apk.sha256",
+  "package": "com.smarttvmanager.guard"
+}

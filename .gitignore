@@ -8,3 +8,11 @@ graphify-out/
 build/
 dist/
 *.spec.bak
+
+# tv-guard (Android)
+tv-guard/.gradle/
+tv-guard/build/
+tv-guard/app/build/
+tv-guard/local.properties
+tv-guard/*.apk
+*.secret

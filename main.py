@@ -20,6 +20,7 @@ from core.clean_suggestions import CleanSuggestionEngine
 from core.device_profiles import DeviceProfiles
 from core import ai_clean
 from core import home_widgets
+from core.tv_guard import TvGuard, GuardError
 import settings_store
 import shutil
 import base64
@@ -1157,6 +1158,20 @@ class Api:
             return "tcl"
         return ""
 
+    # Launcher keys the app turns on by default so apps can be rearranged from the remote.
+    # Without tile_menu, holding OK on a tile only opens App info; with it, the same gesture
+    # offers Move / Remove. A key the theme sets itself always wins.
+    LAYOUT_DEFAULTS = {"tile_menu": True}
+
+    def _layout_defaults(self, theme):
+        base = {}
+        try:
+            with open(os.path.join(theme["path"], "config.json"), encoding="utf-8") as f:
+                base = json.load(f) or {}
+        except Exception:
+            pass
+        return {k: v for k, v in self.LAYOUT_DEFAULTS.items() if k not in base}
+
     def _remote_key_overrides(self, theme, profile=""):
         """Config keys that keep the remote's Settings/TV/app buttons working after a theme push.
 
@@ -1312,7 +1327,11 @@ class Api:
                 widget_patch, widget_sidecar, _widget_prev = self._home_widgets_tv_bundle()
                 profile = self._device_profile(dev)
                 on_step("remote_profile", profile or "mặc định")
-                widget_patch = {**self._remote_key_overrides(theme, profile), **(widget_patch or {})} or None
+                widget_patch = {
+                    **self._layout_defaults(theme),
+                    **self._remote_key_overrides(theme, profile),
+                    **(widget_patch or {}),
+                } or None
                 if widget_drawn:
                     # Themes like Default ship `"wallpaper": false`; the baked image would never show.
                     widget_patch = {**(widget_patch or {}), "wallpaper": True}
@@ -1526,6 +1545,90 @@ class Api:
             "board_lines": board_lines,
             "errors": prev.get("errors") or {},
         }
+
+
+    # ------------------------------------------------------------------
+    # TV Guard: screen-time lock enforced by a companion app on the TV
+    # ------------------------------------------------------------------
+    def _guard_call(self, host, port, fn):
+        """Run fn(guard, dev) under the per-device lock and turn failures into plain messages."""
+        port = int(port)
+        with self._dev_op_lock(host, port):
+            try:
+                dev = self._get_dev(host, port)
+                return fn(TvGuard(dev, host, port), dev)
+            except GuardError as e:
+                raise Exception(str(e)) from e
+            except Exception as e:
+                if self._adb_timeout_error(e):
+                    self._drop_dev(host, port)
+                raise self._adb_shell_error(host, port, e) from e
+
+    def guard_status(self, host, port=5555):
+        return self._guard_call(host, port, lambda g, _dev: g.summary())
+
+    def guard_setup_async(self, host, port=5555, pin="", policy=None):
+        """Install, pair and configure TV Guard in the background. Poll with guard_job."""
+        port = int(port)
+        job_id = uuid.uuid4().hex
+        job = {"id": job_id, "status": "running", "steps": [], "error": None, "result": None,
+               "log_path": None}
+        with self._apply_jobs_lock:
+            self._apply_jobs[job_id] = job
+
+        def step(msg, detail=""):
+            job["steps"].append({"t": time.time(), "msg": msg, "detail": detail or ""})
+
+        def run():
+            try:
+                def work(g, dev):
+                    return g.setup(ApkInstaller(dev), pin, policy or {}, step)
+                job["result"] = self._guard_call(host, port, work)
+                job["status"] = "done"
+            except Exception as exc:
+                job["error"] = str(exc)
+                job["status"] = "failed"
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"job_id": job_id}
+
+    def guard_job(self, job_id=""):
+        return self.apply_gathin_theme_job(job_id)
+
+    def guard_save_policy(self, host, port=5555, policy=None, pin=""):
+        from core import tv_guard
+
+        def work(g, _dev):
+            pol = tv_guard.normalize_policy(policy or {})
+            if not (policy or {}).get("tz"):
+                pol["tz"] = g.tv_timezone()
+            if pin:
+                g.send("set_pin", tv_guard.hash_pin(tv_guard.validate_pin(pin)))
+            g.send("set_policy", json.dumps(pol))
+            return g.summary()
+        return self._guard_call(host, port, work)
+
+    def guard_diagnose(self, host, port=5555):
+        """Plain-text report from the TV for troubleshooting (shown under "Chi tiết kỹ thuật")."""
+        return {"text": self._guard_call(host, port, lambda g, _dev: g.diagnose())}
+
+    def guard_lock_now(self, host, port=5555, minutes=30):
+        def work(g, _dev):
+            g.send("lock_now", str(int(minutes)))
+            return g.summary()
+        return self._guard_call(host, port, work)
+
+    def guard_unlock_now(self, host, port=5555, minutes=0):
+        def work(g, _dev):
+            g.send("unlock_now", str(int(minutes)))
+            return g.summary()
+        return self._guard_call(host, port, work)
+
+    def guard_uninstall(self, host, port=5555):
+        def work(g, _dev):
+            g.uninstall()
+            return g.summary()
+        return self._guard_call(host, port, work)
 
 
 if __name__ == "__main__":

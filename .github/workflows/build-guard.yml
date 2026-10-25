@@ -1,0 +1,71 @@
+name: Build TV Guard APK
+
+# Builds the on-TV companion app in tv-guard/ and publishes it to the rolling release `tv-guard`,
+# so SmartTV Manager can download it later (users never need a JDK or the Android SDK).
+# While the project is a spike the APK is debug-signed. Before the first real release, add a
+# release keystore as repository secrets; updates over adb need a stable signing key.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tv-guard/**
+      - .github/workflows/build-guard.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # No Gradle wrapper is committed; the action provides a pinned Gradle instead.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Accept Android SDK licenses
+        run: |
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -n 1)
+          yes | "$SDKM" --licenses > /dev/null || true
+
+      - name: Desktop helper tests
+        run: python3 -m unittest discover -s tv-guard/tools -p "test_*.py" -v
+
+      - name: Unit tests and debug build
+        working-directory: tv-guard
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          gradle --no-daemon --console=plain testDebugUnitTest assembleDebug
+          test -f app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify package name
+        run: |
+          APK=tv-guard/app/build/outputs/apk/debug/app-debug.apk
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt | sort -V | tail -n 1)
+          "$AAPT" dump badging "$APK" | grep -q "package: name='com.smarttvmanager.guard'"
+
+      - name: Prepare assets
+        run: |
+          mkdir out
+          cp tv-guard/app/build/outputs/apk/debug/app-debug.apk out/TvGuard.apk
+          (cd out && sha256sum TvGuard.apk > TvGuard.apk.sha256)
+          cat out/TvGuard.apk.sha256
+
+      - name: Publish rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          NOTES="TV Guard spike build from $SHA (debug-signed). Not for general use yet."
+          gh release view tv-guard >/dev/null 2>&1 \
+            && gh release edit tv-guard --notes "$NOTES" \
+            || gh release create tv-guard --title "TV Guard (prebuilt)" --notes "$NOTES" --prerelease
+          gh release upload tv-guard out/TvGuard.apk out/TvGuard.apk.sha256 --clobber

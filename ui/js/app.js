@@ -85,6 +85,7 @@ const tabRemoteBtn = document.getElementById('tabRemoteBtn');
 const tabAppsBtn = document.getElementById('tabAppsBtn');
 const tabApkBtn = document.getElementById('tabApkBtn');
 const tabHomeBtn = document.getElementById('tabHomeBtn');
+const tabGuardBtn = document.getElementById('tabGuardBtn');
 const backToDevices = document.getElementById('backToDevices');
 const remoteTarget = document.getElementById('remoteTarget');
 const remoteTargetMeta = document.getElementById('remoteTargetMeta');
@@ -161,6 +162,8 @@ let activeDevice = null;
 let keyThrottle = new Map();
 let appsCache = [];
 let appsHome = null;
+// Key (host:port) of the device whose package list is currently in appsCache; '' when none.
+let appsLoadedKey = '';
 let appsActiveFilter = 'all';
 let appsToastTimer = null;
 let currentApk = null;
@@ -220,8 +223,25 @@ async function updateRemoteDeviceHeader() {
   if (dot) dot.style.opacity = activeDevice.online ? '1' : '0.35';
 }
 
+function deviceKey(dev) {
+  return dev ? `${dev.host}:${dev.port}` : '';
+}
+
+/** Drop everything that was fetched from the previously selected TV so no tab shows its data. */
+function resetPerDeviceState() {
+  cancelAppsVersionSync(); // also invalidates any in-flight package list load
+  appsCache = [];
+  appsHome = null;
+  appsLoadedKey = '';
+  if (appsList) appsList.innerHTML = '';
+  smartCleanSuggestions = [];
+  smartCleanDismissed = new Set();
+}
+
 function setActiveDevice(dev) {
+  const changed = deviceKey(dev) !== deviceKey(activeDevice);
   activeDevice = dev;
+  if (changed) resetPerDeviceState();
   if (remoteTarget) remoteTarget.textContent = dev.name;
   if (remoteTargetMeta) remoteTargetMeta.textContent = `${dev.host}:${dev.port}`;
   updateRemoteDeviceHeader();
@@ -229,9 +249,12 @@ function setActiveDevice(dev) {
   if (tabAppsBtn) tabAppsBtn.disabled = false;
   if (tabApkBtn) tabApkBtn.disabled = false;
   if (tabHomeBtn) tabHomeBtn.disabled = false;
+  if (tabGuardBtn) tabGuardBtn.disabled = false;
   updateAppChrome();
   updateHomeChrome();
   updateApkChrome();
+  updateAppsDeviceHeader();
+  syncSmartCleanDeviceBadge();
   updateDeviceCardHighlights();
   const homePane = document.getElementById('tab-home');
   if (homePane?.classList.contains('active')) activateHomeTab();
@@ -274,6 +297,7 @@ function switchTab(tab) {
   });
   if (tab === 'remote' && activeDevice) updateRemoteDeviceHeader();
   if (tab === 'home') activateHomeTab();
+  if (tab === 'guard') activateGuardTab();
   if (tab === 'apk' && activeDevice) {
     updateApkChrome();
     refreshApkStorage();
@@ -284,6 +308,10 @@ tabBtns.forEach((btn) => {
   btn.addEventListener('click', () => {
     if (btn.disabled) return;
     switchTab(btn.dataset.tab);
+    // The device may have changed from the Devices tab without opening Apps: load its packages now.
+    if (btn.dataset.tab === 'apps' && activeDevice && appsLoadedKey !== deviceKey(activeDevice)) {
+      loadApps();
+    }
   });
 });
 
@@ -817,6 +845,7 @@ async function loadApps() {
     if (loadGen !== appsListSyncGen) return;
     appsCache = res.apps || [];
     appsHome = res.current_home || null;
+    appsLoadedKey = deviceKey(activeDevice);
     updateAppsFilterLabels();
     updateAppsLauncherBanner();
     renderApps();
@@ -2116,6 +2145,7 @@ listEl.addEventListener('click', async (e) => {
         if (tabAppsBtn) tabAppsBtn.disabled = true;
         if (tabApkBtn) tabApkBtn.disabled = true;
         if (tabHomeBtn) tabHomeBtn.disabled = true;
+        if (tabGuardBtn) tabGuardBtn.disabled = true;
         updateAppChrome();
         switchTab('devices');
       }
@@ -4317,3 +4347,504 @@ if (terminalBodyEl) {
 }
 
 waitForPywebviewAndBoot();
+
+
+// ---------------------------------------------------------------------------
+// Khoá trẻ em (TV Guard): lịch khoá chạy trên TV, app chỉ cài đặt và theo dõi.
+// ---------------------------------------------------------------------------
+const GUARD_DAY_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+const GUARD_STAGES = [
+  ['apk', 'Chuẩn bị bản cài'],
+  ['install', 'Cài lên TV'],
+  ['enable', 'Bật dịch vụ trợ năng'],
+  ['pair', 'Ghép cặp app với TV'],
+  ['pin', 'Đặt mã PIN'],
+  ['policy', 'Lưu lịch khoá lên TV'],
+  ['verify', 'Kiểm tra lại trên TV'],
+];
+const GUARD_REASON_TEXT = {
+  OUTSIDE_WINDOW: 'Hiện ngoài các khung giờ khoá.',
+  WRONG_DAY: 'Giờ hiện tại nằm trong một khung, nhưng hôm nay không thuộc các ngày đã chọn cho khung đó.',
+  UNLOCKED_BY_PIN: 'Đang trong thời gian mở khoá tạm bằng PIN.',
+  NO_PIN: 'Chưa đặt PIN nên TV Guard chưa khoá gì.',
+  NO_POLICY: 'Chưa có lịch khoá trên TV.',
+  APP_NOT_LISTED: 'Ứng dụng đang mở không nằm trong danh sách bị khoá.',
+};
+
+/** What the next click on the primary button must do, from the last status we read. */
+function guardNeeds(info) {
+  const st = info ? info.state : 'not_installed';
+  // These states end in a reinstall, which clears the PIN stored on the TV.
+  const reinstall = ['not_installed', 'unpaired', 'unreachable'].includes(st);
+  const setup = reinstall || st === 'service_off' || !!(info && info.update_available);
+  const needPin = reinstall || !(info && info.status && info.status.pin_set);
+  return { setup, needPin };
+}
+
+function guardTvClockText(st) {
+  if (!st || !st.local_time) return '';
+  const hm = String(st.local_time).slice(11, 16);
+  const day = st.local_day ? `${GUARD_DAY_LABELS[st.local_day - 1]} ` : '';
+  return `Giờ trên TV: ${day}${hm} (${st.zone || 'không rõ múi giờ'}).`;
+}
+
+let guardInfo = null;
+let guardBusy = false;
+let guardPolicy = defaultGuardPolicy();
+let guardToastTimer = null;
+let guardPollTimer = null;
+let guardDirty = false;
+let guardDeviceKey = '';
+
+function defaultGuardPolicy() {
+  return {
+    schedules: [{ days: [1, 2, 3, 4, 5, 6, 7], start: '21:00', end: '06:30' }],
+    unlock_minutes: 30,
+  };
+}
+
+/** Unsaved edits must survive the periodic status refresh, so track them explicitly. */
+function setGuardDirty(dirty) {
+  guardDirty = dirty;
+  const hint = document.getElementById('guardDirtyHint');
+  if (hint) hint.hidden = !dirty;
+}
+
+function guardEl(id) {
+  return document.getElementById(id);
+}
+
+function guardToast(message) {
+  const el = guardEl('guardToast');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.add('visible');
+  if (guardToastTimer) clearTimeout(guardToastTimer);
+  guardToastTimer = setTimeout(() => el.classList.remove('visible'), 2800);
+}
+
+function updateGuardChrome() {
+  if (!activeDevice) return;
+  guardEl('guardTarget').textContent = activeDevice.name;
+  guardEl('guardTargetMeta').textContent = `(${activeDevice.host}:${activeDevice.port})`;
+}
+
+function guardScheduleText(policy) {
+  const list = (policy && policy.schedules) || [];
+  if (!list.length) return 'Chưa có khung giờ khoá.';
+  return list.map((w) => {
+    const days = (w.days || []).length === 7
+      ? 'mỗi ngày'
+      : (w.days || []).map((d) => GUARD_DAY_LABELS[d - 1]).join(', ');
+    return `${w.start}–${w.end} (${days})`;
+  }).join(' · ');
+}
+
+function guardTimeLabel(ms) {
+  return new Date(ms).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function guardBannerFor(info) {
+  const st = info.status || {};
+  const sched = guardScheduleText(st.policy);
+  switch (info.state) {
+    case 'protected':
+      return ['verified_user', 'ok', 'Đang bảo vệ', [
+        `Lịch khoá: ${sched}`, guardTvClockText(st), GUARD_REASON_TEXT[st.reason] || '',
+      ].filter(Boolean).join(' ')];
+    case 'locked':
+      return ['lock_clock', 'lock', 'TV đang khoá theo lịch', [`Lịch khoá: ${sched}`, guardTvClockText(st)].filter(Boolean).join(' ')];
+    case 'locked_manual':
+      return ['lock', 'lock', `TV đang khoá đến ${guardTimeLabel(st.manual_lock_until_ms)}`, 'Khoá thủ công từ app. Có thể mở bằng PIN trên TV hoặc nút «Mở khoá tạm».'];
+    case 'lock_failed':
+      return ['error', 'bad', 'Đến giờ khoá nhưng TV chưa bị che',
+        `TV Guard muốn khoá nhưng không vẽ được lớp phủ${st.overlay_error ? `: ${st.overlay_error}` : ''}. Bấm «Chẩn đoán» để xem chi tiết.`];
+    case 'service_off':
+      return ['gpp_bad', 'bad', 'TV chưa được bảo vệ',
+        'Dịch vụ trợ năng của TV Guard đang tắt. Bấm «Cài đặt & bật bảo vệ» để bật lại.'];
+    case 'incomplete':
+      return ['warning', 'warn', 'Chưa hoàn tất cấu hình', 'Cần đặt mã PIN và ít nhất một khung giờ rồi bấm lưu.'];
+    case 'unpaired':
+      return ['link_off', 'warn', 'TV Guard đã có trên TV nhưng chưa ghép với máy này',
+        'Bấm «Cài đặt & bật bảo vệ» để ghép lại (cần đặt lại PIN).'];
+    case 'unreachable':
+      return ['link_off', 'warn', 'Không đọc được trạng thái TV Guard',
+        'Khoá điều khiển không khớp hoặc app không phản hồi. Bấm «Cài đặt & bật bảo vệ» để ghép lại.'];
+    default:
+      return ['shield', 'idle', 'Chưa cài TV Guard',
+        'Bấm «Cài đặt & bật bảo vệ»: app sẽ tự cài, bật và cấu hình trên TV này.'];
+  }
+}
+
+function guardPolicyFromStatus(st) {
+  const p = st && st.policy;
+  if (!p || !Array.isArray(p.schedules)) return null;
+  return {
+    schedules: p.schedules.map((w) => ({ days: [...(w.days || [])], start: w.start, end: w.end })),
+    unlock_minutes: p.unlock_minutes || 30,
+  };
+}
+
+function renderGuardState(info) {
+  guardInfo = info;
+  const [icon, tone, title, sub] = guardBannerFor(info);
+  const banner = guardEl('guardBanner');
+  banner.className = `guard-banner guard-banner--${tone}`;
+  guardEl('guardBannerIcon').textContent = icon;
+  guardEl('guardBannerTitle').textContent = title;
+  guardEl('guardBannerSub').textContent = info.update_available
+    ? `${sub} Có bản TV Guard mới hơn: bấm «Cập nhật & lưu» để cập nhật (giữ nguyên PIN và lịch).`
+    : sub;
+
+  const installed = info.state !== 'not_installed';
+  const active = ['protected', 'locked', 'locked_manual'].includes(info.state);
+  guardEl('guardQuick').hidden = !installed;
+  ['guardTempMin', 'guardLockNowBtn', 'guardUnlockNowBtn'].forEach((id) => { guardEl(id).hidden = !active; });
+  guardEl('guardUninstallBtn').hidden = !installed;
+
+  const need = guardNeeds(info);
+  guardEl('guardSaveLabel').textContent = need.setup
+    ? (info.update_available && info.state !== 'not_installed' ? 'Cập nhật & lưu' : 'Cài đặt & bật bảo vệ')
+    : 'Lưu thay đổi';
+  guardEl('guardPin').placeholder = need.needPin ? '4–8 chữ số' : 'Để trống nếu giữ PIN hiện tại';
+
+  const fromTv = guardPolicyFromStatus(info.status);
+  if (fromTv && !guardBusy && !guardDirty) {
+    guardPolicy = fromTv;
+    renderGuardSchedules();
+  }
+  guardEl('guardTech').textContent = JSON.stringify(info, null, 2);
+}
+
+function renderGuardSchedules() {
+  const host = guardEl('guardSchedules');
+  host.textContent = '';
+  guardEl('guardUnlockMin').value = String(guardPolicy.unlock_minutes);
+  if (!guardPolicy.schedules.length) {
+    const p = document.createElement('p');
+    p.className = 'guard-empty';
+    p.textContent = 'Chưa có khung giờ nào. Bấm «Thêm khung giờ».';
+    host.appendChild(p);
+    return;
+  }
+  guardPolicy.schedules.forEach((w, i) => {
+    const row = document.createElement('div');
+    row.className = 'guard-window';
+    row.dataset.index = String(i);
+
+    const days = document.createElement('div');
+    days.className = 'guard-days';
+    GUARD_DAY_LABELS.forEach((label, d) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'guard-day';
+      b.setAttribute('aria-pressed', w.days.includes(d + 1) ? 'true' : 'false');
+      b.dataset.act = 'day';
+      b.dataset.day = String(d + 1);
+      b.textContent = label;
+      days.appendChild(b);
+    });
+
+    const times = document.createElement('div');
+    times.className = 'guard-times';
+    const start = document.createElement('input');
+    start.type = 'time'; start.className = 'guard-time'; start.value = w.start; start.dataset.act = 'start';
+    const end = document.createElement('input');
+    end.type = 'time'; end.className = 'guard-time'; end.value = w.end; end.dataset.act = 'end';
+    times.append('Khoá từ ', start, ' đến ', end);
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn btn--danger-ghost';
+    del.dataset.act = 'remove';
+    del.title = 'Xoá khung giờ';
+    del.innerHTML = '<span class="material-symbols-outlined">delete</span>';
+
+    row.append(times, del, days);
+    host.appendChild(row);
+  });
+}
+
+function renderGuardProgress(steps, { error = null, failed = false } = {}) {
+  const card = guardEl('guardProgressCard');
+  card.hidden = false;
+  const seen = steps.map((s) => s.msg);
+  const finished = seen.includes('done');
+  let current = -1;
+  GUARD_STAGES.forEach(([key], i) => { if (seen.includes(key)) current = i; });
+
+  const list = guardEl('guardStages');
+  list.textContent = '';
+  GUARD_STAGES.forEach(([key, label], i) => {
+    let cls = 'pending';
+    let icon = 'radio_button_unchecked';
+    if (finished || i < current) {
+      cls = seen.includes(key) ? 'done' : 'done skipped';
+      icon = 'check_circle';
+    } else if (i === current) {
+      cls = failed ? 'failed' : 'current';
+      icon = failed ? 'error' : 'progress_activity';
+    }
+    const li = document.createElement('li');
+    li.className = `guard-stage ${cls}`;
+    li.innerHTML = `<span class="material-symbols-outlined">${icon}</span>`;
+    li.append(label);
+    list.appendChild(li);
+  });
+
+  const last = steps.length ? steps[steps.length - 1] : null;
+  guardEl('guardDetail').textContent = last ? last.detail : '';
+  const err = guardEl('guardError');
+  err.hidden = !error;
+  err.textContent = error || '';
+}
+
+async function refreshGuard({ silent = false } = {}) {
+  if (!activeDevice || guardBusy) return;
+  try {
+    const info = await getApi().guard_status(activeDevice.host, activeDevice.port);
+    renderGuardState(info);
+  } catch (err) {
+    if (silent) return;
+    renderGuardState({ state: 'unreachable', status: null });
+    guardEl('guardBannerTitle').textContent = 'Không đọc được trạng thái từ TV';
+    guardEl('guardBannerSub').textContent = String(err.message || err);
+  }
+}
+
+function collectGuardPolicy() {
+  return {
+    schedules: guardPolicy.schedules.map((w) => ({ days: w.days, start: w.start, end: w.end })),
+    unlock_minutes: Number(guardEl('guardUnlockMin').value) || 30,
+  };
+}
+
+function validateGuardForm({ needPin }) {
+  const pin = guardEl('guardPin').value.trim();
+  if (needPin && !/^\d{4,8}$/.test(pin)) return 'Hãy nhập PIN gồm 4–8 chữ số.';
+  if (pin && !/^\d{4,8}$/.test(pin)) return 'PIN chỉ gồm 4–8 chữ số.';
+  if (!guardPolicy.schedules.length) return 'Cần ít nhất một khung giờ khoá.';
+  for (const w of guardPolicy.schedules) {
+    if (!w.days.length) return 'Mỗi khung giờ cần chọn ít nhất một ngày.';
+    if (!w.start || !w.end) return 'Hãy nhập đủ giờ bắt đầu và kết thúc.';
+    if (w.start === w.end) return 'Giờ bắt đầu và kết thúc không được trùng nhau.';
+  }
+  return null;
+}
+
+async function runGuardSave() {
+  if (!activeDevice || guardBusy) return;
+  const { setup: needsSetup, needPin } = guardNeeds(guardInfo);
+  const problem = validateGuardForm({ needPin });
+  if (problem) {
+    guardToast(problem);
+    return;
+  }
+  const btn = guardEl('guardSaveBtn');
+  const pin = guardEl('guardPin').value.trim();
+  const policy = collectGuardPolicy();
+  guardBusy = true;
+  setButtonLoading(btn, true);
+  try {
+    if (needsSetup) {
+      renderGuardProgress([], {});
+      const started = await getApi().guard_setup_async(activeDevice.host, activeDevice.port, pin, policy);
+      const info = await pollGuardJob(started.job_id);
+      guardBusy = false;
+      guardEl('guardPin').value = '';
+      setGuardDirty(false);
+      renderGuardState(info);
+      guardToast('TV Guard đang bảo vệ TV này');
+    } else {
+      const info = await getApi().guard_save_policy(activeDevice.host, activeDevice.port, policy, pin);
+      guardBusy = false;
+      guardEl('guardPin').value = '';
+      setGuardDirty(false);
+      renderGuardState(info);
+      guardToast('Đã lưu lịch khoá lên TV');
+    }
+  } catch (err) {
+    guardToast('Chưa hoàn tất, xem chi tiết trong khung tiến trình');
+    if (guardEl('guardProgressCard').hidden || guardEl('guardError').hidden) {
+      renderGuardProgress([], { error: String(err.message || err), failed: true });
+    }
+  } finally {
+    guardBusy = false;
+    setButtonLoading(btn, false);
+  }
+}
+
+async function pollGuardJob(jobId) {
+  let steps = [];
+  for (let i = 0; i < 1200; i += 1) {
+    const st = await getApi().guard_job(jobId);
+    steps = st.steps || [];
+    if (st.status === 'failed') {
+      renderGuardProgress(steps, { error: st.error || 'Thất bại', failed: true });
+      const diag = steps.find((x) => x.msg === 'diag');
+      if (diag) showGuardTech(diag.detail);
+      throw new Error(st.error || 'Thất bại');
+    }
+    renderGuardProgress(steps);
+    if (st.status === 'done') return st.result;
+    if (st.status === 'unknown') throw new Error('Tác vụ không còn tồn tại');
+    await sleep(400);
+  }
+  throw new Error('Hết thời gian chờ');
+}
+
+async function runGuardQuick(kind, btn) {
+  if (!activeDevice || guardBusy) return;
+  const minutes = Number(guardEl('guardTempMin').value) || 30;
+  guardBusy = true;
+  setButtonLoading(btn, true);
+  try {
+    const api = getApi();
+    const info = kind === 'lock'
+      ? await api.guard_lock_now(activeDevice.host, activeDevice.port, minutes)
+      : await api.guard_unlock_now(activeDevice.host, activeDevice.port, minutes);
+    guardBusy = false;
+    renderGuardState(info);
+    guardToast(kind === 'lock' ? `Đã khoá TV ${minutes} phút` : `Đã mở khoá TV ${minutes} phút`);
+  } catch (err) {
+    guardToast(String(err.message || err));
+  } finally {
+    guardBusy = false;
+    setButtonLoading(btn, false);
+  }
+}
+
+async function runGuardUninstall(btn) {
+  if (!activeDevice || guardBusy) return;
+  if (!confirm('Gỡ TV Guard khỏi TV này?\n\nTV sẽ không còn bị khoá theo lịch và khoá điều khiển trên máy này sẽ bị xoá.')) return;
+  guardBusy = true;
+  setButtonLoading(btn, true);
+  try {
+    const info = await getApi().guard_uninstall(activeDevice.host, activeDevice.port);
+    guardBusy = false;
+    guardEl('guardProgressCard').hidden = true;
+    renderGuardState(info);
+    guardToast('Đã gỡ TV Guard');
+  } catch (err) {
+    guardToast(String(err.message || err));
+  } finally {
+    guardBusy = false;
+    setButtonLoading(btn, false);
+  }
+}
+
+function showGuardTech(text) {
+  guardEl('guardTech').textContent = text;
+  const box = guardEl('guardTechBox');
+  box.open = true;
+  // The box sits at the bottom of the tab; bring it into view or the report looks missing.
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/** Copy the technical report. navigator.clipboard may be unavailable in the embedded webview. */
+async function copyGuardTech() {
+  const text = guardEl('guardTech').textContent || '';
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    ok = true;
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    ta.remove();
+  }
+  guardToast(ok ? 'Đã sao chép báo cáo' : 'Không sao chép được, hãy bôi đen rồi nhấn Ctrl+C');
+}
+
+async function runGuardDiagnose(btn) {
+  if (!activeDevice || guardBusy) return;
+  setButtonLoading(btn, true);
+  try {
+    const res = await getApi().guard_diagnose(activeDevice.host, activeDevice.port);
+    showGuardTech(res.text || '(trống)');
+    guardToast('Đã lấy báo cáo chẩn đoán');
+  } catch (err) {
+    showGuardTech(`Không lấy được báo cáo: ${String(err.message || err)}`);
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}
+
+function activateGuardTab() {
+  if (!activeDevice) return;
+  const key = `${activeDevice.host}:${activeDevice.port}`;
+  if (key !== guardDeviceKey) {
+    // A different TV: never carry over another TV's unsaved edits.
+    guardDeviceKey = key;
+    guardPolicy = defaultGuardPolicy();
+    setGuardDirty(false);
+  }
+  updateGuardChrome();
+  guardEl('guardProgressCard').hidden = true;
+  renderGuardSchedules();
+  refreshGuard();
+  if (guardPollTimer) clearInterval(guardPollTimer);
+  // Keep the banner current while the tab is open (cheap: one status call).
+  guardPollTimer = setInterval(() => {
+    if (!guardEl('tab-guard').classList.contains('active')) {
+      clearInterval(guardPollTimer);
+      guardPollTimer = null;
+      return;
+    }
+    refreshGuard({ silent: true });
+  }, 20000);
+}
+
+(function wireGuardTab() {
+  const host = guardEl('guardSchedules');
+  if (!host) return;
+  host.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-act]');
+    const row = ev.target.closest('.guard-window');
+    if (!btn || !row) return;
+    const w = guardPolicy.schedules[Number(row.dataset.index)];
+    if (btn.dataset.act === 'day') {
+      const d = Number(btn.dataset.day);
+      w.days = w.days.includes(d) ? w.days.filter((x) => x !== d) : [...w.days, d].sort();
+      btn.setAttribute('aria-pressed', w.days.includes(d) ? 'true' : 'false');
+      setGuardDirty(true);
+    } else if (btn.dataset.act === 'remove') {
+      guardPolicy.schedules.splice(Number(row.dataset.index), 1);
+      renderGuardSchedules();
+      setGuardDirty(true);
+    }
+  });
+  host.addEventListener('change', (ev) => {
+    const input = ev.target.closest('input[data-act]');
+    const row = ev.target.closest('.guard-window');
+    if (!input || !row) return;
+    guardPolicy.schedules[Number(row.dataset.index)][input.dataset.act] = input.value;
+    setGuardDirty(true);
+  });
+  guardEl('guardUnlockMin').addEventListener('change', (ev) => {
+    guardPolicy.unlock_minutes = Number(ev.target.value) || 30;
+    setGuardDirty(true);
+  });
+  guardEl('guardAddWindowBtn').addEventListener('click', () => {
+    guardPolicy.schedules.push({ days: [1, 2, 3, 4, 5, 6, 7], start: '21:00', end: '06:30' });
+    renderGuardSchedules();
+    setGuardDirty(true);
+  });
+  guardEl('guardSaveBtn').addEventListener('click', runGuardSave);
+  guardEl('guardRefreshBtn').addEventListener('click', () => refreshGuard());
+  guardEl('guardDiagBtn').addEventListener('click', (ev) => runGuardDiagnose(ev.currentTarget));
+  guardEl('guardTechCopy').addEventListener('click', copyGuardTech);
+  guardEl('guardLockNowBtn').addEventListener('click', (ev) => runGuardQuick('lock', ev.currentTarget));
+  guardEl('guardUnlockNowBtn').addEventListener('click', (ev) => runGuardQuick('unlock', ev.currentTarget));
+  guardEl('guardUninstallBtn').addEventListener('click', (ev) => runGuardUninstall(ev.currentTarget));
+  guardEl('backToDevicesFromGuard').addEventListener('click', () => switchTab('devices'));
+})();

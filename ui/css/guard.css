@@ -1,0 +1,128 @@
+/* Khoá trẻ em (TV Guard) */
+.guard-page { display: flex; flex-direction: column; gap: var(--space-lg); }
+
+.guard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: var(--space-lg);
+  align-items: start;
+}
+@media (max-width: 980px) { .guard-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.guard-card { padding: var(--space-lg); display: flex; flex-direction: column; gap: var(--space-md); }
+.guard-card[hidden] { display: none; }
+.guard-h { margin: 0; font-size: 15px; font-weight: 600; color: var(--color-on-surface); }
+.guard-hint { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--color-on-surface-variant); }
+
+/* Status banner */
+.guard-banner { display: flex; gap: 14px; align-items: flex-start; }
+.guard-banner-icon {
+  flex: 0 0 auto; width: 46px; height: 46px; border-radius: 14px;
+  display: grid; place-items: center;
+  background: var(--color-surface-container-high); color: var(--color-on-surface-variant);
+}
+.guard-banner-title { margin: 0 0 4px; font-size: 16px; font-weight: 600; color: var(--color-on-surface); }
+.guard-banner-sub { margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-on-surface-variant); }
+.guard-banner--ok .guard-banner-icon { background: rgba(78, 222, 163, 0.14); color: var(--color-tertiary-fixed-dim); }
+.guard-banner--lock .guard-banner-icon { background: rgba(0, 240, 255, 0.12); color: var(--color-primary-fixed-dim); }
+.guard-banner--warn .guard-banner-icon { background: rgba(245, 158, 11, 0.16); color: var(--color-warning); }
+.guard-banner--bad .guard-banner-icon { background: rgba(244, 63, 94, 0.16); color: var(--color-danger-neon); }
+
+.guard-quick { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding-top: 4px; border-top: 1px solid var(--hairline); }
+.guard-quick[hidden] { display: none; }
+.guard-select {
+  height: 38px; padding: 0 10px; border-radius: 10px;
+  background: var(--color-surface-container); color: var(--color-on-surface);
+  border: 1px solid var(--hairline-strong); font: inherit; font-size: 13px;
+}
+
+/* Schedule editor */
+.guard-sched { display: flex; flex-direction: column; gap: 10px; }
+.guard-window {
+  display: grid; grid-template-columns: 1fr auto; gap: 10px 12px; align-items: center;
+  padding: 12px; border-radius: 14px;
+  background: var(--color-surface-container-low); border: 1px solid var(--hairline);
+}
+.guard-days { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; }
+/* main.css has global `button:not(.btn)...` and `input:not(...)` rules whose :not() chains out-rank
+   plain class selectors, so the controls below are scoped under the pane id to win on specificity. */
+#tab-guard .guard-day {
+  min-width: 40px; height: 34px; padding: 0 10px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--hairline-strong); background: transparent;
+  color: var(--color-on-surface-variant); font: inherit; font-size: 12.5px; font-weight: 600;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+#tab-guard .guard-day:hover {
+  background: rgba(255, 255, 255, 0.06); border-color: var(--hairline-strong); color: var(--color-on-surface);
+}
+#tab-guard .guard-day[aria-pressed="true"] {
+  background: rgba(0, 240, 255, 0.22); border-color: var(--color-primary-container);
+  color: var(--color-primary); box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.25);
+}
+#tab-guard .guard-day[aria-pressed="true"]:hover { background: rgba(0, 240, 255, 0.32); }
+#tab-guard .guard-day:focus-visible { outline: 2px solid var(--color-primary-container); outline-offset: 2px; }
+.guard-times { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-on-surface-variant); }
+#tab-guard .guard-time {
+  flex: none; width: auto; height: 36px; padding: 0 10px; border-radius: 10px; font: inherit; font-size: 14px;
+  background: var(--color-surface-container); color: var(--color-on-surface);
+  border: 1px solid var(--hairline-strong); color-scheme: dark;
+}
+#tab-guard .guard-time:focus { border-color: var(--color-primary-container); }
+.guard-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.guard-empty { margin: 0; font-size: 13px; color: var(--color-on-surface-variant); }
+.guard-dirty { color: var(--color-warning); margin-right: auto; }
+.guard-dirty[hidden] { display: none; }
+.guard-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: flex-end; }
+
+/* Progress */
+.guard-stages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.guard-stage { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--color-on-surface-variant); }
+.guard-stage .material-symbols-outlined { font-size: 20px; }
+.guard-stage.done { color: var(--color-on-surface); }
+.guard-stage.done .material-symbols-outlined { color: var(--color-tertiary-fixed-dim); }
+.guard-stage.skipped { opacity: 0.55; }
+.guard-stage.current { color: var(--color-primary-fixed); }
+.guard-stage.current .material-symbols-outlined { animation: guard-spin 1.1s linear infinite; }
+.guard-stage.failed { color: var(--color-error); }
+.guard-stage.failed .material-symbols-outlined { color: var(--color-danger-neon); }
+@keyframes guard-spin { to { transform: rotate(360deg); } }
+.guard-detail { margin: 0; font-size: 12.5px; color: var(--color-on-surface-variant); min-height: 1.4em; }
+.guard-error {
+  margin: 0; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5;
+  background: rgba(244, 63, 94, 0.12); color: var(--color-error); border: 1px solid rgba(244, 63, 94, 0.3);
+}
+.guard-error[hidden] { display: none; }
+
+.guard-note { font-size: 12.5px; line-height: 1.6; color: var(--color-on-surface-variant); }
+.guard-note strong { color: var(--color-on-surface); }
+.guard-tech summary { cursor: pointer; font-size: 12.5px; color: var(--color-on-surface-variant); }
+.guard-tech pre {
+  margin: 8px 0 0; padding: 12px; border-radius: 10px; overflow: auto; max-height: 360px;
+  /* Report lines are long (adb output); wrap them instead of stretching the page. */
+  box-sizing: border-box; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-family: var(--font-mono); font-size: 12px;
+  background: var(--color-surface-container-lowest); color: var(--color-on-surface-variant);
+}
+
+.guard-toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); opacity: 0;
+  pointer-events: none; transition: opacity 0.2s, transform 0.2s;
+  padding: 10px 16px; border-radius: 12px; font-size: 13px; z-index: 50;
+  background: var(--color-surface-container-highest); color: var(--color-on-surface);
+  border: 1px solid var(--hairline-strong);
+}
+.guard-toast.visible { opacity: 1; transform: translate(-50%, 0); }
+
+/* The app disables text selection globally; progress, errors and diagnostics must stay copyable
+   so users can paste them into a bug report. Icons keep user-select: none from components.css. */
+#tab-guard .guard-stage,
+#tab-guard .guard-detail,
+#tab-guard .guard-error,
+#tab-guard .guard-banner-sub,
+#tab-guard .guard-tech pre {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+/* Let the details box shrink inside its flex/grid parent instead of growing with the report. */
+#tab-guard .guard-tech { min-width: 0; max-width: 100%; }

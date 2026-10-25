@@ -66,6 +66,7 @@
         <button type="button" class="nav-tab tab-btn" data-tab="apps" id="tabAppsBtn" disabled>Quản lý ứng dụng</button>
         <button type="button" class="nav-tab tab-btn" data-tab="apk" id="tabApkBtn" disabled>Cài đặt APK</button>
         <button type="button" class="nav-tab tab-btn" data-tab="home" id="tabHomeBtn" disabled>Home &amp; Theme</button>
+        <button type="button" class="nav-tab tab-btn" data-tab="guard" id="tabGuardBtn" disabled>Khoá trẻ em</button>
       </nav>
 
       <div class="header-tools">
@@ -898,6 +899,133 @@
     </section>
 
     <!-- HOME/THEME -->
+    <section id="tab-guard" class="tab-pane">
+      <div class="workspace guard-page">
+        <header class="apk-header">
+          <div class="apk-header-main">
+            <div class="apk-header-icon">
+              <span class="material-symbols-outlined">child_care</span>
+            </div>
+            <div>
+              <div class="apk-header-title-row">
+                <h1 class="apk-header-title">Khoá trẻ em</h1>
+                <span class="apk-header-chip">Chạy ngay trên TV</span>
+              </div>
+              <p class="apk-header-sub">
+                Thiết bị đích:
+                <strong id="guardTarget" class="target-name">—</strong>
+                <span id="guardTargetMeta" class="device-meta">—</span>
+              </p>
+            </div>
+          </div>
+          <div class="apk-header-actions">
+            <button type="button" id="guardDiagBtn" class="btn btn--surface" title="Lấy báo cáo kỹ thuật từ TV">
+              <span class="material-symbols-outlined">troubleshoot</span>
+              Chẩn đoán
+            </button>
+            <button type="button" id="guardRefreshBtn" class="btn btn--surface">
+              <span class="material-symbols-outlined">sync</span>
+              Làm mới
+            </button>
+            <button type="button" id="backToDevicesFromGuard" class="btn btn--ghost">
+              <span class="material-symbols-outlined">arrow_back</span>
+              Quay lại
+            </button>
+          </div>
+        </header>
+
+        <div class="guard-grid">
+          <div style="display:flex;flex-direction:column;gap:var(--space-lg);">
+            <section class="glass-card guard-card">
+              <div id="guardBanner" class="guard-banner guard-banner--idle">
+                <div class="guard-banner-icon"><span id="guardBannerIcon" class="material-symbols-outlined">shield</span></div>
+                <div>
+                  <h2 id="guardBannerTitle" class="guard-banner-title">Đang kiểm tra...</h2>
+                  <p id="guardBannerSub" class="guard-banner-sub"></p>
+                </div>
+              </div>
+              <div id="guardQuick" class="guard-quick" hidden>
+                <select id="guardTempMin" class="guard-select" aria-label="Thời lượng">
+                  <option value="15">15 phút</option>
+                  <option value="30" selected>30 phút</option>
+                  <option value="60">1 giờ</option>
+                  <option value="120">2 giờ</option>
+                </select>
+                <button type="button" id="guardLockNowBtn" class="btn btn--surface">
+                  <span class="material-symbols-outlined">lock</span>
+                  Khoá ngay
+                </button>
+                <button type="button" id="guardUnlockNowBtn" class="btn btn--surface">
+                  <span class="material-symbols-outlined">lock_open</span>
+                  Mở khoá tạm
+                </button>
+                <button type="button" id="guardUninstallBtn" class="btn btn--danger-ghost" style="margin-left:auto;">
+                  <span class="material-symbols-outlined">delete</span>
+                  Gỡ khỏi TV
+                </button>
+              </div>
+            </section>
+
+            <section id="guardProgressCard" class="glass-card guard-card" hidden>
+              <h2 class="guard-h">Tiến trình</h2>
+              <ul id="guardStages" class="guard-stages"></ul>
+              <p id="guardDetail" class="guard-detail"></p>
+              <p id="guardError" class="guard-error" hidden></p>
+            </section>
+          </div>
+
+          <section class="glass-card guard-card">
+            <div>
+              <h2 class="guard-h">Mã PIN của phụ huynh</h2>
+              <p class="guard-hint" style="margin-top:6px;">Nhập bằng remote TV: Lên/Xuống đổi số, Phải thêm số, Trái xoá, OK xác nhận. PIN chỉ được lưu dưới dạng băm trên TV.</p>
+            </div>
+            <div class="field-input-wrap">
+              <input id="guardPin" class="field-input" type="password" inputmode="numeric" maxlength="8" placeholder="4–8 chữ số" autocomplete="new-password">
+            </div>
+
+            <div>
+              <h2 class="guard-h">Lịch khoá</h2>
+              <p class="guard-hint" style="margin-top:6px;">Giờ tính theo múi giờ của TV. Khung qua nửa đêm (ví dụ 21:00 → 06:30) tính từ ngày bắt đầu.</p>
+            </div>
+            <div id="guardSchedules" class="guard-sched"></div>
+            <div class="guard-row">
+              <button type="button" id="guardAddWindowBtn" class="btn btn--surface">
+                <span class="material-symbols-outlined">add</span>
+                Thêm khung giờ
+              </button>
+              <label class="guard-hint" style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+                Nhập đúng PIN mở khoá
+                <select id="guardUnlockMin" class="guard-select">
+                  <option value="15">15 phút</option>
+                  <option value="30" selected>30 phút</option>
+                  <option value="60">1 giờ</option>
+                  <option value="120">2 giờ</option>
+                </select>
+              </label>
+            </div>
+            <div class="guard-actions">
+              <span id="guardDirtyHint" class="guard-hint guard-dirty" hidden>Có thay đổi chưa lưu</span>
+              <button type="button" id="guardSaveBtn" class="btn btn--primary">
+                <span class="material-symbols-outlined">shield</span>
+                <span id="guardSaveLabel">Cài đặt &amp; bật bảo vệ</span>
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <p class="guard-note">
+          <strong>Lưu ý:</strong> lịch được lưu và chạy <strong>trên TV</strong>, nên tắt máy tính vẫn khoá đúng giờ.
+          Settings và Cửa hàng ứng dụng luôn cần PIN. Không chặn được đổi cổng HDMI, cast từ điện thoại hay reset nhà máy.
+        </p>
+        <details id="guardTechBox" class="guard-tech">
+          <summary>Chi tiết kỹ thuật</summary>
+          <button type="button" id="guardTechCopy" class="btn btn--surface" style="margin-top:8px;">Sao chép báo cáo</button>
+          <pre id="guardTech">—</pre>
+        </details>
+        <div id="guardToast" class="guard-toast" role="status"></div>
+      </div>
+    </section>
+
     <section id="tab-home" class="tab-pane">
       <div class="workspace home-page">
         <div class="home-ribbon glass-card">
