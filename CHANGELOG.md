@@ -10,6 +10,26 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-25
+
+### Added
+
+- Wireless debugging (Android 11+, e.g. Chromecast with Google TV): adding a TV on a non-5555 Wireless-debugging port opens a pairing dialog. Enter the 6-digit code; the pairing port is found over mDNS (or typed by hand), Google's platform-tools `adb` is downloaded once, the TV is paired and switched to TCP 5555, then connected as usual.
+- Per-model suggestions from Gathin's `examples/` (260 profiles, pinned to the upstream commit in `data/cleanyourtv/device-profiles.json`, regenerate with `scripts/sync_device_profiles.py`). They show as suggestions only: never pre-selected, no one-click disable, and `com.mediatek.*` plus stock launcher packages are never suggested. Shown as a banner and badges in Smart Clean and as tags in the package list. Chromecast is excluded and keeps the app's own flow.
+- Remote key profiles per TV: Chromecast with Google TV gets YouTube (`190`) and Netflix (`191`) buttons mapped. TCL key codes are no longer pushed to other TVs.
+
+### Changed
+
+- Stock launcher switch: when HOME does not move to CleanYourTV after disabling `launcherx`, the other known stock Home apps that answer HOME are disabled too (`tvlauncher`, `leanbacklauncher`, and `setupwraith` on Chromecast with Google TV, whose recovery activity otherwise outranks third-party launchers). Everything is re-enabled if HOME still does not switch. Note: disabling `setupwraith` can break phone casting after a reboot (see the Chromecast notes in Gathin's examples).
+- Stock launcher status ("Disabled / Enabled") no longer depends on `launcherx` alone.
+- Network scan waits longer per host (Wi-Fi TVs answer slowly) and always includes the default-route subnet.
+- The version label in the header is read from `APP_VERSION` instead of a hard-coded string.
+
+### Fixed
+
+- Connecting with `ip:port` failed with `gaierror` because the whole string was used as the host name.
+- Header label showed `v1.2.0` after newer releases.
+
 ## [1.5.0] - 2026-10-25
 
 ### Added
