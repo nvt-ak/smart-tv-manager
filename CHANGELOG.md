@@ -10,6 +10,10 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+### Added
+
+- Intro video (45 s, Vietnamese and English) on the landing page ("See it in 45 seconds" section, language-aware) and in the README.
+
 ## [1.7.0] - 2026-10-25
 
 ### Added

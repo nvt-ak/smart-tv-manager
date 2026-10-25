@@ -16,3 +16,5 @@ tv-guard/app/build/
 tv-guard/local.properties
 tv-guard/*.apk
 *.secret
+_to_delete/
+promo-video/

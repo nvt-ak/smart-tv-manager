@@ -6,6 +6,14 @@ ADB key riêng tại `~/.smarttv-manager/adbkey` — **không** dùng chung vớ
 
 ---
 
+## Video giới thiệu
+
+[![Video giới thiệu SmartTV Manager](site/assets/video/poster-vi.jpg)](https://nvt-ak.github.io/smart-tv-manager/assets/video/smarttv-manager-intro-vi.mp4)
+
+Bấm vào ảnh để xem video 45 giây (tiếng Việt). [English version](https://nvt-ak.github.io/smart-tv-manager/assets/video/smarttv-manager-intro-en.mp4) · [Trang giới thiệu](https://nvt-ak.github.io/smart-tv-manager/).
+
+---
+
 ## Nguồn & mã tham chiếu từ [cleanyourtv](https://github.com/Gathin23/cleanyourtv)
 
 SmartTV Manager **không phải** fork nguyên repo cleanyourtv, nhưng **có sử dụng và dựa trên** tài nguyên / luồng xử lý từ dự án đó:

@@ -10,6 +10,8 @@
     h1: "Màn hình chính của TV, gọn như bạn muốn.",
     lede: "Gỡ quảng cáo và những app không dùng, dựng màn hình chính riêng, quản lý mọi thứ từ máy tính qua Wi‑Fi. Không phải gõ lệnh.",
     cta_how: "Xem cách dùng", free: "Miễn phí, mã nguồn mở",
+    demo_h: "Xem app làm được gì trong 45 giây.",
+    demo_p: "Lướt nhanh mọi tính năng, từ kết nối TV đến khoá trẻ em.",
     dl_generic: "Tải về", dl_win_btn: "Tải cho Windows", dl_mac_btn: "Tải cho macOS",
     seg_before: "Launcher gốc", seg_after: "Với SmartTV Manager",
     tv_cap: "Hình minh hoạ màn hình chính. Số liệu vàng và xăng là dữ liệu mẫu.",
@@ -94,6 +96,12 @@
       var v = next === "vi" ? VI[k] : EN[k];
       if (v) el.textContent = v;
     });
+    var demo = document.getElementById("demoVideo");
+    if (demo && demo.paused) {
+      // Swap the tour video to the chosen language; leave it alone while it is playing.
+      demo.poster = "assets/video/poster-" + next + ".jpg";
+      demo.src = "assets/video/smarttv-manager-intro-" + next + ".mp4";
+    }
     var m = next === "vi" ? VI_META : EN_META;
     document.title = m.title;
     document.querySelector('meta[name="description"]').content = m.desc;
