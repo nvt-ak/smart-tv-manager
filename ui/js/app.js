@@ -3512,12 +3512,61 @@ function pickGathinApk() {
 }
 
 /** TV chưa có CleanYourTV: hỏi, chọn APK, kiểm tra package rồi cài. Trả true nếu đã cài xong. */
+async function pollInstallJob(jobId, log, t0) {
+  let seen = 0;
+  for (let i = 0; i < 4000; i += 1) {
+    const st = await getApi().apply_gathin_theme_job(jobId);
+    for (const s of (st.steps || []).slice(seen)) {
+      log.push(s);
+      if (s.detail) setHomeStatus(s.detail);
+    }
+    seen = (st.steps || []).length;
+    renderHomeApplyLog(log, { open: true, error: st.status === 'failed' ? st.error : null });
+    if (st.status === 'done') {
+      showHomeToast(`Đã cài CleanYourTV (${Math.round((Date.now() - t0) / 1000)}s)`, 'download_done');
+      return true;
+    }
+    if (st.status === 'failed') throw new Error(st.error || 'Cài đặt thất bại');
+    await sleep(500);
+  }
+  throw new Error('Hết thời gian chờ.');
+}
+
+/** Tự clone + build CleanYourTV rồi cài; trả true nếu xong. */
+async function buildInstallGathin() {
+  const log = [];
+  renderHomeApplyLog(log, { open: true });
+  setHomeStatus('Đang build CleanYourTV từ mã nguồn...');
+  const started = await getApi().build_and_install_gathin_async(activeDevice.host, activeDevice.port);
+  return pollInstallJob(started.job_id, log, Date.now());
+}
+
 async function offerInstallGathin() {
   if (!activeDevice) return false;
-  if (!confirm(
-    'TV này chưa cài CleanYourTV (com.gathin.tvhome) nên chưa thể áp dụng theme.\n\n' +
-    'Bạn có muốn cài ngay không? Bạn cần chọn file APK của CleanYourTV (bản build từ repo Gathin23/cleanyourtv).'
-  )) return false;
+  let pre = null;
+  try {
+    pre = await getApi().get_gathin_build_prereqs();
+  } catch {
+    pre = null;
+  }
+  if (pre && pre.ok) {
+    if (confirm(
+      'TV này chưa cài CleanYourTV (com.gathin.tvhome) nên chưa thể áp dụng theme.\n\n' +
+      'Tự tải mã nguồn từ GitHub (Gathin23/cleanyourtv), build rồi cài lên TV?\n' +
+      'Lần đầu có thể mất vài phút (Gradle tải thư viện).\n\n' +
+      'OK = tự build và cài · Hủy = chọn file APK có sẵn'
+    )) {
+      return buildInstallGathin();
+    }
+    if (!confirm('Chọn file APK CleanYourTV có sẵn để cài?')) return false;
+  } else {
+    const miss = pre && pre.missing && pre.missing.length ? pre.missing.map((m) => `• ${m}`).join('\n') : '• Không kiểm tra được công cụ build';
+    if (!confirm(
+      'TV này chưa cài CleanYourTV (com.gathin.tvhome).\n\n' +
+      `Không thể tự build vì máy này còn thiếu:\n${miss}\n\n` +
+      'Chọn file APK CleanYourTV có sẵn để cài?'
+    )) return false;
+  }
   const file = await pickGathinApk();
   if (!file) return false;
   const t0 = Date.now();
@@ -3544,23 +3593,7 @@ async function offerInstallGathin() {
   const started = await getApi().install_apk_async(
     activeDevice.host, activeDevice.port, info._tmp_path, file.name, true, false, true
   );
-  let seen = 0;
-  for (let i = 0; i < 900; i += 1) {
-    const st = await getApi().apply_gathin_theme_job(started.job_id);
-    for (const s of (st.steps || []).slice(seen)) {
-      log.push(s);
-      if (s.detail) setHomeStatus(s.detail);
-    }
-    seen = (st.steps || []).length;
-    renderHomeApplyLog(log, { open: true, error: st.status === 'failed' ? st.error : null });
-    if (st.status === 'done') {
-      showHomeToast(`Đã cài CleanYourTV (${Math.round((Date.now() - t0) / 1000)}s)`, 'download_done');
-      return true;
-    }
-    if (st.status === 'failed') throw new Error(st.error || 'Cài đặt thất bại');
-    await sleep(500);
-  }
-  throw new Error('Hết thời gian chờ cài đặt (~7 phút).');
+  return pollInstallJob(started.job_id, log, t0);
 }
 
 async function applyTheme(id, btn, opts = {}) {

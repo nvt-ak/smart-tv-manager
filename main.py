@@ -13,6 +13,7 @@ from core.safety import safety
 from core.apk_analyzer import ApkAnalyzer
 from core.apk_installer import ApkInstaller
 from core.launcher_detector import LauncherDetector
+from core import launcher_builder
 from core.theme_manager import ThemeManager
 from core.cleanyourtv_themes import CleanyourtvThemes
 from core.clean_suggestions import CleanSuggestionEngine
@@ -654,6 +655,56 @@ class Api:
                 os.unlink(tmp_path)
             except Exception:
                 pass
+
+    def get_gathin_build_prereqs(self):
+        return launcher_builder.check_prereqs()
+
+    def build_and_install_gathin_async(self, host, port=5555):
+        """Clone CleanYourTV, build bằng Gradle rồi cài lên TV. Tiến trình đọc bằng apply_gathin_theme_job."""
+        job_id = uuid.uuid4().hex
+        job = {"id": job_id, "status": "running", "steps": [], "error": None, "result": None,
+               "log_path": THEME_APPLY_LOG}
+        with self._apply_jobs_lock:
+            self._apply_jobs[job_id] = job
+
+        def step(msg, detail=""):
+            job["steps"].append({"t": time.time(), "msg": msg, "detail": detail or ""})
+            self._append_theme_apply_log(job_id, msg, detail or "")
+
+        def run():
+            try:
+                step("build_start", "kiểm tra Git / JDK / Android SDK")
+                tv_sdk = None
+                try:
+                    with self._dev_op_lock(host, port):
+                        out = self._get_pm(host, port)._shell("getprop ro.build.version.sdk")
+                    tv_sdk = int(re.sub(r"\D", "", out or "") or 0) or None
+                except Exception:
+                    tv_sdk = None
+                apk = launcher_builder.build_apk(step, tv_sdk=tv_sdk)
+                step("install_start", "đẩy APK vừa build lên TV")
+                with self._dev_op_lock(host, port):
+                    dev = self._get_dev(host, port)
+                    try:
+                        res = ApkInstaller(dev).install(
+                            apk, progress_cb=lambda m: step("install", m),
+                            reinstall=True, allow_downgrade=False, grant_permissions=True,
+                        )
+                    except Exception:
+                        self._drop_dev(host, port)
+                        raise
+                if res.get("ok") is False:
+                    raise Exception(res.get("output") or "pm install không thành công")
+                step("install_done", res.get("output") or "Success")
+                job["result"] = res
+                job["status"] = "done"
+            except Exception as exc:
+                step("error", str(exc)[:300])
+                job["error"] = str(exc)
+                job["status"] = "failed"
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"job_id": job_id}
 
     def install_apk_async(self, host, port=5555, tmp_path="", filename="",
                           reinstall=True, allow_downgrade=False, grant_permissions=True):
