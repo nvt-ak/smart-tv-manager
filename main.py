@@ -655,6 +655,53 @@ class Api:
             except Exception:
                 pass
 
+    def install_apk_async(self, host, port=5555, tmp_path="", filename="",
+                          reinstall=True, allow_downgrade=False, grant_permissions=True):
+        """Cài APK nền, có tiến trình thật (đẩy file / pm install). Đọc bằng apply_gathin_theme_job."""
+        if not tmp_path or not os.path.exists(tmp_path):
+            raise Exception("File tạm không tồn tại hoặc đã hết hạn. Hãy chọn lại file APK.")
+        job_id = uuid.uuid4().hex
+        job = {"id": job_id, "status": "running", "steps": [], "error": None, "result": None,
+               "log_path": THEME_APPLY_LOG}
+        with self._apply_jobs_lock:
+            self._apply_jobs[job_id] = job
+
+        def step(msg, detail=""):
+            job["steps"].append({"t": time.time(), "msg": msg, "detail": detail or ""})
+
+        def run():
+            try:
+                step("install_start", filename or os.path.basename(tmp_path))
+                with self._dev_op_lock(host, port):
+                    dev = self._get_dev(host, port)
+                    try:
+                        res = ApkInstaller(dev).install(
+                            tmp_path,
+                            progress_cb=lambda m: step("install", m),
+                            reinstall=bool(reinstall),
+                            allow_downgrade=bool(allow_downgrade),
+                            grant_permissions=bool(grant_permissions),
+                        )
+                    except Exception:
+                        self._drop_dev(host, port)
+                        raise
+                if res.get("ok") is False:
+                    raise Exception(res.get("output") or "pm install không thành công")
+                step("install_done", (res.get("output") or "Success"))
+                job["result"] = res
+                job["status"] = "done"
+            except Exception as exc:
+                job["error"] = str(exc)
+                job["status"] = "failed"
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"job_id": job_id}
+
     def detect_launcher(self, host, port=5555):
         # Phải giữ lock: adb-shell không thread-safe, 2 lệnh song song trên 1 kết nối sẽ làm hỏng stream.
         with self._dev_op_lock(host, port):

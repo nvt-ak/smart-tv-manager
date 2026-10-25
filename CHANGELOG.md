@@ -13,8 +13,10 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 ### Thêm
 - Quản lý ứng dụng: nút «Gỡ cài đặt» cho app người dùng (`pm uninstall`), có xác nhận; app hệ thống/được bảo vệ/Home đang dùng không có nút này. Riêng CleanYourTV vẫn gỡ được: app bật lại launcher gốc trước rồi mới gỡ để TV không mất Home.
 - Panel «Phát hiện Launcher»: nút «Cài CleanYourTV» xuất hiện khi TV chưa cài, chọn file APK để cài.
+- Cài CleanYourTV hiển thị tiến trình thật (đọc file, đẩy APK, pm install) trong «Nhật ký áp dụng theme».
 
 ### Sửa
+- «Theme đang áp dụng» báo «Chưa áp dụng» khi CleanYourTV không còn là launcher mặc định (VD sau «Đặt lại launcher gốc») và tự cập nhật sau khi đặt lại.
 - Áp dụng theme trên TV chưa cài CleanYourTV (`com.gathin.tvhome`): kiểm tra trước khi sao lưu/ghi, hỏi có muốn cài không và cho chọn file APK để cài rồi tự áp dụng tiếp (thay cho lỗi "Could not find provider").
 
 ## [1.4.0] - 2026-10-24

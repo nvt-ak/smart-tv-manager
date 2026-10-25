@@ -3198,10 +3198,14 @@ function renderActiveThemePanel(cur, matchedTheme) {
   const placeholder = document.getElementById('homeActiveThumbPlaceholder');
   const keys = Object.keys(cur.config || {});
   const walls = cur.wallpapers || [];
-  homeActiveThemeId = matchedTheme ? matchedTheme.id : guessActiveThemeId(cur.config);
+  const lc = cur.launcher || {};
+  const inactive = lc.installed === true && lc.is_default_home === false;
+  homeActiveThemeId = inactive ? null : (matchedTheme ? matchedTheme.id : guessActiveThemeId(cur.config));
   populateWidgetThemeSelect();
 
-  const displayName = matchedTheme
+  const displayName = inactive
+    ? 'Chưa áp dụng — CleanYourTV không phải launcher mặc định'
+    : matchedTheme
     ? matchedTheme.name
     : keys.length
       ? 'Theme tùy chỉnh trên TV'
@@ -3209,7 +3213,9 @@ function renderActiveThemePanel(cur, matchedTheme) {
 
   if (titleEl) titleEl.textContent = displayName;
   if (descEl) {
-    descEl.textContent = matchedTheme
+    descEl.textContent = inactive
+      ? `Cấu hình ${matchedTheme ? `"${matchedTheme.name}"` : 'theme'} vẫn nằm trên TV nhưng Home đang là ${lc.current_home === 'com.google.android.apps.tv.launcherx' ? 'launcher gốc' : (lc.current_home || 'launcher khác')}, nên chưa hiển thị. Áp dụng lại theme để dùng.`
+      : matchedTheme
       ? `Khớp thư viện cleanyourtv · ${keys.length} khoá config`
       : keys.length
         ? `${keys.length} khoá config trên TV — chưa khớp theme local`
@@ -3514,6 +3520,13 @@ async function offerInstallGathin() {
   )) return false;
   const file = await pickGathinApk();
   if (!file) return false;
+  const t0 = Date.now();
+  const log = [];
+  const addStep = (msg, detail = '') => {
+    log.push({ t: Date.now() / 1000, msg, detail });
+    renderHomeApplyLog(log, { open: true });
+  };
+  addStep('apk_read', `${file.name} (${Math.round(file.size / 1024)} KB)`);
   setHomeStatus('Đang phân tích APK...');
   const b64 = await new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -3526,13 +3539,28 @@ async function offerInstallGathin() {
     alert(`File này là "${info.package || 'không rõ'}", không phải CleanYourTV (com.gathin.tvhome). Đã hủy cài đặt.`);
     return false;
   }
+  addStep('apk_ok', `${info.package} ${info.version_name || ''}`.trim());
   setHomeStatus('Đang đẩy APK và cài CleanYourTV...');
-  const res = await getApi().install_apk(
+  const started = await getApi().install_apk_async(
     activeDevice.host, activeDevice.port, info._tmp_path, file.name, true, false, true
   );
-  if (res && res.ok === false) throw new Error(res.output || 'Cài đặt thất bại');
-  showHomeToast('Đã cài CleanYourTV', 'download_done');
-  return true;
+  let seen = 0;
+  for (let i = 0; i < 900; i += 1) {
+    const st = await getApi().apply_gathin_theme_job(started.job_id);
+    for (const s of (st.steps || []).slice(seen)) {
+      log.push(s);
+      if (s.detail) setHomeStatus(s.detail);
+    }
+    seen = (st.steps || []).length;
+    renderHomeApplyLog(log, { open: true, error: st.status === 'failed' ? st.error : null });
+    if (st.status === 'done') {
+      showHomeToast(`Đã cài CleanYourTV (${Math.round((Date.now() - t0) / 1000)}s)`, 'download_done');
+      return true;
+    }
+    if (st.status === 'failed') throw new Error(st.error || 'Cài đặt thất bại');
+    await sleep(500);
+  }
+  throw new Error('Hết thời gian chờ cài đặt (~7 phút).');
 }
 
 async function applyTheme(id, btn, opts = {}) {
@@ -3685,13 +3713,15 @@ const homeStockOnBtn = document.getElementById('homeStockOnBtn');
 if (homeStockOnBtn) {
   homeStockOnBtn.addEventListener('click', async () => {
     if (!activeDevice) return;
-    if (!confirm('Bật lại Google TV Launcher? Phím HOME vật lý sẽ mở launcher gốc, các phím P+/P-, chế độ TV hoạt động như ban đầu.\\n\\nTắt «Tự tắt launcher gốc» nếu không muốn lần áp dụng theme sau lại tắt nó.')) return;
+    if (!confirm('Bật lại Google TV Launcher? Phím HOME vật lý sẽ mở launcher gốc, các phím P+/P-, chế độ TV hoạt động như ban đầu.\n\nTắt «Tự tắt launcher gốc» nếu không muốn lần áp dụng theme sau lại tắt nó.')) return;
     setButtonLoading(homeStockOnBtn, true, 'Đang xử lý...');
     try {
       const res = await getApi().set_stock_launcher(activeDevice.host, activeDevice.port, false);
       if (res.launcher) renderHomeDetect(res.launcher);
       showHomeToast(res.ok ? 'Đã bật lại launcher gốc' : 'Không bật lại được launcher gốc', res.ok ? 'undo' : 'error');
       setHomeStatus(res.ok ? 'Đã bật lại Google TV Launcher (trạng thái ban đầu).' : `Không bật lại được: ${res.output || ''}`);
+      homeTvSync = { key: null, at: 0 };
+      await loadCurrentTheme(null, { forceWallpaper: true });
     } catch (err) {
       setHomeStatus(`Lỗi: ${err}`);
     }
