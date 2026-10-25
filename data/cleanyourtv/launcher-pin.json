@@ -1,0 +1,8 @@
+{
+  "upstream": "https://github.com/Gathin23/cleanyourtv",
+  "commit": "eb0131a32fd8567086f39002f1782f7c1b078ca6",
+  "license": "MIT",
+  "release_base": "https://github.com/nvt-ak/smart-tv-manager/releases/download/cleanyourtv-launcher",
+  "apk": "CleanYourTV.apk",
+  "sha256_file": "CleanYourTV.apk.sha256"
+}

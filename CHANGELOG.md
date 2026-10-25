@@ -13,6 +13,7 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 ### Thêm
 - Quản lý ứng dụng: nút «Gỡ cài đặt» cho app người dùng (`pm uninstall`), có xác nhận; app hệ thống/được bảo vệ/Home đang dùng không có nút này. Riêng CleanYourTV vẫn gỡ được: app bật lại launcher gốc trước rồi mới gỡ để TV không mất Home.
 - Panel «Phát hiện Launcher»: nút «Cài CleanYourTV» xuất hiện khi TV chưa cài, chọn file APK để cài.
+- Cài CleanYourTV bằng **APK dựng sẵn**: workflow «Build CleanYourTV launcher APK» build từ commit upstream được ghim (`data/cleanyourtv/launcher-pin.json`) và đăng lên release `cleanyourtv-launcher`; app tải về, kiểm tra SHA-256 rồi cài (không cần Git/JDK/SDK). Bản MIT của upstream đính kèm trong release.
 - Cài CleanYourTV **tự động**: clone Gathin23/cleanyourtv, build bằng Gradle (cần Git, JDK 17–21 có jlink, Android SDK) rồi cài lên TV; thiếu công cụ thì báo rõ và cho chọn file APK có sẵn.
 - Cài CleanYourTV hiển thị tiến trình thật (đọc file, đẩy APK, pm install) trong «Nhật ký áp dụng theme».
 

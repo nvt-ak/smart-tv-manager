@@ -13,7 +13,7 @@ from core.safety import safety
 from core.apk_analyzer import ApkAnalyzer
 from core.apk_installer import ApkInstaller
 from core.launcher_detector import LauncherDetector
-from core import launcher_builder
+from core import launcher_builder, launcher_download
 from core.theme_manager import ThemeManager
 from core.cleanyourtv_themes import CleanyourtvThemes
 from core.clean_suggestions import CleanSuggestionEngine
@@ -659,7 +659,7 @@ class Api:
     def get_gathin_build_prereqs(self):
         return launcher_builder.check_prereqs()
 
-    def build_and_install_gathin_async(self, host, port=5555):
+    def build_and_install_gathin_async(self, host, port=5555, mode="build"):
         """Clone CleanYourTV, build bằng Gradle rồi cài lên TV. Tiến trình đọc bằng apply_gathin_theme_job."""
         job_id = uuid.uuid4().hex
         job = {"id": job_id, "status": "running", "steps": [], "error": None, "result": None,
@@ -673,16 +673,24 @@ class Api:
 
         def run():
             try:
-                step("build_start", "kiểm tra Git / JDK / Android SDK")
                 tv_sdk = None
+                if mode != "download":
+                    step("build_start", "kiểm tra Git / JDK / Android SDK")
                 try:
                     with self._dev_op_lock(host, port):
                         out = self._get_pm(host, port)._shell("getprop ro.build.version.sdk")
                     tv_sdk = int(re.sub(r"\D", "", out or "") or 0) or None
                 except Exception:
                     tv_sdk = None
-                apk = launcher_builder.build_apk(step, tv_sdk=tv_sdk)
-                step("install_start", "đẩy APK vừa build lên TV")
+                if mode == "download":
+                    apk = launcher_download.download_apk(step)
+                    info = ApkAnalyzer().analyze(apk)
+                    if info.get("package") != LauncherDetector.GATHIN_PKG:
+                        raise Exception(f"APK tải về không phải CleanYourTV ({info.get('package')})")
+                    step("install_start", "đẩy APK lên TV")
+                else:
+                    apk = launcher_builder.build_apk(step, tv_sdk=tv_sdk)
+                    step("install_start", "đẩy APK vừa build lên TV")
                 with self._dev_op_lock(host, port):
                     dev = self._get_dev(host, port)
                     try:

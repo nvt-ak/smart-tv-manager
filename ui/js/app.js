@@ -3533,16 +3533,27 @@ async function pollInstallJob(jobId, log, t0) {
 }
 
 /** Tự clone + build CleanYourTV rồi cài; trả true nếu xong. */
-async function buildInstallGathin() {
+async function buildInstallGathin(mode = 'build') {
   const log = [];
   renderHomeApplyLog(log, { open: true });
-  setHomeStatus('Đang build CleanYourTV từ mã nguồn...');
-  const started = await getApi().build_and_install_gathin_async(activeDevice.host, activeDevice.port);
+  setHomeStatus(mode === 'download' ? 'Đang tải CleanYourTV dựng sẵn...' : 'Đang build CleanYourTV từ mã nguồn...');
+  const started = await getApi().build_and_install_gathin_async(activeDevice.host, activeDevice.port, mode);
   return pollInstallJob(started.job_id, log, Date.now());
 }
 
 async function offerInstallGathin() {
   if (!activeDevice) return false;
+  if (confirm(
+    'TV này chưa cài CleanYourTV (com.gathin.tvhome) nên chưa thể áp dụng theme.\n\n' +
+    'Tải bản CleanYourTV dựng sẵn (build tự động từ mã nguồn upstream, có kiểm tra SHA-256) và cài lên TV?\n\n' +
+    'OK = tải và cài · Hủy = tuỳ chọn khác (tự build / chọn file APK)'
+  )) {
+    try {
+      return await buildInstallGathin('download');
+    } catch (err) {
+      alert(`Tải bản dựng sẵn thất bại:\n${err}\n\nBạn có thể thử tự build hoặc chọn file APK ở bước tiếp theo.`);
+    }
+  }
   let pre = null;
   try {
     pre = await getApi().get_gathin_build_prereqs();
