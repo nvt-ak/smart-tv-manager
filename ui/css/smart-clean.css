@@ -1380,3 +1380,18 @@ body.smart-clean-modal-open {
   opacity: 0.65;
   pointer-events: none;
 }
+
+/* Per-model suggestion banner (Gathin profile) */
+.smart-clean-profile {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--outline-variant, rgba(255, 255, 255, 0.14));
+  border-left: 3px solid var(--primary, #7cc4ff);
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.smart-clean-profile[hidden] { display: none; }
+.smart-clean-profile-note { opacity: 0.75; }
+.smart-clean-profile-warn { margin: 6px 0 4px 18px; padding: 0; opacity: 0.9; }
+.smart-clean-profile a { color: inherit; text-decoration: underline; }

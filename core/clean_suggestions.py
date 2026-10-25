@@ -76,7 +76,24 @@ class CleanSuggestionEngine:
 
         return "skip", "Không nằm trong gợi ý dọn dẹp — giữ nguyên."
 
-    def analyze(self, apps: List[dict], manufacturer: str = "") -> List[dict]:
+    def _is_kept(self, package: str) -> bool:
+        pkg = package.lower()
+        return any(k.lower() in pkg for k in self._rules.get("keep_substrings") or [])
+
+    def analyze(
+        self,
+        apps: List[dict],
+        manufacturer: str = "",
+        profile_notes: Dict[str, str] | None = None,
+        profile_label: str = "",
+        profile_quality: str = "",
+    ) -> List[dict]:
+        """Classify packages.
+
+        profile_notes: package -> note from a matched Gathin per-model profile. Those packages
+        become suggestions only: never pre-selected, never one-click, and the safe-list and
+        can_disable checks still win.
+        """
         out: List[dict] = []
         for app in apps:
             pkg = app.get("package") or ""
@@ -112,14 +129,19 @@ class CleanSuggestionEngine:
                 )
                 continue
             tier, reason = self._classify_pkg(pkg, manufacturer)
-            out.append(
-                {
-                    **base,
-                    "tier": tier,
-                    "reason": reason,
-                    "selected": tier == "recommend",
-                }
-            )
+            row = {**base, "tier": tier, "reason": reason, "selected": tier == "recommend"}
+            if profile_notes and pkg in profile_notes and not self._is_kept(pkg):
+                note = profile_notes[pkg]
+                tag = f"profile Gathin «{profile_label}»"
+                if tier == "recommend":
+                    row["reason"] = f"{reason} Có trong {tag}."
+                else:
+                    row["tier"] = "recommend" if profile_quality == "exact" else "review"
+                    row["reason"] = f"Gợi ý theo {tag}" + (f": {note}" if note else ".")
+                    row["selected"] = False
+                    row["source"] = "profile"
+                    row["profile_match"] = profile_quality
+            out.append(row)
         return sort_suggestions_by_tier(out)
 
     def merge_ai(self, local: List[dict], ai_rows: List[dict]) -> List[dict]:
@@ -135,6 +157,8 @@ class CleanSuggestionEngine:
                 continue
             if not cur.get("enabled"):
                 continue
+            if cur.get("source") == "profile":
+                continue  # per-model suggestion stays as the profile gave it (never pre-selected)
             cur["tier"] = tier
             cur["reason"] = (row.get("reason") or cur.get("reason") or "Gợi ý AI.").strip()
             if row.get("category"):

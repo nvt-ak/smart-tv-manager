@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import webview
 
 import adb_client
-from app_brand import APP_DISPLAY_NAME
+from app_brand import APP_DISPLAY_NAME, APP_VERSION
 import paths
 import store
 from core.package_manager import PackageManager
@@ -17,6 +17,7 @@ from core import launcher_builder, launcher_download, adb_binary
 from core.theme_manager import ThemeManager
 from core.cleanyourtv_themes import CleanyourtvThemes
 from core.clean_suggestions import CleanSuggestionEngine
+from core.device_profiles import DeviceProfiles
 from core import ai_clean
 from core import home_widgets
 import settings_store
@@ -47,6 +48,12 @@ class Api:
         self._key_locks = {}
         self._home_cache = {}
         self._clean_engine = CleanSuggestionEngine()
+        self._device_profiles = DeviceProfiles()
+        self._identity_cache = {}
+
+    def app_version(self):
+        """Single source of truth for the version label in the UI (app_brand.APP_VERSION)."""
+        return APP_VERSION
 
     def _dev_op_lock(self, host, port=5555):
         key = f"{host}:{port}"
@@ -400,7 +407,73 @@ class Api:
                 "version_code": None,
             })
         result.sort(key=lambda x: (x["type"] != "user", x["type"] != "disabled", x["package"]))
+        # Tag packages worth a look in the main list too (suggestion only; nothing is disabled here).
+        try:
+            with self._dev_op_lock(host, port):
+                ident = self._cached_identity(self._get_pm(host, port), host, port)
+            rows, _profile, _quality = self._suggest_for(result, ident)
+            tags = {r["package"]: r for r in rows if r.get("tier") in ("recommend", "review")}
+            for app in result:
+                r = tags.get(app["package"])
+                if r:
+                    app["suggest"] = {
+                        "tier": r["tier"],
+                        "reason": r.get("reason") or "",
+                        "source": r.get("source") or "local",
+                        "match": r.get("profile_match") or "",
+                    }
+        except Exception:
+            pass  # tags are optional; never fail the package list because of them
         return {"apps": result, "current_home": current_home}
+
+    def _cached_identity(self, pm: PackageManager, host, port) -> dict:
+        """Device properties are fixed per TV: read them once per host:port."""
+        key = f"{host}:{int(port)}"
+        ident = self._identity_cache.get(key)
+        if not ident or not any(ident.values()):
+            ident = self._device_identity(pm)
+            if any(ident.values()):
+                self._identity_cache[key] = ident
+        return ident
+
+    def _suggest_for(self, apps: list, ident: dict):
+        """Run the local engine (plus a matched Gathin profile) -> (rows, profile, quality)."""
+        manufacturer = ident.get("manufacturer") or ident.get("brand") or ""
+        profile, quality = self._device_profiles.match(ident)
+        if profile:
+            rows = self._clean_engine.analyze(
+                apps,
+                manufacturer=manufacturer,
+                profile_notes=self._device_profiles.package_notes(profile),
+                profile_label=profile.get("tv") or profile.get("id") or "",
+                profile_quality=quality,
+            )
+        else:
+            rows = self._clean_engine.analyze(apps, manufacturer=manufacturer)
+        return rows, profile, quality
+
+    def _device_identity(self, pm: PackageManager) -> dict:
+        """Build properties used to match a Gathin per-model profile."""
+        keys = {
+            "manufacturer": "ro.product.manufacturer",
+            "brand": "ro.product.brand",
+            "model": "ro.product.model",
+            "device": "ro.product.device",
+            "name": "ro.product.name",
+        }
+        out = {k: "" for k in keys}
+        try:
+            raw = pm._shell(
+                "; ".join(f"echo {k}=$(getprop {v})" for k, v in keys.items()),
+                timeout=adb_client.SHELL_DEFAULT_TIMEOUT,
+            ) or ""
+            for line in raw.splitlines():
+                k, _, v = line.partition("=")
+                if k.strip() in out:
+                    out[k.strip()] = v.strip()
+        except Exception:
+            pass
+        return out
 
     def _device_props(self, pm: PackageManager) -> tuple:
         try:
@@ -471,7 +544,12 @@ class Api:
         apps = listed.get("apps") or []
         pm = self._get_pm(host, port)
         manufacturer, model = self._device_props(pm)
-        suggestions = self._clean_engine.analyze(apps, manufacturer=manufacturer)
+        identity = self._cached_identity(pm, host, port)
+        suggestions, profile, quality = self._suggest_for(apps, identity)
+        profile_info = None
+        if profile:
+            matched = sum(1 for s in suggestions if s.get("source") == "profile")
+            profile_info = self._device_profiles.describe(profile, quality, matched)
         ai_error = None
         if use_ai:
             key = settings_store.get_openai_api_key()
@@ -544,6 +622,7 @@ class Api:
             "model": model,
             "current_home": listed.get("current_home"),
             "counts": counts,
+            "profile": profile_info,
             "ai_error": ai_error,
         }
 

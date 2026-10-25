@@ -27,6 +27,10 @@ function disableNativeSpellcheck() {
 
 function bootApp() {
   disableNativeSpellcheck();
+  getApi().app_version().then((v) => {
+    const el = document.querySelector('.brand-version');
+    if (el && v) el.textContent = `v${v}`;
+  }).catch(() => {});
   initDevGuide();
   refreshList('cache')
     .catch((err) => {
@@ -553,6 +557,18 @@ function renderApps() {
           : '<span class="badge pill-type-system">Hệ thống</span>';
     const homePill = app.is_home ? '<span class="badge pill-home">Default Launcher</span>' : '';
     const protectedPill = app.protected ? '<span class="badge pill-type-system">Bảo vệ</span>' : '';
+    // Suggestion tag from the offline engine / matched per-model profile (suggestion only).
+    let suggestPill = '';
+    if (app.suggest && app.enabled && app.type !== 'disabled') {
+      const sg = app.suggest;
+      const label =
+        sg.source === 'profile'
+          ? (sg.match === 'exact' ? 'GỢI Ý THEO MODEL' : 'GỢI Ý THEO MODEL (GẦN ĐÚNG)')
+          : sg.tier === 'recommend'
+            ? 'NÊN TẮT'
+            : 'CÂN NHẮC';
+      suggestPill = `<span class="badge pill-suggest pill-suggest--${sg.tier === 'recommend' ? 'recommend' : 'review'}" title="${escapeAttr(sg.reason || '')}">${label}</span>`;
+    }
 
     const ver =
       app.version != null
@@ -582,7 +598,7 @@ function renderApps() {
         <div style="min-width:0;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <span class="app-row-title">${escapeHtml(friendlyPkgName(app.package))}</span>
-            ${homePill}
+            ${homePill}${suggestPill}
           </div>
           <div class="app-row-pkg">${escapeHtml(app.package)}</div>
         </div>
@@ -944,6 +960,9 @@ const SMART_CLEAN_APP_KIND = {
 
 function smartCleanPkgBadge(s) {
   const tier = s.tier || 'skip';
+  if (s.source === 'profile') {
+    return s.profile_match === 'exact' ? 'GỢI Ý THEO MODEL' : 'GỢI Ý THEO MODEL (GẦN ĐÚNG)';
+  }
   if (tier === 'recommend') {
     const pkg = (s.package || '').toLowerCase();
     if (/partner|ads|customizer|promo|bloat/.test(pkg)) return 'NÊN TẮT (BLOATWARE)';
@@ -959,6 +978,28 @@ function smartCleanPkgKind(s) {
   if (s.type === 'system') return 'System / Daemon';
   if (s.type === 'user') return 'User App';
   return SMART_CLEAN_APP_KIND[s.type] || s.type || 'Package';
+}
+
+function renderSmartCleanProfile(profile) {
+  const el = document.getElementById('smartCleanProfile');
+  if (!el) return;
+  if (!profile) {
+    el.hidden = true;
+    el.innerHTML = '';
+    return;
+  }
+  const exact = profile.match === 'exact';
+  const warnings = (profile.warnings || [])
+    .map((w) => `<li>${escapeHtml(w)}</li>`)
+    .join('');
+  el.innerHTML = `
+    <strong>${exact ? 'Đã nhận dạng model' : 'Model gần giống'}:</strong> ${escapeHtml(profile.tv || profile.id)}
+    · ${profile.matched_packages || 0} gói có trong profile của Gathin (chỉ là gợi ý, không tự chọn).
+    ${exact ? '' : '<br><em>Khớp gần đúng — kiểm tra kỹ từng gói trước khi tắt.</em>'}
+    ${profile.notes ? `<br><span class="smart-clean-profile-note">${escapeHtml(profile.notes)}</span>` : ''}
+    ${warnings ? `<ul class="smart-clean-profile-warn">${warnings}</ul>` : ''}
+    <a href="${escapeAttr(profile.url || '#')}" target="_blank" rel="noopener">Nguồn: cleanyourtv/examples</a>`;
+  el.hidden = false;
 }
 
 let smartCleanSuggestions = [];
@@ -1060,7 +1101,8 @@ function renderSmartCleanList() {
       const kind = smartCleanPkgKind(s);
       const reason = `${s.reason || ''}${s.source === 'ai' ? ' · AI' : ''}`;
       let secondaryBtn = '';
-      if (tier === 'recommend' && canCheck) {
+      // Per-model profile rows are starting points: tick + apply, no one-click disable.
+      if (tier === 'recommend' && canCheck && s.source !== 'profile') {
         secondaryBtn = `<button type="button" class="smart-clean-pkg-btn smart-clean-pkg-btn--danger" data-act="disable-one" data-pkg="${escapeAttr(s.package)}">Vô hiệu ngay</button>`;
       } else if (tier === 'review') {
         secondaryBtn = `<button type="button" class="smart-clean-pkg-btn smart-clean-pkg-btn--skip" data-act="skip" data-pkg="${escapeAttr(s.package)}">Bỏ qua</button>`;
@@ -1499,6 +1541,7 @@ async function runSmartCleanAnalyze(useAi) {
     );
     smartCleanSuggestions = res.suggestions || [];
     smartCleanDismissed = new Set();
+    renderSmartCleanProfile(res.profile);
     renderSmartCleanSummary(res.counts);
     renderSmartCleanList();
     const rec = res.counts?.recommend ?? 0;
