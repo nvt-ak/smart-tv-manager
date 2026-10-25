@@ -37,7 +37,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
+      # ubuntu-latest đã có sẵn Android SDK ($ANDROID_HOME); setup-android@v3 tự cài thêm gói «tools»
+      # và lỗi trên runner này → chỉ chấp nhận license để Gradle tự tải platform/build-tools còn thiếu.
+      - name: Accept Android SDK licenses
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -n 1)
+          yes | "$SDKM" --licenses > /dev/null || true
 
       - name: Build release APK
         working-directory: upstream/launcher
