@@ -1002,3 +1002,7 @@
 .home-launcher-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 12px; white-space: nowrap; font-size: 13px; }
 .home-launcher-actions .btn .material-symbols-outlined { font-size: 18px; }
 .home-launcher-actions__wide { grid-column: 1 / -1; }
+
+#homeInstallBtn[hidden] {
+  display: none;
+}

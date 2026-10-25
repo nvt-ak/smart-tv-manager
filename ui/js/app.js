@@ -3135,6 +3135,8 @@ function renderHomeDetect(info) {
   const compatEl = document.getElementById('homeKpiCompat');
   const stockEl = document.getElementById('homeKpiStock');
   if (!info) return;
+  const installBtn = document.getElementById('homeInstallBtn');
+  if (installBtn) installBtn.hidden = info.installed !== false;
   if (stockEl) {
     if (info.stock_disabled == null) {
       stockEl.textContent = '—';
@@ -3659,6 +3661,23 @@ if (homeSetDefaultBtn) {
       setHomeStatus(`Lỗi: ${err}`);
     }
     setButtonLoading(homeSetDefaultBtn, false);
+  });
+}
+
+const homeInstallBtn = document.getElementById('homeInstallBtn');
+if (homeInstallBtn) {
+  homeInstallBtn.addEventListener('click', async () => {
+    if (!activeDevice) return;
+    setButtonLoading(homeInstallBtn, true, 'Đang cài...');
+    try {
+      if (await offerInstallGathin()) {
+        await runHomeDetect(homeDetectBtn);
+      }
+    } catch (err) {
+      setHomeStatus(`Cài CleanYourTV thất bại: ${err}`);
+      alert(`Cài CleanYourTV thất bại: ${err}`);
+    }
+    setButtonLoading(homeInstallBtn, false);
   });
 }
 
