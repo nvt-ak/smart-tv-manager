@@ -538,6 +538,14 @@ class Api:
                 elif action == "enable":
                     pm.enable(package)
                     return {"ok": True, "enabled": True}
+                elif action == "uninstall" and package == LauncherDetector.GATHIN_PKG:
+                    # Gỡ launcher đang làm Home: bật lại launcher gốc TRƯỚC để TV không mất màn hình chính.
+                    tm = ThemeManager(pm.device)
+                    stock = tm.enable_stock_launcher()
+                    if not stock.get("ok"):
+                        raise Exception("Không bật lại được launcher gốc nên không gỡ CleanYourTV (tránh TV mất Home).")
+                    pm.uninstall(package)
+                    return {"ok": True, "uninstalled": True, "stock_restored": True}
                 elif action == "uninstall":
                     current_home = self._cached_current_home(pm, host, port)
                     allowed, reason = safety.can_disable(package, current_home=current_home)

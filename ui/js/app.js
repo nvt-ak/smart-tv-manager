@@ -561,7 +561,8 @@ function renderApps() {
 
     const pkgAttr = escapeAttr(app.package);
     const canOpen = app.enabled && app.type !== 'disabled';
-    const canUninstall = app.type === 'user' && !app.protected && !app.is_home && app.can_disable !== false;
+    const isGathin = app.package === 'com.gathin.tvhome';
+    const canUninstall = isGathin || (app.type === 'user' && !app.protected && !app.is_home && app.can_disable !== false);
     const uninstallBtn = canUninstall
       ? `<button type="button" class="app-act app-act--danger" data-act="uninstall" data-pkg="${pkgAttr}" title="Gỡ cài đặt hẳn khỏi TV">Gỡ cài đặt</button>`
       : '';
@@ -1812,7 +1813,10 @@ if (appsList) {
         showAppsToast('Đang có thao tác ADB — hãy Hủy hoặc đợi xong', 'info');
         return;
       }
-      if (!confirm(`Gỡ cài đặt ${friendlyPkgName(pkg)} (${pkg}) khỏi TV?\n\nDữ liệu của app sẽ bị xóa và không hoàn tác được.`)) return;
+      const gathinNote = pkg === 'com.gathin.tvhome'
+        ? '\n\nApp sẽ bật lại launcher gốc của TV trước khi gỡ để TV vẫn có màn hình Home. Theme/widget đã áp dụng sẽ mất.'
+        : '';
+      if (!confirm(`Gỡ cài đặt ${friendlyPkgName(pkg)} (${pkg}) khỏi TV?\n\nDữ liệu của app sẽ bị xóa và không hoàn tác được.${gathinNote}`)) return;
     }
     if (act === 'disable' && !confirm(`Vô hiệu hóa ${pkg}?\n\nHãy chắc chắn bạn hiểu tác động. Một số app hệ thống có thể ảnh hưởng chức năng TV.`)) {
       return;
