@@ -184,3 +184,12 @@ footer p{max-width:40em}
 }
 .links{display:flex;flex-wrap:wrap;gap:8px 28px}
 .wide-shot{overflow-x:auto}.wide-shot img{min-width:680px}
+
+/* real app screenshots */
+.shot{margin:0;border-radius:12px;overflow:hidden;border:1px solid #20242c;background:var(--dark);box-shadow:0 30px 60px -30px rgba(16,19,26,.6)}
+.shot img{display:block;width:100%;height:auto}
+#clean .split{align-items:start}
+#clean .shot{align-self:center}
+.shot-dark{border-color:var(--dark-line)}
+#clean .split{display:block}
+#clean .shot{margin-top:40px}
