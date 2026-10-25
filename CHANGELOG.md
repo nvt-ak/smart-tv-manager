@@ -10,16 +10,19 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
-### Thêm
-- Quản lý ứng dụng: nút «Gỡ cài đặt» cho app người dùng (`pm uninstall`), có xác nhận; app hệ thống/được bảo vệ/Home đang dùng không có nút này. Riêng CleanYourTV vẫn gỡ được: app bật lại launcher gốc trước rồi mới gỡ để TV không mất Home.
-- Panel «Phát hiện Launcher»: nút «Cài CleanYourTV» xuất hiện khi TV chưa cài, chọn file APK để cài.
-- Cài CleanYourTV bằng **APK dựng sẵn**: workflow «Build CleanYourTV launcher APK» build từ commit upstream được ghim (`data/cleanyourtv/launcher-pin.json`) và đăng lên release `cleanyourtv-launcher`; app tải về, kiểm tra SHA-256 rồi cài (không cần Git/JDK/SDK). Bản MIT của upstream đính kèm trong release.
-- Cài CleanYourTV **tự động**: clone Gathin23/cleanyourtv, build bằng Gradle (cần Git, JDK 17–21 có jlink, Android SDK) rồi cài lên TV; thiếu công cụ thì báo rõ và cho chọn file APK có sẵn.
-- Cài CleanYourTV hiển thị tiến trình thật (đọc file, đẩy APK, pm install) trong «Nhật ký áp dụng theme».
+## [1.5.0] - 2026-10-25
 
-### Sửa
-- «Theme đang áp dụng» báo «Chưa áp dụng» khi CleanYourTV không còn là launcher mặc định (VD sau «Đặt lại launcher gốc») và tự cập nhật sau khi đặt lại.
-- Áp dụng theme trên TV chưa cài CleanYourTV (`com.gathin.tvhome`): kiểm tra trước khi sao lưu/ghi, hỏi có muốn cài không và cho chọn file APK để cài rồi tự áp dụng tiếp (thay cho lỗi "Could not find provider").
+### Added
+
+- Missing-launcher flow: applying a theme on a TV without CleanYourTV (`com.gathin.tvhome`) is now checked before any backup or write, then offers to install it (replaces the raw "Could not find provider" error). The Launcher panel also gets an "Install CleanYourTV" button.
+- Three ways to install CleanYourTV, tried in order: a prebuilt APK (built by the new `Build CleanYourTV launcher APK` GitHub Actions workflow from the upstream commit pinned in `data/cleanyourtv/launcher-pin.json`, downloaded from the rolling `cleanyourtv-launcher` release and verified with SHA-256), a local build (clone + Gradle; needs Git, JDK 17-21 with jlink, Android SDK), or a user-supplied APK file. The upstream MIT license ships with the release.
+- Real progress for the install flow (read, download/build, push, `pm install`) in the "Theme apply log" panel.
+- App management: "Uninstall" button for user apps (`pm uninstall`, with confirmation). System, protected and the active Home apps are excluded, except CleanYourTV, which re-enables the stock launcher first so the TV never loses Home.
+
+### Fixed
+
+- "Active theme" now shows "Not applied" when CleanYourTV is no longer the default Home (e.g. after resetting the stock launcher) and refreshes right after the reset.
+- Literal `\n` shown in the "Reset stock launcher" confirmation.
 
 ## [1.4.0] - 2026-10-24
 
