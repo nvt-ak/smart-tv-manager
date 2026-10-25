@@ -561,6 +561,10 @@ function renderApps() {
 
     const pkgAttr = escapeAttr(app.package);
     const canOpen = app.enabled && app.type !== 'disabled';
+    const canUninstall = app.type === 'user' && !app.protected && !app.is_home && app.can_disable !== false;
+    const uninstallBtn = canUninstall
+      ? `<button type="button" class="app-act app-act--danger" data-act="uninstall" data-pkg="${pkgAttr}" title="Gỡ cài đặt hẳn khỏi TV">Gỡ cài đặt</button>`
+      : '';
     const toggleBtn = app.enabled
       ? app.can_disable
         ? `<button type="button" class="app-act app-act--danger" data-act="disable" data-pkg="${pkgAttr}">Vô hiệu hóa</button>`
@@ -593,6 +597,7 @@ function renderApps() {
         <button type="button" class="app-act" data-act="stop" data-pkg="${pkgAttr}">Force stop</button>
         <button type="button" class="app-act" data-act="info" data-pkg="${pkgAttr}">App info</button>
         ${toggleBtn}
+        ${uninstallBtn}
       </div>`;
     appsList.appendChild(row);
   });
@@ -1800,7 +1805,15 @@ if (appsList) {
       info: 'Đang mở...',
       enable: 'Đang bật...',
       disable: 'Đang tắt...',
+      uninstall: 'Đang gỡ...',
     };
+    if (act === 'uninstall') {
+      if (appsAdbJob) {
+        showAppsToast('Đang có thao tác ADB — hãy Hủy hoặc đợi xong', 'info');
+        return;
+      }
+      if (!confirm(`Gỡ cài đặt ${friendlyPkgName(pkg)} (${pkg}) khỏi TV?\n\nDữ liệu của app sẽ bị xóa và không hoàn tác được.`)) return;
+    }
     if (act === 'disable' && !confirm(`Vô hiệu hóa ${pkg}?\n\nHãy chắc chắn bạn hiểu tác động. Một số app hệ thống có thể ảnh hưởng chức năng TV.`)) {
       return;
     }
@@ -1827,6 +1840,15 @@ if (appsList) {
         logAppsConsole(`am start ... APPLICATION_DETAILS_SETTINGS ${pkg}`, '');
         await getApi().app_action(activeDevice.host, activeDevice.port, 'app_info', pkg);
         setAppsStatus('Đã mở màn hình App info');
+      } else if (act === 'uninstall') {
+        setAppsStatus(`Đang gỡ ${pkg}...`);
+        logAppsConsole(`pm uninstall ${pkg}`, '');
+        await getApi().app_action(activeDevice.host, activeDevice.port, 'uninstall', pkg);
+        showAppsToast(`Đã gỡ ${pkg}`, 'delete');
+        setAppsStatus('Đã gỡ cài đặt, đang tải lại danh sách...');
+        await loadApps();
+        setAppsStatus('');
+        return;
       } else if (act === 'enable') {
         const { fail } = await runAppsAdbOnPackages('enable', [pkg]);
         if (!fail) showAppsToast(`Đã bật lại ${pkg}`, 'check_circle');

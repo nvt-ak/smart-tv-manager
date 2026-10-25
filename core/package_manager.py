@@ -203,6 +203,17 @@ class PackageManager:
         except Exception as e:
             raise Exception(str(e))
 
+    def uninstall(self, package: str) -> bool:
+        """Gỡ hẳn app người dùng (pm uninstall). App hệ thống thì dùng vô hiệu hóa."""
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+", package or ""):
+            raise Exception("Tên package không hợp lệ")
+        out = (self._shell(f"pm uninstall {package} 2>&1", timeout=adb_client.SHELL_HEAVY_TIMEOUT) or "").strip()
+        if "Success" in out:
+            return True
+        if "DELETE_FAILED_DEVICE_POLICY_MANAGER" in out or "DELETE_FAILED_INTERNAL_ERROR" in out:
+            raise Exception(f"Không gỡ được {package}: app hệ thống hoặc bị chính sách chặn ({out})")
+        raise Exception(out or f"pm uninstall không thành công: {package}")
+
     def is_package_enabled(self, package: str) -> bool:
         """One package only — avoid full `pm list -e` over Wi‑Fi."""
         try:

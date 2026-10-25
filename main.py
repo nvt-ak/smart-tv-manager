@@ -538,6 +538,15 @@ class Api:
                 elif action == "enable":
                     pm.enable(package)
                     return {"ok": True, "enabled": True}
+                elif action == "uninstall":
+                    current_home = self._cached_current_home(pm, host, port)
+                    allowed, reason = safety.can_disable(package, current_home=current_home)
+                    if not allowed:
+                        raise Exception(reason)
+                    if package not in set(pm.list_packages("-3")):
+                        raise Exception("Chỉ gỡ cài đặt app người dùng; app hệ thống hãy dùng Vô hiệu hóa")
+                    pm.uninstall(package)
+                    return {"ok": True, "uninstalled": True}
                 elif action == "disable":
                     current_home = self._cached_current_home(pm, host, port)
                     allowed, reason = safety.can_disable(package, current_home=current_home)
