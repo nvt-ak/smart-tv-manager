@@ -28,10 +28,44 @@ PUSH_TIMEOUT_MIN = 90.0
 PUSH_TIMEOUT_MAX = 600.0
 # Assumed minimum throughput when scaling timeouts (bytes per second).
 PUSH_ASSUMED_BPS = 48 * 1024
-SCAN_PORT_TIMEOUT = 0.3
+# Wi-Fi TVs (especially in standby) answer slower than wired hosts; 0.3s missed them.
+SCAN_PORT_TIMEOUT = 0.8
 QUICK_CHECK_TIMEOUT = 2.5
 # Skip the `echo ok` liveness probe when this session answered a command this recently.
 IDLE_PING_S = 10.0
+
+
+def parse_host_port(host, port=PORT):
+    """Split "ip", "ip:port" or "[v6]:port" input into (host, port).
+
+    The UI lets people type "192.168.1.3:44525"; passing that whole string to
+    the socket layer fails with gaierror (it is not a hostname).
+    """
+    h = str(host or "").strip()
+    for prefix in ("adb://", "tcp://"):
+        if h.lower().startswith(prefix):
+            h = h[len(prefix):]
+    p = int(port) if port not in (None, "") else PORT
+    if h.startswith("[") and "]" in h:  # [ipv6]:port
+        end = h.index("]")
+        rest = h[end + 1:]
+        h = h[1:end]
+        if rest.startswith(":") and rest[1:].isdigit():
+            p = int(rest[1:])
+    elif h.count(":") == 1:  # host:port (a bare IPv6 has several colons)
+        name, _, tail = h.partition(":")
+        if not tail.isdigit():
+            raise ValueError(f"Cổng không hợp lệ: {tail!r}")
+        h, p = name.strip(), int(tail)
+    if not h:
+        raise ValueError("Địa chỉ IP trống")
+    if not 1 <= p <= 65535:
+        raise ValueError(f"Cổng không hợp lệ: {p}")
+    return h, p
+
+
+class WirelessDebuggingError(Exception):
+    """The port speaks Android 11+ Wireless debugging (STLS), which adb-shell cannot."""
 
 
 def mark_ok(device):
@@ -171,7 +205,25 @@ def connect(host, port=PORT, timeout=CONNECT_TIMEOUT):
     """Authenticate to one TV. Raises on failure (including a first-time
     grant that the person hasn't accepted on the TV's screen yet)."""
     dev = AdbDeviceTcp(host, port, default_transport_timeout_s=timeout)
-    dev.connect(rsa_keys=[get_signer()], auth_timeout_s=timeout)
+    try:
+        dev.connect(rsa_keys=[get_signer()], auth_timeout_s=timeout)
+    except Exception as e:
+        # Android 11+ "Wireless debugging" ports answer with an STLS (TLS upgrade)
+        # request after pairing; adb-shell cannot speak that protocol.
+        # A non-5555 port that resets/closes the plain handshake is the same case:
+        # the TLS-only Wireless debugging listener drops non-TLS clients.
+        dropped = isinstance(e, (ConnectionResetError, ConnectionAbortedError, EOFError)) or "10054" in str(e)
+        if "STLS" in str(e) or "1397511251" in str(e) or (dropped and int(port) != PORT):
+            try:
+                dev.close()
+            except Exception:
+                pass
+            raise WirelessDebuggingError(
+                f"Cổng {port} là \"Gỡ lỗi không dây\" (Wireless debugging, bắt buộc TLS + ghép cặp) "
+                "nên app chưa hỗ trợ. Hãy dùng ADB qua mạng cổng 5555: cắm USB một lần rồi chạy "
+                "`adb tcpip 5555`, hoặc bật tùy chọn \"ADB over network\" nếu TV có."
+            ) from e
+        raise
     mark_ok(dev)
     return dev
 
@@ -240,8 +292,10 @@ def _local_subnets():
                 nets.add(str(ipaddress.ip_network(f"{ip}/24", strict=False)))
             except ValueError:
                 pass
-    if not nets:
-        # Fallback: ask the OS which local address it would use to reach the
+    # Always add the subnet of the default route too: ifconfig/ipconfig parsing
+    # can miss the real LAN adapter (localized output, many virtual adapters).
+    if True:
+        # Ask the OS which local address it would use to reach the
         # internet, then assume that /24 (no traffic is actually sent).
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

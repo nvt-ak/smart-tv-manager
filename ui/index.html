@@ -1324,6 +1324,33 @@
     </div>
   </div>
 
+  <div id="pairModal" class="home-modal-backdrop" hidden>
+    <div class="home-modal" role="dialog" aria-labelledby="pairModalTitle" aria-modal="true" style="max-width:440px;">
+      <div class="home-modal-head">
+        <div class="home-modal-head-text">
+          <span class="material-symbols-outlined">key</span>
+          <div>
+            <h3 id="pairModalTitle">Ghép cặp Gỡ lỗi không dây</h3>
+            <p id="pairModalDesc" class="home-modal-desc"></p>
+          </div>
+        </div>
+        <button type="button" id="pairModalClose" class="btn btn--ghost" aria-label="Đóng">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="home-modal-body">
+        <p class="device-meta" style="margin:0 0 10px;">Trên TV: Gỡ lỗi không dây → «Ghép nối thiết bị bằng mã», giữ hộp thoại đó mở và nhập mã 6 số hiển thị ở đó. Cổng ghép cặp app tự dò; chỉ nhập tay nếu báo không dò được.</p>
+        <div class="field-input-wrap" style="margin-bottom:8px;"><input id="pairPort" class="field-input" type="text" inputmode="numeric" placeholder="Cổng ghép cặp (để trống để tự dò)" autocomplete="off"></div>
+        <div class="field-input-wrap"><input id="pairCode" class="field-input" type="text" inputmode="numeric" maxlength="6" placeholder="Mã 6 số" autocomplete="off"></div>
+        <div id="pairModalStatus" class="status-line" role="status" style="margin-top:10px;"></div>
+      </div>
+      <div class="home-modal-foot">
+        <button type="button" id="pairModalCancel" class="btn btn--surface">Hủy</button>
+        <button type="button" id="pairBtn" class="btn btn--primary">Ghép cặp &amp; kết nối</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/smart_clean_model_logic.js"></script>
   <script src="js/app.js"></script>
 </body>

@@ -13,7 +13,7 @@ from core.safety import safety
 from core.apk_analyzer import ApkAnalyzer
 from core.apk_installer import ApkInstaller
 from core.launcher_detector import LauncherDetector
-from core import launcher_builder, launcher_download
+from core import launcher_builder, launcher_download, adb_binary
 from core.theme_manager import ThemeManager
 from core.cleanyourtv_themes import CleanyourtvThemes
 from core.clean_suggestions import CleanSuggestionEngine
@@ -229,6 +229,25 @@ class Api:
             return info
 
     def connect(self, host, port=5555, name=None):
+        # Accept "ip:port" typed into the host field (e.g. 192.168.1.3:44525).
+        host, port = adb_client.parse_host_port(host, port)
+        try:
+            return self._connect_plain(host, port, name)
+        except adb_client.WirelessDebuggingError as wd:
+            # Port belongs to Wireless debugging: use Google's adb (already paired?) to
+            # switch the TV to TCP 5555, then continue with the normal path.
+            try:
+                adb = adb_binary.ensure_adb()
+                adb_binary.switch_to_tcpip(adb, host, port)
+            except Exception as e:
+                raise Exception(
+                    f"{host}:{port} là cổng Gỡ lỗi không dây, cần ghép cặp bằng mã một lần "
+                    f"(chi tiết adb: {str(e)[:200]})."
+                ) from wd
+            time.sleep(2.0)
+            return self._connect_plain(host, 5555, name)
+
+    def _connect_plain(self, host, port, name=None):
         try:
             # Timeout dài hơn để kịp bấm "Cho phép" trên TV ở lần kết nối đầu.
             # Kết nối vừa mở được giữ lại trong cache để các thao tác sau dùng tiếp.
@@ -244,6 +263,39 @@ class Api:
             raise
         store.upsert(host, int(port), name or info["model"] or host)
         return info
+
+    def adb_wireless_setup(self, host, pair_port, code, connect_port=None):
+        """Pair with Android 11+ Wireless debugging, then switch the TV to TCP 5555.
+
+        Needs Google's `adb` (downloaded once if missing). Afterwards the normal
+        connect(host, 5555) path (adb-shell) works.
+        """
+        host, _ = adb_client.parse_host_port(host)
+        code = re.sub(r"\D", "", str(code or ""))
+        if len(code) != 6:
+            raise Exception("Mã ghép cặp phải gồm 6 chữ số")
+        adb = adb_binary.ensure_adb()
+        if str(pair_port or "").strip():
+            pair_port = int(pair_port)
+        else:
+            pair_port = adb_binary.find_pair_port(adb, host)
+            if pair_port is None:
+                raise Exception(
+                    "Không tự dò được cổng ghép cặp. Hãy giữ hộp thoại «Ghép nối thiết bị bằng mã» "
+                    "mở trên TV rồi thử lại, hoặc nhập cổng ghép cặp thủ công."
+                )
+        adb_binary.pair(adb, host, pair_port, code)
+        cport = int(connect_port) if str(connect_port or "").strip() else None
+        if cport is None:
+            cport = adb_binary.find_connect_port(adb, host)
+        if cport is None:
+            raise Exception(
+                "Ghép cặp thành công nhưng chưa tự tìm được cổng kết nối. Nhập thêm «cổng kết nối» "
+                "(cổng hiển thị ở màn hình chính Gỡ lỗi không dây, ví dụ 44525) rồi bấm lại."
+            )
+        adb_binary.switch_to_tcpip(adb, host, cport)
+        time.sleep(2.0)  # adbd restarts in TCP mode
+        return self.connect(host, 5555)
 
     def rename(self, host, name):
         if not name or not name.strip():
@@ -1000,10 +1052,48 @@ class Api:
         ],
     }
 
-    def _remote_key_overrides(self, theme):
-        """Config keys that keep the remote's Settings/TV buttons working after a theme push."""
+    # Chromecast with Google TV remote (captured with getevent): YouTube = usage 0x000c0077 →
+    # BUTTON_3 (190), Netflix = usage 0x000c0078 → BUTTON_4 (191). Gathin has no default for them.
+    CHROMECAST_REMOTE_KEYS = {
+        "app_keys": [
+            "190:com.google.android.youtube.tv",
+            "191:com.netflix.ninja",
+        ],
+    }
+
+    @staticmethod
+    def _device_profile(dev):
+        """Return "tcl", "chromecast" or "" from the TV's build properties."""
+        try:
+            raw = adb_client.run_shell(
+                dev,
+                "getprop ro.product.brand; getprop ro.product.manufacturer; getprop ro.product.model",
+            )
+        except Exception:
+            return ""
+        low = (raw or "").lower()
+        if "chromecast" in low:
+            return "chromecast"
+        if "tcl" in low:
+            return "tcl"
+        return ""
+
+    def _remote_key_overrides(self, theme, profile=""):
+        """Config keys that keep the remote's Settings/TV/app buttons working after a theme push.
+
+        Key codes are per remote, so they depend on the TV: TCL codes (4001, 4065...) mean
+        nothing on a Chromecast and the other way round. An explicit "remote_keys" in
+        settings.json still wins for every TV.
+        """
         cfg = settings_store.load().get("remote_keys")
-        keys = dict(cfg) if isinstance(cfg, dict) else dict(self.DEFAULT_REMOTE_KEYS)
+        if isinstance(cfg, dict):
+            keys = dict(cfg)
+        elif profile == "chromecast":
+            keys = {k: list(v) for k, v in self.CHROMECAST_REMOTE_KEYS.items()}
+        elif profile == "tcl":
+            keys = dict(self.DEFAULT_REMOTE_KEYS)
+        else:
+            keys = {}
         base = {}
         try:
             with open(os.path.join(theme["path"], "config.json"), encoding="utf-8") as f:
@@ -1141,7 +1231,9 @@ class Api:
                 backup = tm.backup_config(backup_root, pull_assets=False)
                 on_step("backup_done", backup.get("time") or "")
                 widget_patch, widget_sidecar, _widget_prev = self._home_widgets_tv_bundle()
-                widget_patch = {**self._remote_key_overrides(theme), **(widget_patch or {})} or None
+                profile = self._device_profile(dev)
+                on_step("remote_profile", profile or "mặc định")
+                widget_patch = {**self._remote_key_overrides(theme, profile), **(widget_patch or {})} or None
                 if widget_drawn:
                     # Themes like Default ship `"wallpaper": false`; the baked image would never show.
                     widget_patch = {**(widget_patch or {}), "wallpaper": True}
@@ -1174,8 +1266,11 @@ class Api:
                         on_step("stock_launcher", "tắt launcher gốc để phím HOME mở Gathin")
                         res_stock = tm.disable_stock_launcher()
                         result["stock_launcher"] = res_stock.get("ok")
+                        if res_stock.get("output"):
+                            on_step("stock_launcher_output", str(res_stock.get("output"))[:400])
                         if not res_stock.get("ok"):
-                            on_step("stock_launcher_rollback", "HOME không chuyển sang Gathin — đã bật lại launcher gốc")
+                            blockers = ", ".join(res_stock.get("home_blockers") or []) or "không rõ"
+                            on_step("stock_launcher_rollback", f"HOME không chuyển sang Gathin — đã bật lại launcher gốc. Ứng dụng đang giữ HOME: {blockers}")
                     except Exception as exc:
                         result["stock_launcher"] = False
                         on_step("stock_launcher_error", str(exc))

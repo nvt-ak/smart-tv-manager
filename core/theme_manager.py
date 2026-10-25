@@ -36,6 +36,17 @@ STAGE_PREFIX = "/data/local/tmp/smarttvmanager-theme"
 CONFIG_NAME = "config.json"
 WALLPAPER_NAME = "wallpaper.jpg"
 STOCK_LAUNCHER_PKG = "com.google.android.apps.tv.launcherx"
+STOCK_GREP = "launcherx|tvlauncher|leanbacklauncher|setupwraith"
+# Stock Home apps that may hold the HOME intent (Google TV, Chromecast with Google TV,
+# older Android TV). Only these are ever auto-disabled.
+STOCK_HOME_PKGS = (
+    STOCK_LAUNCHER_PKG,
+    "com.google.android.tvlauncher",
+    "com.google.android.leanbacklauncher",
+    # Chromecast with Google TV: its recovery HOME activity (priority 1) outranks third-party
+    # launchers (priority 0) once launcherx is disabled. Reversible via enable_stock_launcher.
+    "com.google.android.tungsten.setupwraith",
+)
 COLLECTION = "wallpapers"
 CAPTIONS_NAME = "captions.txt"
 REVISION_NAME = "theme_revision"
@@ -211,7 +222,9 @@ class ThemeManager:
             "echo @@STV:ROLE@@",
             adb_commands.HOME_ROLE_CMD,
             "echo @@STV:STOCK@@",
-            f"pm list packages -d {STOCK_LAUNCHER_PKG} 2>&1",
+            f"pm list packages -d 2>&1 | grep -E '{STOCK_GREP}'",
+            "echo @@STV:STOCKON@@",
+            f"pm list packages -e 2>&1 | grep -E '{STOCK_GREP}'",
             "echo @@STV:END@@",
         ]
         out = self._shell("; ".join(parts), timeout_s=adb_client.SHELL_DEFAULT_TIMEOUT)
@@ -259,10 +272,9 @@ class ThemeManager:
             "compatible": installed,
             "error": None,
             "stock_pkg": STOCK_LAUNCHER_PKG,
-            "stock_disabled": any(
-                ln.strip() == f"package:{STOCK_LAUNCHER_PKG}"
-                for ln in sections.get("STOCK", "").splitlines()
-            ),
+            # Disabled = some known stock Home app is disabled and none is still enabled.
+            # (Not every TV has launcherx: Panasonic/Android TV uses tvlauncher.)
+            "stock_disabled": self._stock_disabled(sections, home),
         }
         return {
             "launcher": launcher,
@@ -274,30 +286,109 @@ class ThemeManager:
 
     # ----------------------------------------------------- stock launcher switch
 
+    @staticmethod
+    def _stock_disabled(sections, home=None) -> bool:
+        """True when a known stock Home app is disabled and HOME no longer resolves to one.
+
+        Not "every stock package disabled": e.g. Chromecast keeps com.google.android.tvlauncher
+        installed and enabled although it never answers HOME.
+        """
+        off = {
+            ln.strip()[len("package:"):]
+            for ln in sections.get("STOCK", "").splitlines()
+            if ln.strip().startswith("package:")
+        } & set(STOCK_HOME_PKGS)
+        return bool(off) and (home or "") not in STOCK_HOME_PKGS
+
+    def _home_candidates(self) -> list:
+        """Packages that currently answer the HOME intent (including non-default ones)."""
+        out = self._shell(
+            "cmd package query-activities --brief -a android.intent.action.MAIN "
+            "-c android.intent.category.HOME 2>&1",
+            timeout_s=30.0,
+        ) or ""
+        pkgs = []
+        for ln in out.splitlines():
+            m = re.match(r"^\s*([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)/", ln, re.IGNORECASE)
+            if m and m.group(1) not in pkgs:
+                pkgs.append(m.group(1))
+        return pkgs
+
     def enable_stock_launcher(self) -> Dict[str, Any]:
-        """Re-enable the stock Google TV launcher (back to the TV's original state)."""
-        out = (self._shell(f"pm enable --user 0 {STOCK_LAUNCHER_PKG} 2>&1") or "").strip()
+        """Re-enable the stock Google TV launcher(s) (back to the TV's original state)."""
+        outs = []
+        for pkg in STOCK_HOME_PKGS:
+            o = (self._shell(f"pm enable --user 0 {pkg} 2>&1") or "").strip()
+            if pkg == STOCK_LAUNCHER_PKG or "Unknown package" not in o:
+                outs.append(o)
         launcher = self.read_state()["launcher"]
-        return {"ok": not launcher["stock_disabled"], "output": out, "launcher": launcher}
+        return {"ok": not launcher["stock_disabled"], "output": "\n".join(outs), "launcher": launcher}
 
     def disable_stock_launcher(self) -> Dict[str, Any]:
-        """Disable the stock launcher so the remote's HOME key opens Gathin.
+        """Disable the stock launcher(s) so the remote's HOME key opens Gathin.
 
-        Verified: HOME must resolve to Gathin afterwards, otherwise the stock launcher is
-        re-enabled again (rolled_back=True). Refuses when Gathin is not installed.
+        Verified: HOME must resolve to Gathin afterwards, otherwise everything disabled here
+        is re-enabled (rolled_back=True). Chromecast with Google TV can keep another stock
+        Home app answering HOME, so known stock packages are disabled until HOME resolves
+        to Gathin. Refuses when Gathin is not installed.
         """
         state = self.read_state()["launcher"]
         if state.get("installed") is not True:
             raise Exception("TV chưa cài CleanYourTV (com.gathin.tvhome) — không tắt launcher gốc.")
         if state["stock_disabled"] and state.get("current_home") == PKG:
             return {"ok": True, "already": True, "output": "", "launcher": state}
+        disabled = []
+        outputs = []
         out = (self._shell(f"pm disable-user --user 0 {STOCK_LAUNCHER_PKG} 2>&1") or "").strip()
+        outputs.append(out)
+        disabled.append(STOCK_LAUNCHER_PKG)
         launcher = self.read_state()["launcher"]
+        if launcher.get("current_home") != PKG:
+            try:
+                candidates = self._home_candidates()
+            except Exception:
+                candidates = []
+            for pkg in candidates:
+                if pkg in STOCK_HOME_PKGS and pkg not in disabled:
+                    o = (self._shell(f"pm disable-user --user 0 {pkg} 2>&1") or "").strip()
+                    outputs.append(o)
+                    disabled.append(pkg)
+            launcher = self.read_state()["launcher"]
+        if launcher.get("current_home") != PKG:
+            # Android 10+: make Gathin the HOME role holder directly. This works even when
+            # the stock launcher refuses to be disabled (or the role keeps pointing at it).
+            prev = launcher.get("current_home")
+            for cmd in (
+                f"cmd role add-role-holder --user 0 android.app.role.HOME {PKG} 0 2>&1",
+                f"cmd role add-role-holder --user 0 android.app.role.HOME {PKG} 2>&1",
+            ):
+                try:
+                    outputs.append((self._shell(cmd, timeout_s=30.0) or "").strip())
+                except Exception as e:
+                    outputs.append(f"(lỗi: {e})")
+                launcher = self.read_state()["launcher"]
+                if launcher.get("current_home") == PKG:
+                    break
+            else:
+                if prev and prev != PKG:
+                    try:
+                        self._shell(
+                            f"cmd role add-role-holder --user 0 android.app.role.HOME {prev} 0 2>&1",
+                            timeout_s=30.0,
+                        )
+                    except Exception:
+                        pass
         if launcher.get("current_home") == PKG:
-            return {"ok": True, "output": out, "launcher": launcher}
-        self._shell(f"pm enable --user 0 {STOCK_LAUNCHER_PKG} 2>&1")
+            return {"ok": True, "output": "\n".join(outputs), "disabled": disabled, "launcher": launcher}
+        try:
+            blockers = [p for p in self._home_candidates() if p != PKG]
+        except Exception:
+            blockers = []
+        for pkg in disabled:
+            self._shell(f"pm enable --user 0 {pkg} 2>&1")
         return {
-            "ok": False, "rolled_back": True, "output": out,
+            "ok": False, "rolled_back": True, "output": "\n".join(outputs),
+            "home_blockers": blockers,
             "launcher": self.read_state()["launcher"],
         }
 

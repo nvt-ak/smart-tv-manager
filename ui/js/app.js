@@ -2030,7 +2030,7 @@ listEl.addEventListener('click', async (e) => {
       setStatus(`${host}: ${info.model} · Android ${info.android}`);
       await refreshList();
     } catch (err) {
-      setStatus(`Lỗi kết nối ${host}: ${err}`);
+      if (!promptPairingIfNeeded(err, `${host}:${port}`)) setStatus(`Lỗi kết nối ${host}: ${err}`);
       appendTerminal(`connect ${host}`, String(err), 'log-err');
       setButtonLoading(btn, false);
     }
@@ -2084,6 +2084,63 @@ listEl.addEventListener('click', async (e) => {
   }
 });
 
+// Wireless debugging (Android 11+) needs a one-time pairing code: show a modal for it.
+const pairModal = document.getElementById('pairModal');
+const pairBtn = document.getElementById('pairBtn');
+let pairTarget = null;
+
+function closePairModal() {
+  if (pairModal) pairModal.hidden = true;
+  pairTarget = null;
+}
+
+function promptPairingIfNeeded(err, hostWithPort) {
+  if (!pairModal || !String(err).includes('Gỡ lỗi không dây')) return false;
+  const raw = String(hostWithPort || '').trim();
+  const m = raw.match(/^(.*?)(?::(\d+))?$/);
+  pairTarget = { host: (m && m[1]) || raw, connectPort: (m && m[2]) || '' };
+  document.getElementById('pairModalDesc').textContent = pairTarget.host;
+  document.getElementById('pairPort').value = '';
+  document.getElementById('pairCode').value = '';
+  document.getElementById('pairModalStatus').textContent = '';
+  pairModal.hidden = false;
+  document.getElementById('pairCode').focus();
+  setStatus('Cần ghép cặp: mở «Ghép nối thiết bị bằng mã» trên TV rồi nhập mã 6 số.');
+  return true;
+}
+
+if (pairModal) {
+  document.getElementById('pairModalClose').addEventListener('click', closePairModal);
+  document.getElementById('pairModalCancel').addEventListener('click', closePairModal);
+  pairModal.addEventListener('click', (e) => { if (e.target === pairModal) closePairModal(); });
+  pairBtn.addEventListener('click', async () => {
+    if (!pairTarget) return;
+    const pairPort = document.getElementById('pairPort').value.trim();
+    const code = document.getElementById('pairCode').value.trim();
+    const statusEl = document.getElementById('pairModalStatus');
+    if (!code) {
+      statusEl.textContent = 'Nhập mã 6 số.';
+      return;
+    }
+    const { host, connectPort } = pairTarget;
+    setButtonLoading(pairBtn, true, 'Đang ghép cặp...');
+    statusEl.textContent = 'Đang ghép cặp (lần đầu app tải adb từ Google, có thể mất ít phút)...';
+    appendTerminal(`adb pair ${host}:${pairPort}`, 'Ghép cặp Gỡ lỗi không dây...', 'log-info');
+    try {
+      const info = await getApi().adb_wireless_setup(host, pairPort, code, connectPort);
+      setStatus(`${host}: ${info.model} · Android ${info.android} (cổng 5555)`);
+      appendTerminal(`adb pair ${host}`, `${info.model} · Android ${info.android}`, 'log-ok');
+      closePairModal();
+      document.getElementById('manualHost').value = '';
+      await refreshList();
+    } catch (err) {
+      statusEl.textContent = String(err);
+      appendTerminal(`adb pair ${host}`, String(err), 'log-err');
+    }
+    setButtonLoading(pairBtn, false);
+  });
+}
+
 addBtn.addEventListener('click', async () => {
   const host = document.getElementById('manualHost').value.trim();
   if (!host) return;
@@ -2096,7 +2153,7 @@ addBtn.addEventListener('click', async () => {
     document.getElementById('manualHost').value = '';
     await refreshList();
   } catch (err) {
-    setStatus(`Lỗi kết nối ${host}: ${err}`);
+    if (!promptPairingIfNeeded(err, host)) setStatus(`Lỗi kết nối ${host}: ${err}`);
   }
   setButtonLoading(addBtn, false);
 });

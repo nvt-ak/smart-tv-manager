@@ -52,11 +52,14 @@ class LauncherDetector:
         stock_disabled = None
         if installed is not None:
             try:
-                out = self._shell("pm list packages -d com.google.android.apps.tv.launcherx 2>&1")
-                stock_disabled = any(
-                    ln.strip() == "package:com.google.android.apps.tv.launcherx"
+                from .theme_manager import STOCK_HOME_PKGS, STOCK_GREP
+                out = self._shell(f"pm list packages -d 2>&1 | grep -E '{STOCK_GREP}'")
+                off = {
+                    ln.strip()[len("package:"):]
                     for ln in (out or "").splitlines()
-                )
+                    if ln.strip().startswith("package:")
+                } & set(STOCK_HOME_PKGS)
+                stock_disabled = bool(off) and (home or "") not in STOCK_HOME_PKGS
             except Exception:
                 stock_disabled = None
         # Gathin đang là launcher mặc định thì chắc chắn đã cài.
