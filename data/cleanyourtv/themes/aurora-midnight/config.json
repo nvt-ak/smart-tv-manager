@@ -1,0 +1,27 @@
+{
+  "dock_apps": [
+    "com.teamsmart.videomanager.tv",
+    "com.google.android.youtube.tv",
+    "com.android.vending"
+  ],
+  "background_color": "#07131D",
+  "wallpaper": true,
+  "columns": 6,
+  "rows_below_dock": 0,
+  "dock_row": true,
+  "dock_title": false,
+  "dashboard": true,
+  "design_frame": true,
+  "icon_only_buttons": true,
+  "wifi_label_width": 220,
+  "show_inputs_pill": false,
+  "ambient_glow": false,
+  "focus_overshoot": false,
+  "home_idle_clock_minutes": 15,
+  "design_profile": "aurora",
+  "lunar_date": true,
+  "tagline": "Nhà thông minh · Cuộc sống trọn vẹn",
+  "corner_bottom": "",
+  "corner_right": "Công nghệ\nkết nối yêu thương",
+  "single_row": true
+}

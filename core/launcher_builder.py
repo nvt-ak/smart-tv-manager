@@ -1,4 +1,4 @@
-"""Tự clone CleanYourTV (Gathin23/cleanyourtv, MIT), build launcher APK bằng Gradle.
+"""Tự clone smtv-home (nvt-ak/smtv-home, nhánh smtv-main), build launcher APK bằng Gradle.
 
 Cần trên máy chạy app: git, JDK 17–21 (có jlink; Android Studio có sẵn trong thư mục jbr), Android SDK.
 """
@@ -10,20 +10,21 @@ import subprocess
 import sys
 from typing import Callable, Dict, List, Optional
 
-REPO_URL = "https://github.com/Gathin23/cleanyourtv.git"
+REPO_URL = "https://github.com/nvt-ak/smtv-home.git"
+BRANCH = "smtv-main"
 APK_REL = os.path.join("launcher", "app", "build", "outputs", "apk", "release", "app-release.apk")
 _WIN = sys.platform.startswith("win")
 _NOWIN = getattr(subprocess, "CREATE_NO_WINDOW", 0) if _WIN else 0
 
 
 def cache_dir() -> str:
-    d = os.path.join(os.path.expanduser("~"), ".smarttv-manager", "cleanyourtv")
+    d = os.path.join(os.path.expanduser("~"), ".smarttv-manager", "smtv-home")
     os.makedirs(d, exist_ok=True)
     return d
 
 
 def cached_apk_path() -> str:
-    return os.path.join(cache_dir(), "CleanYourTV.apk")
+    return os.path.join(cache_dir(), "smtv-home.apk")
 
 
 def _java_info(home: str) -> Optional[Dict]:
@@ -133,14 +134,14 @@ def build_apk(on_step: Callable[[str, str], None], tv_sdk: Optional[int] = None,
     env["PATH"] = os.path.join(pre["java"]["home"], "bin") + os.pathsep + env.get("PATH", "")
 
     if os.path.isdir(os.path.join(root, ".git")):
-        on_step("build_fetch", "cập nhật mã nguồn CleanYourTV")
-        rc, tail = _run([pre["git"], "fetch", "--depth", "1", "origin", ref or "HEAD"], root, env, on_step, None, 300)
+        on_step("build_fetch", "cập nhật mã nguồn smtv-home")
+        rc, tail = _run([pre["git"], "fetch", "--depth", "1", "origin", ref or BRANCH], root, env, on_step, None, 300)
         if rc == 0:
             rc, tail = _run([pre["git"], "reset", "--hard", "FETCH_HEAD"], root, env, on_step, None, 120)
     else:
         on_step("build_clone", f"git clone {REPO_URL}")
         shutil.rmtree(root, ignore_errors=True)
-        rc, tail = _run([pre["git"], "clone", "--depth", "1", REPO_URL, root], cache_dir(), env, on_step, "build_clone", 600)
+        rc, tail = _run([pre["git"], "clone", "--depth", "1", "--branch", BRANCH, REPO_URL, root], cache_dir(), env, on_step, "build_clone", 600)
         if rc == 0 and ref:
             rc, tail = _run([pre["git"], "fetch", "--depth", "1", "origin", ref], root, env, on_step, None, 300)
             if rc == 0:

@@ -1,4 +1,4 @@
-"""Tải APK CleanYourTV dựng sẵn (GitHub Actions của repo SmartTV Manager) và kiểm tra SHA-256."""
+"""Tải APK SmartTV Home dựng sẵn (GitHub Actions của repo nvt-ak/smtv-home) và kiểm tra SHA-256."""
 import hashlib
 import json
 import os
@@ -28,17 +28,45 @@ def _get(url: str, timeout: float = 60.0) -> bytes:
         return r.read()
 
 
-def download_apk(on_step: Callable[[str, str], None]) -> str:
+def latest_sha() -> str:
+    """SHA-256 of the newest published APK (a 80-byte file: cheap to poll). Raises when offline."""
+    pin = load_pin()
+    base = pin["release_base"].rstrip("/")
+    return _get(f"{base}/{pin['sha256_file']}", 20).decode("utf-8", "replace").split()[0].lower()
+
+
+def _file_sha(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 16), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def cached_sha() -> str:
+    """SHA-256 of the cached APK, or '' when there is none."""
+    p = launcher_builder.cached_apk_path()
+    try:
+        return _file_sha(p) if os.path.isfile(p) else ""
+    except OSError:
+        return ""
+
+
+def download_apk(on_step: Callable[[str, str], None], force: bool = False) -> str:
+    """Download the newest APK unless the cached one already is it. Returns the cached path."""
     pin = load_pin()
     base = pin["release_base"].rstrip("/")
     on_step("download_start", f"{base}/{pin['apk']}")
     try:
-        want = _get(f"{base}/{pin['sha256_file']}", 30).decode("utf-8", "replace").split()[0].lower()
+        want = latest_sha()
+        if not force and want and cached_sha() == want:
+            on_step("download_cached", f"đã có bản mới nhất · sha256 {want[:12]}…")
+            return launcher_builder.cached_apk_path()
         data = _get(f"{base}/{pin['apk']}", 300)
     except Exception as exc:
         raise Exception(
-            f"Không tải được bản dựng sẵn ({exc}). Release «cleanyourtv-launcher» có thể chưa được tạo "
-            "(chạy workflow «Build CleanYourTV launcher APK» trên GitHub)."
+            f"Không tải được bản dựng sẵn ({exc}). Release «smtv-home-latest» có thể chưa được tạo "
+            "(chạy workflow «Build APK» trên repo nvt-ak/smtv-home)."
         ) from exc
     got = hashlib.sha256(data).hexdigest()
     if len(want) != 64 or got != want:

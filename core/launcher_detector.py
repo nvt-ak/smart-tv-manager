@@ -9,7 +9,9 @@ from . import adb_commands
 
 
 class LauncherDetector:
-    GATHIN_PKG = "com.gathin.tvhome"
+    SMTV_PKG = "com.smtv_manager.home"
+    GATHIN_PKG = SMTV_PKG  # legacy name kept for callers; upstream CleanYourTV is no longer supported
+    PACKAGES = (SMTV_PKG,)
 
     def __init__(self, device: AdbDeviceTcp):
         self.device = device
@@ -27,6 +29,20 @@ class LauncherDetector:
         out = self._shell(f"pm list packages {pkg} 2>&1")
         return any(line.strip() == f"package:{pkg}" for line in out.splitlines())
 
+    def installed_launcher(self) -> Optional[str]:
+        """The launcher to drive: the default Home if it is one of ours, else the first installed.
+
+        None when none is installed; RAISES when the TV cannot be asked.
+        """
+        installed = [p for p in self.PACKAGES if self.is_installed(p)]
+        if not installed:
+            return None
+        try:
+            home = self.get_default_home()
+        except Exception:
+            home = None
+        return home if home in installed else installed[0]
+
     def get_default_home(self) -> Optional[str]:
         resolve_out = self._shell(adb_commands.HOME_RESOLVE_CMD)
         role_out = ""
@@ -39,16 +55,18 @@ class LauncherDetector:
     def detect_gathin(self) -> Dict[str, Any]:
         error = None
         try:
-            installed: Optional[bool] = self.is_installed(self.GATHIN_PKG)
+            pkg = self.installed_launcher()
+            installed: Optional[bool] = pkg is not None
+            pkg = pkg or self.GATHIN_PKG
         except Exception as e:
-            installed, error = None, str(e)  # None = không xác định
+            pkg, installed, error = self.GATHIN_PKG, None, str(e)  # None = không xác định
         home = None
         if installed is not None:
             try:
                 home = self.get_default_home()
             except Exception as e:
                 error = error or str(e)
-        is_default = home == self.GATHIN_PKG
+        is_default = home == pkg
         stock_disabled = None
         if installed is not None:
             try:
@@ -66,7 +84,7 @@ class LauncherDetector:
         if installed is None and is_default:
             installed, error = True, None
         return {
-            "pkg": self.GATHIN_PKG,
+            "pkg": pkg,
             "installed": installed,
             "is_default_home": is_default,
             "current_home": home,
@@ -79,12 +97,12 @@ class LauncherDetector:
         """Try to find gathin config files."""
         paths = []
         candidates = [
-            "/data/data/com.gathin.tvhome",
-            "/data/data/com.gathin.tvhome/shared_prefs",
-            "/data/data/com.gathin.tvhome/files",
-            "/data/data/com.gathin.tvhome/databases",
-            "/sdcard/Android/data/com.gathin.tvhome",
-            "/sdcard/Android/data/com.gathin.tvhome/files",
+            f"/data/data/{self.SMTV_PKG}",
+            f"/data/data/{self.SMTV_PKG}/shared_prefs",
+            f"/data/data/{self.SMTV_PKG}/files",
+            f"/data/data/{self.SMTV_PKG}/databases",
+            f"/sdcard/Android/data/{self.SMTV_PKG}",
+            f"/sdcard/Android/data/{self.SMTV_PKG}/files",
         ]
         # Một lần gọi shell thay vì 6 lần (mỗi lần = 1 round-trip qua Wi-Fi).
         script = "; ".join(f"echo '##{p}'; ls -la {p} 2>&1 | head -15" for p in candidates)

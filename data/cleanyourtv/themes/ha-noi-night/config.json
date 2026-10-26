@@ -1,0 +1,27 @@
+{
+  "dock_apps": [
+    "com.teamsmart.videomanager.tv",
+    "com.google.android.youtube.tv",
+    "com.android.vending",
+    "com.android.tv.settings"
+  ],
+  "background_color": "#050A1A",
+  "wallpaper": true,
+  "columns": 1,
+  "rows_below_dock": 0,
+  "dock_row": false,
+  "dock_title": false,
+  "dashboard": true,
+  "design_frame": true,
+  "design_profile": "hanoi",
+  "icon_only_buttons": true,
+  "show_inputs_pill": false,
+  "ambient_glow": false,
+  "focus_overshoot": false,
+  "home_idle_clock_minutes": 15,
+  "tagline": "Giải trí tuyệt vời hơn mỗi ngày",
+  "subline": "Hà Nội  •  Kết nối cuộc sống",
+  "corner_right": "Hà Nội\nThanh lịch\nVăn hiến\nLuôn tỏa sáng",
+  "corner_bottom": "Android TV   |   Đơn giản hơn. Cuộc sống tốt đẹp hơn.",
+  "weather_city": "Hà Nội"
+}

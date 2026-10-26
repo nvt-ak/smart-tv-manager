@@ -42,6 +42,10 @@ class CleanyourtvThemes:
                     break
             wallpapers_dir = os.path.join(path, "wallpapers")
             wallpapers = []
+            # captions.txt is not a picture, so it is exposed on its own: apply_theme pushes it
+            # next to the collection, and the launcher reads it when wallpaper_captions is on.
+            captions = os.path.join(wallpapers_dir, "captions.txt")
+            captions = captions if os.path.isfile(captions) else None
             if os.path.isdir(wallpapers_dir):
                 for fn in sorted(os.listdir(wallpapers_dir)):
                     if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
@@ -54,6 +58,7 @@ class CleanyourtvThemes:
                 "screenshot": screenshot,
                 "wallpaper": wallpaper,
                 "wallpapers": wallpapers,
+                "captions": captions,
                 "has_config": bool(config),
             })
         return themes

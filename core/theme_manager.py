@@ -1,4 +1,4 @@
-"""Theme apply/backup/reset for the gathin.tvhome launcher.
+"""Theme apply/backup/reset for the SmartTV Home launcher (com.smtv_manager.home).
 
 The launcher overlays `config.json` (plus `wallpaper.jpg` and an optional
 `wallpapers/` collection) from its external files directory onto the built-in
@@ -28,7 +28,13 @@ import adb_client
 from . import adb_commands
 from adb_shell.adb_device import AdbDeviceTcp
 
-PKG = "com.gathin.tvhome"
+# The launcher the app drives: the smtv-home fork (nvt-ak/smtv-home). It exposes a ThemeProvider at
+# content://<package>.theme. Upstream CleanYourTV (com.gathin.tvhome) is no longer supported.
+LAUNCHER_PKGS = ("com.smtv_manager.home",)
+PKG = LAUNCHER_PKGS[0]
+# The Java package of the launcher classes. The smtv-home fork changes only the applicationId, so its
+# activities and services keep this package: components are "<applicationId>/<CLASS_PKG>.MainActivity".
+CLASS_PKG = "com.gathin.tvhome"
 HOME_DIR = f"/sdcard/Android/data/{PKG}/files"
 THEME_URI = f"content://{PKG}.theme"
 STAGE_PREFIX = "/data/local/tmp/smarttvmanager-theme"
@@ -55,18 +61,21 @@ IMAGE_RE = re.compile(r"^[A-Za-z0-9_.-]+\.(jpg|jpeg|png|webp)$", re.IGNORECASE)
 
 # Keys the launcher accepts in config.json (see cleanyourtv themes/README.md).
 KNOWN_KEYS = {
+    "dashboard",  # smtv-home fork only
+    "design_frame",  # smtv-home fork only: lay Home out on the reference design coordinates
+    "design_profile", "subline", "weather_city", "weather_lat", "weather_lon", "tagline", "corner_bottom", "corner_right", "lunar_date",  # smtv-home fork only (Aurora look)
     "dock_apps", "fill_dock", "hidden_apps", "columns", "rows_below_dock",
     "animations", "advanced_effects", "reduced_motion", "background_color",
     "wallpaper", "wallpaper_rotation_minutes", "wallpaper_rotation_seconds",
     "wallpaper_order", "wallpaper_dim", "wallpaper_captions", "wallpaper_true_color",
-    "dock_opacity", "dock_glass", "dock_row", "dock_title", "top_menu",
+    "dock_opacity", "dock_glass", "dock_row", "single_row", "dock_title", "top_menu",
     "launcher_settings_button", "reorder_button", "always_show_names",
     "show_network_pill", "show_inputs_pill", "icon_only_buttons", "library_button",
     "app_library", "app_glow", "ambient_glow", "cinematic_home", "focus_overshoot",
     "glow_style", "sky_intensity", "show_stats", "shamsi_date", "greeting_name",
     "module_cards", "boot_to_live_tv", "home_idle_clock_minutes", "tile_menu",
     "live_tv_package", "live_tv_action", "live_tv_input_id", "launch_actions",
-    "app_labels", "app_banners", "input_action", "input_uri_scheme",
+    "app_labels", "app_subtitles", "app_banners", "input_action", "input_uri_scheme",
     "input_key_keycodes", "settings_key_keycodes", "settings_key_panel",
     "restore_key_services", "key_filter", "app_keys", "stock_home_redirect",
     "handle_view_inputs", "coocaa_sources", "source_panel_service",
@@ -86,7 +95,55 @@ class ThemeManager:
     ):
         self.device = device
         self._provider_supported: Optional[bool] = None
+        self._pkg: Optional[str] = None
         self.on_step = on_step
+
+    # ------------------------------------------------------------ launcher package
+
+    @property
+    def pkg(self) -> str:
+        """Package of the launcher this manager drives (resolved once, then cached)."""
+        return self.resolve_pkg()
+
+    @property
+    def component_prefix(self) -> str:
+        """Prefix for a launcher class: "<pkg>/<CLASS_PKG>." (the fork keeps the upstream class package)."""
+        return f"{self.pkg}/{CLASS_PKG}."
+
+    @property
+    def home_dir(self) -> str:
+        return f"/sdcard/Android/data/{self.pkg}/files"
+
+    @property
+    def theme_uri(self) -> str:
+        return f"content://{self.pkg}.theme"
+
+    def resolve_pkg(self, refresh: bool = False) -> str:
+        """Pick the installed launcher: the default Home if it is one of ours, else the first installed.
+
+        Raises when the TV cannot be asked, so a timeout is never mistaken for "not installed".
+        """
+        if self._pkg is not None and not refresh:
+            return self._pkg
+        pattern = "|".join(re.escape(p) for p in LAUNCHER_PKGS)
+        out = self._shell(
+            f"pm list packages 2>&1 | grep -E '{pattern}'; echo @@STV:HOMER@@; "
+            f"{adb_commands.HOME_RESOLVE_CMD}; echo @@STV:ROLE@@; {adb_commands.HOME_ROLE_CMD}"
+        )
+        chunks = re.split(r"@@STV:(\w+)@@", out)
+        sections = {"PM": chunks[0]}
+        sections.update({chunks[i]: chunks[i + 1] for i in range(1, len(chunks) - 1, 2)})
+        lines = {ln.strip() for ln in sections["PM"].splitlines()}
+        installed = [p for p in LAUNCHER_PKGS if f"package:{p}" in lines]
+        home = adb_commands.parse_home_package(sections.get("HOMER", ""), sections.get("ROLE", ""))
+        if home in installed:
+            self._pkg = home
+        elif installed:
+            self._pkg = installed[0]
+        else:
+            self._pkg = PKG
+        self._provider_supported = None
+        return self._pkg
 
     def _step(self, phase: str, detail: str = "") -> None:
         if self.on_step:
@@ -183,10 +240,10 @@ class ThemeManager:
         ok = False
         try:
             out = self._shell(
-                f"cmd package resolve-content-provider --uri {THEME_URI} 2>&1"
+                f"cmd package resolve-content-provider --uri {self.theme_uri} 2>&1"
             )
             lo = (out or "").lower()
-            if PKG in out and "could not find" not in lo and "unknown authority" not in lo:
+            if self.pkg in out and "could not find" not in lo and "unknown authority" not in lo:
                 ok = True
         except Exception:
             ok = False
@@ -203,20 +260,20 @@ class ThemeManager:
         """
         parts = [
             "echo @@STV:PROV@@",
-            f"cmd package resolve-content-provider --uri {THEME_URI} 2>&1",
+            f"cmd package resolve-content-provider --uri {self.theme_uri} 2>&1",
         ]
         for tag, rel in (("CFG", CONFIG_NAME), ("REV", REVISION_NAME)):
             parts += [
                 f"echo @@STV:{tag}_CR@@",
-                f"content read --uri {THEME_URI}/{rel} 2>/dev/null",
+                f"content read --uri {self.theme_uri}/{rel} 2>/dev/null",
                 f"echo @@STV:{tag}_CAT@@",
-                f"cat {HOME_DIR}/{rel} 2>/dev/null",
+                f"cat {self.home_dir}/{rel} 2>/dev/null",
             ]
         parts += [
             "echo @@STV:WALL@@",
-            f"ls {HOME_DIR}/{COLLECTION} 2>/dev/null",
+            f"ls {self.home_dir}/{COLLECTION} 2>/dev/null",
             "echo @@STV:PM@@",
-            f"pm list packages {PKG} 2>&1",
+            f"pm list packages {self.pkg} 2>&1",
             "echo @@STV:HOMER@@",
             adb_commands.HOME_RESOLVE_CMD,
             "echo @@STV:ROLE@@",
@@ -243,7 +300,7 @@ class ThemeManager:
         prov = sections.get("PROV", "")
         lo = prov.lower()
         self._provider_supported = (
-            PKG in prov and "could not find" not in lo and "unknown authority" not in lo
+            self.pkg in prov and "could not find" not in lo and "unknown authority" not in lo
         )
         config: Dict[str, Any] = {}
         cfg_text = pick(sections.get("CFG_CR", ""), sections.get("CFG_CAT", ""))
@@ -257,7 +314,7 @@ class ThemeManager:
             if n and IMAGE_RE.match(n)
         )
         installed = any(
-            ln.strip() == f"package:{PKG}" for ln in sections.get("PM", "").splitlines()
+            ln.strip() == f"package:{self.pkg}" for ln in sections.get("PM", "").splitlines()
         )
         home = adb_commands.parse_home_package(
             sections.get("HOMER", ""), sections.get("ROLE", "")
@@ -265,9 +322,9 @@ class ThemeManager:
         launcher = {
             "raw_resolve": sections.get("HOMER", "").strip()[-200:],
             "raw_role": sections.get("ROLE", "").strip()[:200],
-            "pkg": PKG,
+            "pkg": self.pkg,
             "installed": installed,
-            "is_default_home": home == PKG,
+            "is_default_home": home == self.pkg,
             "current_home": home,
             "compatible": installed,
             "error": None,
@@ -334,8 +391,8 @@ class ThemeManager:
         """
         state = self.read_state()["launcher"]
         if state.get("installed") is not True:
-            raise Exception("TV chưa cài CleanYourTV (com.gathin.tvhome) — không tắt launcher gốc.")
-        if state["stock_disabled"] and state.get("current_home") == PKG:
+            raise Exception("TV chưa cài launcher SmartTV Home (com.smtv_manager.home) — không tắt launcher gốc.")
+        if state["stock_disabled"] and state.get("current_home") == self.pkg:
             return {"ok": True, "already": True, "output": "", "launcher": state}
         disabled = []
         outputs = []
@@ -343,7 +400,7 @@ class ThemeManager:
         outputs.append(out)
         disabled.append(STOCK_LAUNCHER_PKG)
         launcher = self.read_state()["launcher"]
-        if launcher.get("current_home") != PKG:
+        if launcher.get("current_home") != self.pkg:
             try:
                 candidates = self._home_candidates()
             except Exception:
@@ -354,23 +411,23 @@ class ThemeManager:
                     outputs.append(o)
                     disabled.append(pkg)
             launcher = self.read_state()["launcher"]
-        if launcher.get("current_home") != PKG:
+        if launcher.get("current_home") != self.pkg:
             # Android 10+: make Gathin the HOME role holder directly. This works even when
             # the stock launcher refuses to be disabled (or the role keeps pointing at it).
             prev = launcher.get("current_home")
             for cmd in (
-                f"cmd role add-role-holder --user 0 android.app.role.HOME {PKG} 0 2>&1",
-                f"cmd role add-role-holder --user 0 android.app.role.HOME {PKG} 2>&1",
+                f"cmd role add-role-holder --user 0 android.app.role.HOME {self.pkg} 0 2>&1",
+                f"cmd role add-role-holder --user 0 android.app.role.HOME {self.pkg} 2>&1",
             ):
                 try:
                     outputs.append((self._shell(cmd, timeout_s=30.0) or "").strip())
                 except Exception as e:
                     outputs.append(f"(lỗi: {e})")
                 launcher = self.read_state()["launcher"]
-                if launcher.get("current_home") == PKG:
+                if launcher.get("current_home") == self.pkg:
                     break
             else:
-                if prev and prev != PKG:
+                if prev and prev != self.pkg:
                     try:
                         self._shell(
                             f"cmd role add-role-holder --user 0 android.app.role.HOME {prev} 0 2>&1",
@@ -378,10 +435,10 @@ class ThemeManager:
                         )
                     except Exception:
                         pass
-        if launcher.get("current_home") == PKG:
+        if launcher.get("current_home") == self.pkg:
             return {"ok": True, "output": "\n".join(outputs), "disabled": disabled, "launcher": launcher}
         try:
-            blockers = [p for p in self._home_candidates() if p != PKG]
+            blockers = [p for p in self._home_candidates() if p != self.pkg]
         except Exception:
             blockers = []
         for pkg in disabled:
@@ -394,8 +451,8 @@ class ThemeManager:
 
     def _read_overlay_text(self, rel: str) -> str:
         """Read a text overlay via ThemeProvider, then direct path (Android 11+)."""
-        uri = f"{THEME_URI}/{rel}"
-        target = f"{HOME_DIR}/{rel}"
+        uri = f"{self.theme_uri}/{rel}"
+        target = f"{self.home_dir}/{rel}"
         commands = (
             f"content read --uri {uri} 2>/dev/null",
             f"cat {target} 2>/dev/null",
@@ -425,7 +482,7 @@ class ThemeManager:
 
     def read_wallpaper_preview_b64(self, max_bytes: int = 1_500_000) -> Optional[str]:
         """Pull wallpaper.jpg from TV for UI preview (best-effort)."""
-        remote = f"{HOME_DIR}/{WALLPAPER_NAME}"
+        remote = f"{self.home_dir}/{WALLPAPER_NAME}"
         fd, local = tempfile.mkstemp(prefix="smarttvmanager-wp-", suffix=".jpg")
         os.close(fd)
         timeout = adb_client.transfer_timeout_s(max_bytes)
@@ -467,7 +524,7 @@ class ThemeManager:
 
     def list_wallpapers(self) -> List[str]:
         try:
-            out = self._shell(f"ls {HOME_DIR}/{COLLECTION} 2>/dev/null")
+            out = self._shell(f"ls {self.home_dir}/{COLLECTION} 2>/dev/null")
         except Exception:
             return []
         names = []
@@ -514,7 +571,7 @@ class ThemeManager:
             self._step("backup_pull_wallpaper", WALLPAPER_NAME)
             wp = os.path.join(dest, WALLPAPER_NAME)
             try:
-                self.device.pull(f"{HOME_DIR}/{WALLPAPER_NAME}", wp)
+                self.device.pull(f"{self.home_dir}/{WALLPAPER_NAME}", wp)
                 if os.path.exists(wp) and os.path.getsize(wp) > 0:
                     manifest["wallpaper"] = WALLPAPER_NAME
                 else:
@@ -530,7 +587,7 @@ class ThemeManager:
                     self._step("backup_pull_collection", name)
                     target = os.path.join(wp_dir, name)
                     try:
-                        self.device.pull(f"{HOME_DIR}/{COLLECTION}/{name}", target)
+                        self.device.pull(f"{self.home_dir}/{COLLECTION}/{name}", target)
                         if os.path.exists(target) and os.path.getsize(target) > 0:
                             manifest["wallpaper_files"].append(name)
                     except Exception as exc:
@@ -677,7 +734,7 @@ class ThemeManager:
                 config.pop(key, None)
             else:
                 config[key] = val
-        self._shell(f"mkdir -p {HOME_DIR} 2>/dev/null")
+        self._shell(f"mkdir -p {self.home_dir} 2>/dev/null")
         self.write_config_dict(config)
         self._write_revision()
         if restart and not self.restart_launcher():
@@ -716,8 +773,8 @@ class ThemeManager:
         if not check["ok"]:
             raise Exception("; ".join(check["errors"]))
 
-        self._step("mkdir", HOME_DIR)
-        self._shell(f"mkdir -p {HOME_DIR} 2>/dev/null")
+        self._step("mkdir", self.home_dir)
+        self._shell(f"mkdir -p {self.home_dir} 2>/dev/null")
 
         config_path = os.path.join(theme["path"], CONFIG_NAME)
         if not os.path.isfile(config_path):
@@ -750,11 +807,12 @@ class ThemeManager:
                 self._step("push", f"{COLLECTION}/{base} ({size // 1024} KB)")
                 self._write_file(local, f"{COLLECTION}/{base}")
 
-        captions = None
-        for local in theme.get("wallpapers") or []:
-            if os.path.basename(local).lower() == CAPTIONS_NAME:
-                captions = local
-        if captions:
+        captions = theme.get("captions")
+        if not captions:
+            for local in theme.get("wallpapers") or []:
+                if os.path.basename(local).lower() == CAPTIONS_NAME:
+                    captions = local
+        if captions and os.path.isfile(captions):
             self._step("push", f"{COLLECTION}/{CAPTIONS_NAME}")
             self._write_file(captions, f"{COLLECTION}/{CAPTIONS_NAME}")
         else:
@@ -763,7 +821,7 @@ class ThemeManager:
         self._step("revision", REVISION_NAME)
         self._write_revision()
         if restart:
-            self._step("restart_launcher", PKG)
+            self._step("restart_launcher", self.pkg)
             if not self.restart_launcher():
                 raise Exception("Không khởi động lại launcher (adb shell timeout hoặc lỗi am/settings)")
         self._step("done", name)
@@ -809,7 +867,7 @@ class ThemeManager:
         return staged
 
     def _overlay_file_exists(self, rel: str, *, timeout_s: float = 30.0) -> bool:
-        target = f"{HOME_DIR}/{rel}"
+        target = f"{self.home_dir}/{rel}"
         out = self._shell(
             f"[ -f {target} ] && echo yes || echo no", timeout_s=timeout_s
         ).strip()
@@ -817,7 +875,7 @@ class ThemeManager:
 
     def _put_staged_overlay(self, staged: str, rel: str, *, io_timeout: float) -> None:
         """Write staged bytes into the launcher overlay (provider, then cp)."""
-        target = f"{HOME_DIR}/{rel}"
+        target = f"{self.home_dir}/{rel}"
         self._shell(
             f"mkdir -p $(dirname {target}) 2>/dev/null; rm -f {target} 2>/dev/null",
             timeout_s=io_timeout,
@@ -825,7 +883,7 @@ class ThemeManager:
         provider_out = ""
         if self.provider_supported():
             provider_out = self._shell(
-                f"content write --uri {THEME_URI}/{rel} < {staged} 2>&1",
+                f"content write --uri {self.theme_uri}/{rel} < {staged} 2>&1",
                 timeout_s=io_timeout,
             ).strip()
             if self._overlay_file_exists(rel, timeout_s=io_timeout):
@@ -846,7 +904,7 @@ class ThemeManager:
         hint = cp_out[:200] if cp_out else (provider_out[:200] if provider_out else "")
         if not self.provider_supported():
             prefix = (
-                "CleanYourTV trên TV thiếu ThemeProvider (cần bản launcher mới) "
+                "Launcher trên TV thiếu ThemeProvider (cần bản launcher mới) "
                 "hoặc TV chặn ghi thư mục Android/data. "
             )
         else:
@@ -882,20 +940,20 @@ class ThemeManager:
                     pass
 
     def _delete_file(self, rel: str) -> None:
-        target = f"{HOME_DIR}/{rel}"
+        target = f"{self.home_dir}/{rel}"
         self._shell(
             f"rm -f {target} 2>/dev/null; "
-            f"content delete --uri {THEME_URI}/{rel} 2>/dev/null"
+            f"content delete --uri {self.theme_uri}/{rel} 2>/dev/null"
         )
 
     def _clear_collection(self) -> None:
-        self._shell(f"mkdir -p {HOME_DIR}/{COLLECTION} 2>/dev/null")
+        self._shell(f"mkdir -p {self.home_dir}/{COLLECTION} 2>/dev/null")
         self._shell(
-            f"rm -f {HOME_DIR}/{COLLECTION}/*.jpg {HOME_DIR}/{COLLECTION}/*.jpeg "
-            f"{HOME_DIR}/{COLLECTION}/*.png {HOME_DIR}/{COLLECTION}/*.webp "
-            f"{HOME_DIR}/{COLLECTION}/*.JPG {HOME_DIR}/{COLLECTION}/*.JPEG "
-            f"{HOME_DIR}/{COLLECTION}/*.PNG {HOME_DIR}/{COLLECTION}/*.WEBP 2>/dev/null; "
-            f"content delete --uri {THEME_URI}/{COLLECTION} 2>/dev/null"
+            f"rm -f {self.home_dir}/{COLLECTION}/*.jpg {self.home_dir}/{COLLECTION}/*.jpeg "
+            f"{self.home_dir}/{COLLECTION}/*.png {self.home_dir}/{COLLECTION}/*.webp "
+            f"{self.home_dir}/{COLLECTION}/*.JPG {self.home_dir}/{COLLECTION}/*.JPEG "
+            f"{self.home_dir}/{COLLECTION}/*.PNG {self.home_dir}/{COLLECTION}/*.WEBP 2>/dev/null; "
+            f"content delete --uri {self.theme_uri}/{COLLECTION} 2>/dev/null"
         )
 
     def _write_revision(self) -> None:
@@ -917,17 +975,17 @@ class ThemeManager:
             # both be on the enabled list; a force stop or firmware reset often leaves only one.
             "cur=$(settings get secure enabled_accessibility_services); "
             '[ "$cur" = null ] && cur=""; '
-            f'for s in HomeKeyService InputKeyService; do case "$cur" in *{PKG}/.$s*) ;; '
-            f'*) cur="${{cur:+$cur:}}{PKG}/.$s" ;; esac; done; '
+            f'for s in HomeKeyService InputKeyService; do case "$cur" in *{self.component_prefix}$s*) ;; '
+            f'*) cur="${{cur:+$cur:}}{self.component_prefix}$s" ;; esac; done; '
             'settings put secure enabled_accessibility_services "$cur"; '
             "settings put secure accessibility_enabled 1; "
             "a=$(settings get secure enabled_accessibility_services); "
-            f"am force-stop {PKG}; "
+            f"am force-stop {self.pkg}; "
             "case \"$(cmd package resolve-activity --brief -a android.intent.action.MAIN "
-            f"-c android.intent.category.HOME | tail -n 1)\" in {PKG}/*) "
+            f"-c android.intent.category.HOME | tail -n 1)\" in {self.pkg}/*) "
             "am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null ;; "
-            f"*) am start -n {PKG}/.MainActivity >/dev/null ;; esac; "
-            f"case \"$a\" in *{PKG}*) "
+            f"*) am start -n {self.component_prefix}MainActivity >/dev/null ;; esac; "
+            f"case \"$a\" in *{self.pkg}*) "
             'sleep 1; settings put secure enabled_accessibility_services "$a"; '
             "settings put secure accessibility_enabled 1; sleep 1; "
             "settings put secure enabled_accessibility_services ''; "

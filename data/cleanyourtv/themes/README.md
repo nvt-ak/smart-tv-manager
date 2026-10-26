@@ -182,3 +182,19 @@ Open a PR with a new folder here containing:
 Then add a row to the table above with the screenshot, the same way as the others. Keep the dock list
 generic (the big streaming apps) unless the theme is for a specific TV, and say which TV you tried it on
 in the PR description.
+
+## Themes added by Smart TV Manager
+
+These live beside the upstream themes but are drawn by `scripts/make_theme_wallpapers.py` (original art,
+no licensing question). Their `screenshot.jpg` is a rendered preview, not a TV capture. Design notes,
+limits and the backlog are in [DESIGN.md](DESIGN.md).
+
+| Theme | What it does |
+|---|---|
+| `viet-scenes/` | Six Vietnamese night and dusk scenes (Ha Long, Sa Pa, Hoi An, Mekong, Ho Guom, Da Lat), a new one every 30 minutes, with Vietnamese captions |
+| `cinema-noir/` | Near-black room with a projector beam, cinematic top shelf, one round gear for the top bar |
+| `zen-ink/` | Ink-wash moon and mist, three apps in the dock, no glow, no overshoot |
+| `kids-cosmos/` | Planets and stars, three large columns, app names always shown, Play Store hidden from Home |
+| `synthwave/` | Neon sunset over a perspective grid, horizon glow in each app's colour |
+| `ops-console/` | Six columns, CPU/RAM line, app library, faint code rain |
+| `daylight-sky/` | No picture: the launcher's own time-of-day sky at 70% |

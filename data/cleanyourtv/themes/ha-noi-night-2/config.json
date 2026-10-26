@@ -1,0 +1,39 @@
+{
+  "dock_apps": [
+    "com.google.android.youtube.tv",
+    "com.teamsmart.videomanager.tv",
+    "com.netflix.ninja",
+    "com.spotify.tv.android",
+    "com.fplay.activity",
+    "com.android.vending",
+    "com.android.tv.settings"
+  ],
+  "background_color": "#050A1A",
+  "wallpaper": true,
+  "columns": 1,
+  "rows_below_dock": 0,
+  "dock_row": false,
+  "dock_title": false,
+  "dashboard": true,
+  "design_frame": true,
+  "design_profile": "hanoi2",
+  "icon_only_buttons": true,
+  "show_inputs_pill": false,
+  "ambient_glow": false,
+  "focus_overshoot": false,
+  "home_idle_clock_minutes": 15,
+  "app_library": true,
+  "tagline": "Một ngày an yên\nlà một ngày tốt đẹp hơn.",
+  "corner_bottom": "Việt Nam tươi đẹp mỗi ngày",
+  "corner_right": "Công nghệ kết nối những điều tốt đẹp",
+  "weather_city": "Hà Nội",
+  "app_subtitles": [
+    "com.google.android.youtube.tv=Xem video bạn yêu thích",
+    "com.teamsmart.videomanager.tv=YouTube không quảng cáo",
+    "com.netflix.ninja=Giải trí không giới hạn",
+    "com.spotify.tv.android=Âm nhạc cho mọi khoảnh khắc",
+    "com.fplay.activity=Truyền hình, thể thao, phim truyện",
+    "com.android.vending=Kho ứng dụng Google Play",
+    "com.android.tv.settings=Tùy chỉnh thiết bị"
+  ]
+}

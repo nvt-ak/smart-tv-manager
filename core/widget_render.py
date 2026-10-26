@@ -349,6 +349,11 @@ def render_widgets(
             canvas = _cover(im.convert("RGB"), size)
     else:
         canvas = _solid_background(size, bg_color) if bg_color else _fallback_background(size)
+    if data.get("weather") or data.get("lunar") or data.get("fx"):
+        from . import widget_cards  # dashboard layout: weather, lunar calendar, prices
+
+        widget_cards.draw_dashboard(canvas, data, s)
+        return canvas
     rx0, ry0, rx1, ry1 = (round(v * s) for v in region)
     gap = round(GAP * s)
     gold, fuel = data.get("gold"), data.get("fuel")

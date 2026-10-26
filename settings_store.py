@@ -125,3 +125,18 @@ def public_settings() -> dict:
         "openai_base_url": get_openai_base_url(),
         "home_widgets": get_home_widgets(),
     }
+
+
+def get_launcher_sha(host: str) -> str:
+    """SHA-256 of the SmartTV Home APK this app last installed on `host` ('' if never)."""
+    rec = load().get("launcher_installed")
+    return str(rec.get(host, "")) if isinstance(rec, dict) else ""
+
+
+def set_launcher_sha(host: str, sha: str) -> None:
+    data = load()
+    rec = data.get("launcher_installed")
+    rec = rec if isinstance(rec, dict) else {}
+    rec[host] = sha
+    data["launcher_installed"] = rec
+    save(data)

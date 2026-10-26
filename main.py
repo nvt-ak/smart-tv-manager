@@ -23,6 +23,8 @@ from core import home_widgets
 from core.tv_guard import TvGuard, GuardError
 import settings_store
 import shutil
+import subprocess
+import sys
 import base64
 import json
 import os
@@ -320,11 +322,11 @@ class Api:
         if keycode == 3:
             # `input keyevent 3` is injected, so it bypasses Gathin's HomeKeyService and the
             # firmware routes it to the stock launcher. Open Gathin directly when installed.
-            pkg = LauncherDetector.GATHIN_PKG
+            pkgs = " ".join(LauncherDetector.PACKAGES)
             cmd = (
-                f"pm path {pkg} >/dev/null 2>&1 && "
+                f"for p in {pkgs}; do pm path $p >/dev/null 2>&1 && "
                 f"am start -a android.intent.action.MAIN -c android.intent.category.HOME "
-                f"-n {pkg}/.MainActivity >/dev/null 2>&1 || input keyevent 3"
+                f"-n $p/com.gathin.tvhome.MainActivity >/dev/null 2>&1 && exit 0; done; input keyevent 3"
             )
         key = f"{host}:{int(port)}"
         lock = self._key_locks.setdefault(key, threading.Lock())
@@ -371,6 +373,76 @@ class Api:
                 return {"output": out.strip()}
             except Exception as e:
                 raise self._adb_shell_error(host, port, e) from e
+
+    @staticmethod
+    def screenshots_dir() -> str:
+        d = os.path.join(os.path.expanduser("~"), ".smarttv-manager", "screenshots")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def capture_screenshot(self, host, port=5555):
+        """Capture the TV screen, pull the PNG to ~/.smarttv-manager/screenshots and return it.
+
+        Live TV, HDMI inputs and some streaming apps give a black frame: that is the TV, not an error.
+        """
+        remote = "/data/local/tmp/smarttvmanager-shot.png"
+        name = time.strftime("tv_%Y%m%d_%H%M%S") + ".png"
+        local = os.path.join(self.screenshots_dir(), name)
+        with self._dev_op_lock(host, port):
+            try:
+                dev = self._get_dev(host, int(port))
+                out = adb_client.run_shell(dev, f"rm -f {remote}; screencap -p {remote} 2>&1; ls -l {remote} 2>&1") or ""
+                if "No such file" in out:
+                    raise Exception("TV không chụp được màn hình: " + out.strip()[:200])
+                timeout = adb_client.transfer_timeout_s(8 * 1024 * 1024)
+                dev.pull(remote, local, transport_timeout_s=timeout, read_timeout_s=timeout)
+                try:
+                    adb_client.run_shell(dev, f"rm -f {remote}")
+                except Exception:
+                    pass
+            except Exception as e:
+                if self._adb_timeout_error(e):
+                    self._drop_dev(host, port)
+                raise self._adb_shell_error(host, port, e) from e
+        if not os.path.isfile(local) or os.path.getsize(local) <= 0:
+            raise Exception("Không lấy được ảnh về máy (file rỗng).")
+        with open(local, "rb") as f:
+            data = f.read()
+        return {
+            "path": local,
+            "name": name,
+            "bytes": len(data),
+            "png_b64": base64.b64encode(data).decode("ascii"),
+        }
+
+    @staticmethod
+    def theme_shot_path(theme_id: str) -> str:
+        safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(theme_id or ""))[:80] or "theme"
+        d = os.path.join(os.path.expanduser("~"), ".smarttv-manager", "theme-shots")
+        os.makedirs(d, exist_ok=True)
+        return os.path.join(d, safe + ".jpg")
+
+    def capture_theme_screenshot(self, host, port=5555, theme_id="", delay_s=5):
+        """Wait for Home to redraw, capture the TV and keep a 1280x720 JPEG as that theme's real preview."""
+        time.sleep(max(0.0, min(float(delay_s), 15.0)))
+        shot = self.capture_screenshot(host, port)
+        from PIL import Image
+        out = self.theme_shot_path(theme_id)
+        with Image.open(shot["path"]) as im:
+            im.convert("RGB").resize((1280, 720), Image.LANCZOS).save(out, quality=82, optimize=True)
+        with open(out, "rb") as f:
+            jpg = base64.b64encode(f.read()).decode("ascii")
+        return {"path": out, "full_path": shot["path"], "jpg_b64": jpg}
+
+    def open_screenshots_folder(self):
+        d = self.screenshots_dir()
+        if sys.platform.startswith("win"):
+            os.startfile(d)  # noqa: S606 - a folder the app owns
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", d])
+        else:
+            subprocess.Popen(["xdg-open", d])
+        return {"path": d}
 
     def list_apps(self, host, port=5555):
         with self._dev_op_lock(host, port):
@@ -671,12 +743,12 @@ class Api:
                 elif action == "enable":
                     pm.enable(package)
                     return {"ok": True, "enabled": True}
-                elif action == "uninstall" and package == LauncherDetector.GATHIN_PKG:
+                elif action == "uninstall" and package in LauncherDetector.PACKAGES:
                     # Gỡ launcher đang làm Home: bật lại launcher gốc TRƯỚC để TV không mất màn hình chính.
                     tm = ThemeManager(pm.device)
                     stock = tm.enable_stock_launcher()
                     if not stock.get("ok"):
-                        raise Exception("Không bật lại được launcher gốc nên không gỡ CleanYourTV (tránh TV mất Home).")
+                        raise Exception("Không bật lại được launcher gốc nên không gỡ SmartTV Home (tránh TV mất Home).")
                     pm.uninstall(package)
                     return {"ok": True, "uninstalled": True, "stock_restored": True}
                 elif action == "uninstall":
@@ -791,8 +863,29 @@ class Api:
     def get_gathin_build_prereqs(self):
         return launcher_builder.check_prereqs()
 
+    def check_launcher_update(self, host, port=5555):
+        """Compare the newest published SmartTV Home APK with the one this app last installed on `host`."""
+        try:
+            latest = launcher_download.latest_sha()
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:200]}
+        recorded = settings_store.get_launcher_sha(host)
+        return {"ok": True, "latest": latest, "installed": recorded,
+                "update_available": bool(latest) and recorded != latest}
+
+    def prefetch_launcher(self):
+        """Fetch the newest APK into the cache in the background, so installing it later is instant."""
+        def run():
+            try:
+                launcher_download.download_apk(lambda *_a: None)
+            except Exception:
+                pass  # offline or release missing: the install flow reports it when the person asks
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"started": True}
+
     def build_and_install_gathin_async(self, host, port=5555, mode="build"):
-        """Clone CleanYourTV, build bằng Gradle rồi cài lên TV. Tiến trình đọc bằng apply_gathin_theme_job."""
+        """Clone smtv-home, build bằng Gradle rồi cài lên TV. Tiến trình đọc bằng apply_gathin_theme_job."""
         job_id = uuid.uuid4().hex
         job = {"id": job_id, "status": "running", "steps": [], "error": None, "result": None,
                "log_path": THEME_APPLY_LOG}
@@ -806,7 +899,7 @@ class Api:
         def run():
             try:
                 tv_sdk = None
-                if mode != "download":
+                if mode not in ("download", "resync"):
                     step("build_start", "kiểm tra Git / JDK / Android SDK")
                 try:
                     with self._dev_op_lock(host, port):
@@ -814,28 +907,75 @@ class Api:
                     tv_sdk = int(re.sub(r"\D", "", out or "") or 0) or None
                 except Exception:
                     tv_sdk = None
-                if mode == "download":
-                    apk = launcher_download.download_apk(step)
+                if mode in ("download", "resync"):
+                    # resync: fetch the published APK again even when the cached copy looks current, then reinstall it.
+                    apk = launcher_download.download_apk(step, force=(mode == "resync"))
                     info = ApkAnalyzer().analyze(apk)
-                    if info.get("package") != LauncherDetector.GATHIN_PKG:
-                        raise Exception(f"APK tải về không phải CleanYourTV ({info.get('package')})")
+                    if info.get("package") not in LauncherDetector.PACKAGES:
+                        raise Exception(f"APK tải về không phải SmartTV Home ({info.get('package')})")
+                    apk_sha = launcher_download.cached_sha()
                     step("install_start", "đẩy APK lên TV")
                 else:
                     apk = launcher_builder.build_apk(step, tv_sdk=tv_sdk)
                     step("install_start", "đẩy APK vừa build lên TV")
+                migrated = False
                 with self._dev_op_lock(host, port):
                     dev = self._get_dev(host, port)
                     try:
-                        res = ApkInstaller(dev).install(
-                            apk, progress_cb=lambda m: step("install", m),
-                            reinstall=True, allow_downgrade=False, grant_permissions=True,
-                        )
+                        try:
+                            res = ApkInstaller(dev).install(
+                                apk, progress_cb=lambda m: step("install", m),
+                                reinstall=True, allow_downgrade=False, grant_permissions=True,
+                            )
+                        except Exception as exc:
+                            if "Chữ ký khác" not in str(exc):
+                                raise
+                            # The installed build is signed with another key (CI builds without a stored keystore get a
+                            # fresh one). Android refuses the update, so replace it: give Home back to the stock launcher
+                            # first (a TV with no Home at all is the one thing this must never cause), then reinstall.
+                            migrated = True
+                            step("signature_mismatch", "bản cũ ký bằng khóa khác: bật lại launcher gốc, gỡ bản cũ, cài lại")
+                            tm = ThemeManager(dev)
+                            tm.enable_stock_launcher()
+                            from core.launcher_detector import LauncherDetector as _LD
+                            for pkg in _LD.PACKAGES:
+                                out = (tm._shell(f"pm uninstall {pkg} 2>&1") or "").strip()
+                                if "Unknown package" not in out and "Success" not in out and "not installed" not in out.lower():
+                                    step("uninstall", out[:200])
+                            res = ApkInstaller(dev).install(
+                                apk, progress_cb=lambda m: step("install", m),
+                                reinstall=True, allow_downgrade=False, grant_permissions=True,
+                            )
+                            # A fresh install has no data folder and its provider never ran: start it once so the
+                            # theme push that follows has somewhere to write.
+                            step("warm_up", "khởi động launcher mới một lần")
+                            try:
+                                tm.restart_launcher()
+                                time.sleep(3)
+                            except Exception as warm_exc:
+                                step("warm_up_failed", str(warm_exc)[:200])
                     except Exception:
                         self._drop_dev(host, port)
                         raise
                 if res.get("ok") is False:
                     raise Exception(res.get("output") or "pm install không thành công")
                 step("install_done", res.get("output") or "Success")
+                if mode in ("download", "resync") and apk_sha:
+                    settings_store.set_launcher_sha(host, apk_sha)
+                if migrated:
+                    # The old install took the theme with it: put the last applied theme back (this also sets Home
+                    # and disables the stock launcher again, with the usual Home guard).
+                    last = settings_store.load().get("last_theme_id")
+                    if last:
+                        step("reapply_theme", str(last))
+                        try:
+                            reapply = self._apply_gathin_theme_impl(host, port, last, job_id, job["steps"])
+                            step("reapply_done", "đã áp lại theme" if reapply else "")
+                        except Exception as re_exc:
+                            step("reapply_failed", str(re_exc)[:300])
+                            job["warning"] = f"Đã cài lại launcher nhưng chưa áp lại được theme: {re_exc}"
+                    else:
+                        step("reapply_skipped", "chưa có theme nào từng áp: chọn theme rồi bấm Áp dụng")
                 job["result"] = res
                 job["status"] = "done"
             except Exception as exc:
@@ -989,14 +1129,14 @@ class Api:
         return self._launcher_op(host, port, run)
 
     def set_default_home(self, host, port=5555):
-        """Make com.gathin.tvhome the default Home (what the remote's HOME key opens) and verify."""
-        pkg = LauncherDetector.GATHIN_PKG
-        attempts = [
-            f"cmd package set-home-activity {pkg}/{pkg}.MainActivity",
-            f"cmd role add-role-holder --user 0 android.app.role.HOME {pkg}",
-        ]
+        """Make the installed launcher the default Home (what the remote's HOME key opens) and verify."""
 
         def run(tm):
+            pkg = tm.pkg
+            attempts = [
+                f"cmd package set-home-activity {pkg}/com.gathin.tvhome.MainActivity",
+                f"cmd role add-role-holder --user 0 android.app.role.HOME {pkg}",
+            ]
             log = []
             state = None
             for cmd in attempts:
@@ -1049,15 +1189,23 @@ class Api:
 
     def diagnose_home(self, host, port=5555):
         """Read-only dump to see how HOME is routed on this TV (copyable in the UI)."""
-        pkg = LauncherDetector.GATHIN_PKG
+        pkg = "|".join(LauncherDetector.PACKAGES)
         probes = [
             ("HOME candidates", "cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME 2>&1"),
             ("resolve HOME", "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME 2>&1"),
             ("enabled_accessibility_services", "settings get secure enabled_accessibility_services 2>&1"),
             ("accessibility_enabled", "settings get secure accessibility_enabled 2>&1"),
-            ("gathin accessibility services", f"cmd package query-services --brief -a android.accessibilityservice.AccessibilityService 2>&1 | grep -i {pkg}"),
+            ("gathin accessibility services", f"cmd package query-services --brief -a android.accessibilityservice.AccessibilityService 2>&1 | grep -iE '{pkg}'"),
             ("gathin in dumpsys accessibility", f"dumpsys accessibility 2>&1 | grep -iE '{pkg}|requestFilterKeyEvents|FLAG_REQUEST_FILTER' | head -15"),
             ("sdk / brand", "getprop ro.build.version.sdk; getprop ro.product.brand; getprop ro.product.model"),
+            ("launcher crashes (logcat -b crash)", "logcat -d -b crash 2>&1 | tail -60"),
+            ("launcher log lines", f"logcat -d 2>&1 | grep -E 'AndroidRuntime|FATAL|ANR in|{pkg}' | tail -60"),
+            ("installed launchers", "pm list packages --show-versioncode 2>&1 | grep -E 'smtv_manager|gathin'"),
+            ("old CleanYourTV files (com.gathin.tvhome)", "ls -la /sdcard/Android/data/com.gathin.tvhome/files 2>&1 | head -20; cat /sdcard/Android/data/com.gathin.tvhome/files/config.json 2>&1 | head -40"),
+            ("launcher package", f"dumpsys package {LauncherDetector.SMTV_PKG} 2>&1 | grep -E 'versionName|versionCode|lastUpdateTime|firstInstallTime|enabled=' | head -8"),
+            ("focused app", "dumpsys activity activities 2>&1 | grep -E 'mFocusedApp|ResumedActivity' | head -4"),
+            ("disabled launchers", "pm list packages -d 2>&1 | grep -i launcher"),
+            ("theme files on the TV", f"ls -la /sdcard/Android/data/{LauncherDetector.SMTV_PKG}/files 2>&1 | head -20; cat /sdcard/Android/data/{LauncherDetector.SMTV_PKG}/files/config.json 2>&1 | head -40"),
         ]
 
         def run(tm):
@@ -1085,9 +1233,13 @@ class Api:
         result = []
         for t in themes:
             screenshot_b64 = None
-            if t.get("screenshot") and os.path.exists(t["screenshot"]):
+            live = self.theme_shot_path(t["id"])
+            has_live = os.path.isfile(live)
+            # A capture taken from the real TV after applying the theme beats the bundled preview.
+            shot_path = live if has_live else t.get("screenshot")
+            if shot_path and os.path.exists(shot_path):
                 try:
-                    with open(t["screenshot"], "rb") as f:
+                    with open(shot_path, "rb") as f:
                         screenshot_b64 = base64.b64encode(f.read()).decode("ascii")
                 except Exception:
                     pass
@@ -1099,6 +1251,7 @@ class Api:
                 "has_wallpaper": bool(t.get("wallpaper")),
                 "wallpapers_count": len(t.get("wallpapers") or []),
                 "screenshot": screenshot_b64,
+                "screenshot_live": has_live,
                 "config": t.get("config") or {},
                 "valid": check["ok"],
                 "errors": check["errors"],
@@ -1203,12 +1356,13 @@ class Api:
                 keys[k] = merged
         return keys
 
-    def _wants_widget_wallpaper(self):
+    def _wants_widget_wallpaper(self, theme=None):
+        # A theme with the launcher's own dashboard draws and fetches the cards on the TV: baking them into the
+        # wallpaper as well would show every card twice.
+        if theme and (theme.get("config") or {}).get("dashboard"):
+            return False
         cfg = settings_store.get_home_widgets()
-        return bool(
-            cfg.get("enabled") and cfg.get("widget_wallpaper")
-            and (cfg.get("show_gold") or cfg.get("show_fuel"))
-        )
+        return home_widgets.wallpaper_mode(cfg)
 
     @staticmethod
     def _composite_theme_widgets(theme, data, workdir):
@@ -1279,11 +1433,11 @@ class Api:
         on_step("start", f"{theme.get('name') or theme_id} → {host}:{port}")
         widget_tmp = None
         widget_skip = None
-        if self._wants_widget_wallpaper():
+        if self._wants_widget_wallpaper(theme):
             try:
-                on_step("widgets_fetch", "lấy dữ liệu vàng / xăng dầu")
+                on_step("widgets_fetch", "lấy dữ liệu thời tiết, lịch âm, giá cả")
                 wdata = home_widgets.widgets_data(settings_store.get_home_widgets())
-                if wdata.get("gold") or wdata.get("fuel"):
+                if any(wdata.get(k) for k in ("gold", "fuel", "weather", "lunar", "fx")):
                     widget_tmp = tempfile.mkdtemp(prefix="stv-widgets-")
                     on_step("widgets_render", "vẽ widget vào wallpaper")
                     theme = self._composite_theme_widgets(theme, wdata, widget_tmp)
@@ -1310,13 +1464,13 @@ class Api:
             try:
                 adb_client.ensure_connected(dev)
                 try:
-                    gathin_ok = LauncherDetector(dev).is_installed(LauncherDetector.GATHIN_PKG)
+                    gathin_ok = LauncherDetector(dev).installed_launcher() is not None
                 except Exception:
                     gathin_ok = None  # không hỏi được thì không đoán là chưa cài
                 if gathin_ok is False:
                     on_step("gathin_missing", LauncherDetector.GATHIN_PKG)
                     raise Exception(
-                        "GATHIN_NOT_INSTALLED: TV chưa cài CleanYourTV (com.gathin.tvhome). "
+                        "GATHIN_NOT_INSTALLED: TV chưa cài launcher SmartTV Home (com.smtv_manager.home). "
                         "Chưa sao lưu hay ghi gì lên TV."
                     )
                 tm = ThemeManager(dev, on_step=on_step)
@@ -1325,6 +1479,9 @@ class Api:
                 backup = tm.backup_config(backup_root, pull_assets=False)
                 on_step("backup_done", backup.get("time") or "")
                 widget_patch, widget_sidecar, _widget_prev = self._home_widgets_tv_bundle()
+                if widget_patch and (theme.get("config") or {}).get("dashboard"):
+                    # The dashboard draws its own numbers; the ticker text must not replace the theme's greeting name.
+                    widget_patch = {k: v for k, v in widget_patch.items() if k != "greeting_name"}
                 profile = self._device_profile(dev)
                 on_step("remote_profile", profile or "mặc định")
                 widget_patch = {
@@ -1494,6 +1651,7 @@ class Api:
             "gold_shown": min(len(gold_items), widget_render.GOLD_MAX),
             "fuel_total": len(fuel_items),
             "fuel_shown": min(len(fuel_items), widget_render.FUEL_MAX),
+            "cards": [k for k in ("weather", "lunar", "gold", "fuel", "fx") if data.get(k)],
         }
 
     def apply_home_widgets_to_tv(self, host, port=5555, restart=True, theme_id=""):
@@ -1530,7 +1688,7 @@ class Api:
             gathin = LauncherDetector(dev).detect_gathin()
             if not gathin.get("installed"):
                 raise Exception(
-                    "TV chưa cài CleanYourTV (com.gathin.tvhome). "
+                    "TV chưa cài launcher SmartTV Home (com.smtv_manager.home). "
                     "Widget Home chỉ áp dụng được khi đã cài launcher này."
                 )
             tm = ThemeManager(dev)
@@ -1637,6 +1795,7 @@ if __name__ == "__main__":
 
     api = Api()
     atexit.register(api.shutdown)
+    api.prefetch_launcher()
     root = paths.app_root()
     ui_path = os.path.join(root, "ui", "index.html")
     icon_path = os.path.join(root, "ui", "assets", "app-icon.png")

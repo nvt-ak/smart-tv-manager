@@ -366,7 +366,7 @@ const KNOWN_APP_NAMES = {
   'com.android.chrome': 'Chrome',
   'com.android.tv.settings': 'Cài đặt Android TV',
   'com.android.settings': 'Cài đặt',
-  'com.gathin.tvhome': 'CleanYourTV (Gathin Home)',
+  'com.smtv_manager.home': 'SmartTV Home',
   'au.com.stan.and': 'Stan',
   'tv.wuaki.apptv': 'Rakuten TV',
   'com.rophim.android.tv': 'RoPhim',
@@ -605,7 +605,7 @@ function renderApps() {
 
     const pkgAttr = escapeAttr(app.package);
     const canOpen = app.enabled && app.type !== 'disabled';
-    const isGathin = app.package === 'com.gathin.tvhome';
+    const isGathin = isHomeLauncherPkg(app.package);
     const canUninstall = isGathin || (app.type === 'user' && !app.protected && !app.is_home && app.can_disable !== false);
     const uninstallBtn = canUninstall
       ? `<button type="button" class="app-act app-act--danger" data-act="uninstall" data-pkg="${pkgAttr}" title="Gỡ cài đặt hẳn khỏi TV">Gỡ cài đặt</button>`
@@ -1885,7 +1885,7 @@ if (appsList) {
         showAppsToast('Đang có thao tác ADB — hãy Hủy hoặc đợi xong', 'info');
         return;
       }
-      const gathinNote = pkg === 'com.gathin.tvhome'
+      const gathinNote = isHomeLauncherPkg(pkg)
         ? '\n\nApp sẽ bật lại launcher gốc của TV trước khi gỡ để TV vẫn có màn hình Home. Theme/widget đã áp dụng sẽ mất.'
         : '';
       if (!confirm(`Gỡ cài đặt ${friendlyPkgName(pkg)} (${pkg}) khỏi TV?\n\nDữ liệu của app sẽ bị xóa và không hoàn tác được.${gathinNote}`)) return;
@@ -2458,15 +2458,35 @@ document.getElementById('remoteSendKeycodeBtn')?.addEventListener('click', async
 
 document.getElementById('remoteScreencapBtn')?.addEventListener('click', async () => {
   if (!activeDevice) return;
-  const fn = `smarttvmanager_${Date.now()}.png`;
-  const cmd = `screencap -p /sdcard/${fn}`;
+  const cmd = 'screencap -p → máy tính';
+  const btn = document.getElementById('remoteScreencapBtn');
   logRemoteAdb(cmd, '...');
+  if (btn) btn.disabled = true;
   try {
-    await getApi().device_shell(activeDevice.host, activeDevice.port, cmd);
-    logRemoteAdb(cmd, `/sdcard/${fn}`, 'ok');
-    showRemoteToast(`Đã chụp /sdcard/${fn}`, 'photo_camera');
+    const shot = await getApi().capture_screenshot(activeDevice.host, activeDevice.port);
+    logRemoteAdb(cmd, `${shot.path} (${Math.round(shot.bytes / 1024)} KB)`, 'ok');
+    showRemoteToast(`Đã lưu ${shot.name}`, 'photo_camera');
+    const box = document.getElementById('remoteShotPreview');
+    const img = document.getElementById('remoteShotImg');
+    const pathEl = document.getElementById('remoteShotPath');
+    if (box && img) {
+      img.src = `data:image/png;base64,${shot.png_b64}`;
+      if (pathEl) pathEl.textContent = shot.path;
+      box.hidden = false;
+    }
   } catch (err) {
     logRemoteAdb(cmd, String(err), 'err');
+    showRemoteToast('Chụp màn hình thất bại', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+});
+
+document.getElementById('remoteShotFolderBtn')?.addEventListener('click', async () => {
+  try {
+    await getApi().open_screenshots_folder();
+  } catch (err) {
+    logRemoteAdb('open screenshots folder', String(err), 'err');
   }
 });
 
@@ -3068,6 +3088,11 @@ function readHomeWidgetsFormPayload() {
     show_name: document.getElementById('homeWidgetShowName')?.checked ?? true,
     show_gold: document.getElementById('homeWidgetShowGold')?.checked ?? true,
     show_fuel: document.getElementById('homeWidgetShowFuel')?.checked ?? true,
+    show_weather: document.getElementById('homeWidgetShowWeather')?.checked ?? true,
+    show_lunar: document.getElementById('homeWidgetShowLunar')?.checked ?? true,
+    show_fx: document.getElementById('homeWidgetShowFx')?.checked ?? true,
+    weather_city: document.getElementById('homeWidgetCity')?.value || 'Hà Nội',
+    widget_layout: document.getElementById('homeWidgetLayout')?.value === 'tall' ? 'tall' : 'compact',
     show_system_stats: document.getElementById('homeWidgetShowStats')?.checked ?? false,
     always_show_app_names: document.getElementById('homeWidgetShowAppNames')?.checked ?? false,
     module_cards: document.getElementById('homeWidgetModuleCards')?.checked ?? true,
@@ -3090,6 +3115,11 @@ function fillHomeWidgetsForm(cfg) {
   set('homeWidgetShowName', c.show_name !== false);
   set('homeWidgetShowGold', c.show_gold !== false);
   set('homeWidgetShowFuel', c.show_fuel !== false);
+  set('homeWidgetShowWeather', c.show_weather !== false);
+  set('homeWidgetShowLunar', c.show_lunar !== false);
+  set('homeWidgetShowFx', c.show_fx !== false);
+  set('homeWidgetCity', c.weather_city || 'Hà Nội');
+  set('homeWidgetLayout', c.widget_layout === 'tall' ? 'tall' : 'compact');
   set('homeWidgetShowStats', c.show_system_stats);
   set('homeWidgetShowAppNames', c.always_show_app_names);
   set('homeWidgetModuleCards', c.module_cards !== false);
@@ -3197,7 +3227,7 @@ async function loadHomeThemes(opts = {}) {
   const run = async () => {
     if (btn) setButtonLoading(btn, true, force ? 'Đang tải lại...' : 'Đang tải...');
     setHomeStatus(
-      force ? 'Đang tải lại danh sách theme...' : 'Đang tải danh sách theme từ cleanyourtv...'
+      force ? 'Đang tải lại danh sách theme...' : 'Đang tải danh sách theme...'
     );
     if (force && homeThemesGrid) homeThemesGrid.innerHTML = '';
     try {
@@ -3257,6 +3287,17 @@ function guessActiveThemeId(config) {
   return null;
 }
 
+/** Launchers the Theme Engine can drive: only the smtv-home fork. */
+const HOME_LAUNCHER_PKGS = ['com.smtv_manager.home'];
+
+function isHomeLauncherPkg(pkg) {
+  return HOME_LAUNCHER_PKGS.includes(pkg);
+}
+
+function launcherName(pkg) {
+  return pkg === 'com.smtv_manager.home' ? 'SmartTV Home' : 'SmartTV Home';
+}
+
 function renderHomeDetect(info) {
   const badge = document.getElementById('homeDetectBadge');
   const pkgEl = document.getElementById('homeKpiPackage');
@@ -3277,20 +3318,22 @@ function renderHomeDetect(info) {
     }
   }
   if (pkgEl) pkgEl.textContent = info.pkg || '—';
+  const chipEl = document.getElementById('homePkgChip');
+  if (chipEl && info.pkg) chipEl.textContent = info.pkg;
   if (instEl) {
     if (info.installed === null || info.installed === undefined) {
       instEl.textContent = 'Không xác định (TV chưa phản hồi)';
       instEl.title = info.error || '';
       instEl.className = 'home-kpi-value';
     } else {
-      instEl.textContent = info.installed ? 'Đã cài' : 'Chưa cài';
+      instEl.textContent = info.installed ? 'Đã cài' : 'Chưa cài — cần cài SmartTV Home (com.smtv_manager.home)';
       instEl.title = '';
       instEl.className = `home-kpi-value ${info.installed ? 'ok' : 'err'}`;
     }
   }
   if (defEl) {
     if (info.is_default_home) {
-      defEl.textContent = 'CleanYourTV';
+      defEl.textContent = launcherName(info.pkg);
       defEl.className = 'home-kpi-value ok';
     } else {
       defEl.textContent = info.current_home
@@ -3334,7 +3377,7 @@ function renderActiveThemePanel(cur, matchedTheme) {
   populateWidgetThemeSelect();
 
   const displayName = inactive
-    ? 'Chưa áp dụng — CleanYourTV không phải launcher mặc định'
+    ? `Chưa áp dụng — ${launcherName(lc.pkg)} không phải launcher mặc định`
     : matchedTheme
     ? matchedTheme.name
     : keys.length
@@ -3346,7 +3389,7 @@ function renderActiveThemePanel(cur, matchedTheme) {
     descEl.textContent = inactive
       ? `Cấu hình ${matchedTheme ? `"${matchedTheme.name}"` : 'theme'} vẫn nằm trên TV nhưng Home đang là ${lc.current_home === 'com.google.android.apps.tv.launcherx' ? 'launcher gốc' : (lc.current_home || 'launcher khác')}, nên chưa hiển thị. Áp dụng lại theme để dùng.`
       : matchedTheme
-      ? `Khớp thư viện cleanyourtv · ${keys.length} khoá config`
+      ? `Khớp thư viện theme · ${keys.length} khoá config`
       : keys.length
         ? `${keys.length} khoá config trên TV — chưa khớp theme local`
         : 'Launcher chưa có config.json overlay.';
@@ -3366,13 +3409,14 @@ function renderActiveThemePanel(cur, matchedTheme) {
   if (thumb && placeholder) {
     const tvWall = cur.wallpaper_b64;
     const localShot = matchedTheme && matchedTheme.screenshot;
-    const previewB64 = tvWall || localShot;
+    const liveShot = matchedTheme && matchedTheme.screenshot_live ? localShot : null;
+    const previewB64 = liveShot || tvWall || localShot;
     if (previewB64) {
       thumb.src = `data:image/jpeg;base64,${previewB64}`;
       thumb.hidden = false;
       placeholder.hidden = true;
       if (resBadge) {
-        resBadge.textContent = tvWall ? 'Wallpaper trên TV' : 'Preview thư viện';
+        resBadge.textContent = liveShot ? 'Ảnh chụp thật từ TV' : tvWall ? 'Wallpaper trên TV' : 'Preview thư viện';
         resBadge.classList.add('has-preview');
       }
     } else {
@@ -3448,6 +3492,26 @@ function renderHomeThemeGrid() {
   }
 }
 
+/** A newer SmartTV Home APK is published: offer to download (SHA-256 checked) and install it. */
+async function offerLauncherUpdate() {
+  if (!activeDevice) return;
+  let up;
+  try {
+    up = await getApi().check_launcher_update(activeDevice.host, activeDevice.port);
+  } catch (_) {
+    return;
+  }
+  if (!up || !up.ok || !up.update_available) return;
+  setHomeStatus('Có bản SmartTV Home mới.');
+  if (!confirm('Có bản SmartTV Home mới trên GitHub (nvt-ak/smtv-home).\n\nTải về, kiểm tra SHA-256 và cập nhật lên TV?')) return;
+  try {
+    await buildInstallGathin('download');
+    setHomeStatus('Đã cập nhật SmartTV Home.');
+  } catch (err) {
+    setHomeStatus(`Cập nhật thất bại: ${err}`);
+  }
+}
+
 async function runHomeDetect(btn) {
   if (!activeDevice) {
     setHomeStatus('Vui lòng chọn thiết bị trước');
@@ -3458,7 +3522,8 @@ async function runHomeDetect(btn) {
   try {
     const res = await getApi().detect_launcher(activeDevice.host, activeDevice.port);
     renderHomeDetect(res.info || {});
-    setHomeStatus(res.info?.compatible ? 'Phát hiện com.gathin.tvhome.' : 'Chưa sẵn sàng gathin.tvhome.');
+    setHomeStatus(res.info?.compatible ? `Phát hiện ${res.info.pkg}.` : 'Chưa cài launcher hỗ trợ (com.smtv_manager.home).');
+    if (res.info?.compatible) await offerLauncherUpdate();
   } catch (err) {
     setHomeStatus(`Lỗi: ${err}`);
   }
@@ -3641,7 +3706,7 @@ function pickGathinApk() {
   });
 }
 
-/** TV chưa có CleanYourTV: hỏi, chọn APK, kiểm tra package rồi cài. Trả true nếu đã cài xong. */
+/** TV chưa có SmartTV Home: hỏi, chọn APK, kiểm tra package rồi cài. Trả true nếu đã cài xong. */
 async function pollInstallJob(jobId, log, t0) {
   let seen = 0;
   for (let i = 0; i < 4000; i += 1) {
@@ -3653,7 +3718,7 @@ async function pollInstallJob(jobId, log, t0) {
     seen = (st.steps || []).length;
     renderHomeApplyLog(log, { open: true, error: st.status === 'failed' ? st.error : null });
     if (st.status === 'done') {
-      showHomeToast(`Đã cài CleanYourTV (${Math.round((Date.now() - t0) / 1000)}s)`, 'download_done');
+      showHomeToast(`Đã cài SmartTV Home (${Math.round((Date.now() - t0) / 1000)}s)`, 'download_done');
       return true;
     }
     if (st.status === 'failed') throw new Error(st.error || 'Cài đặt thất bại');
@@ -3662,11 +3727,11 @@ async function pollInstallJob(jobId, log, t0) {
   throw new Error('Hết thời gian chờ.');
 }
 
-/** Tự clone + build CleanYourTV rồi cài; trả true nếu xong. */
+/** Tự clone + build SmartTV Home rồi cài; trả true nếu xong. */
 async function buildInstallGathin(mode = 'build') {
   const log = [];
   renderHomeApplyLog(log, { open: true });
-  setHomeStatus(mode === 'download' ? 'Đang tải CleanYourTV dựng sẵn...' : 'Đang build CleanYourTV từ mã nguồn...');
+  setHomeStatus(mode === 'download' || mode === 'resync' ? 'Đang tải SmartTV Home dựng sẵn...' : 'Đang build SmartTV Home từ mã nguồn...');
   const started = await getApi().build_and_install_gathin_async(activeDevice.host, activeDevice.port, mode);
   return pollInstallJob(started.job_id, log, Date.now());
 }
@@ -3674,8 +3739,8 @@ async function buildInstallGathin(mode = 'build') {
 async function offerInstallGathin() {
   if (!activeDevice) return false;
   if (confirm(
-    'TV này chưa cài CleanYourTV (com.gathin.tvhome) nên chưa thể áp dụng theme.\n\n' +
-    'Tải bản CleanYourTV dựng sẵn (build tự động từ mã nguồn upstream, có kiểm tra SHA-256) và cài lên TV?\n\n' +
+    'TV này chưa cài SmartTV Home (com.smtv_manager.home) nên chưa thể áp dụng theme.\n\n' +
+    'Tải bản SmartTV Home dựng sẵn (build tự động từ repo nvt-ak/smtv-home, có kiểm tra SHA-256) và cài lên TV?\n\n' +
     'OK = tải và cài · Hủy = tuỳ chọn khác (tự build / chọn file APK)'
   )) {
     try {
@@ -3692,20 +3757,20 @@ async function offerInstallGathin() {
   }
   if (pre && pre.ok) {
     if (confirm(
-      'TV này chưa cài CleanYourTV (com.gathin.tvhome) nên chưa thể áp dụng theme.\n\n' +
-      'Tự tải mã nguồn từ GitHub (Gathin23/cleanyourtv), build rồi cài lên TV?\n' +
+      'TV này chưa cài SmartTV Home (com.smtv_manager.home) nên chưa thể áp dụng theme.\n\n' +
+      'Tự tải mã nguồn từ GitHub (nvt-ak/smtv-home), build rồi cài lên TV?\n' +
       'Lần đầu có thể mất vài phút (Gradle tải thư viện).\n\n' +
       'OK = tự build và cài · Hủy = chọn file APK có sẵn'
     )) {
       return buildInstallGathin();
     }
-    if (!confirm('Chọn file APK CleanYourTV có sẵn để cài?')) return false;
+    if (!confirm('Chọn file APK SmartTV Home có sẵn để cài?')) return false;
   } else {
     const miss = pre && pre.missing && pre.missing.length ? pre.missing.map((m) => `• ${m}`).join('\n') : '• Không kiểm tra được công cụ build';
     if (!confirm(
-      'TV này chưa cài CleanYourTV (com.gathin.tvhome).\n\n' +
+      'TV này chưa cài SmartTV Home (com.smtv_manager.home).\n\n' +
       `Không thể tự build vì máy này còn thiếu:\n${miss}\n\n` +
-      'Chọn file APK CleanYourTV có sẵn để cài?'
+      'Chọn file APK SmartTV Home có sẵn để cài?'
     )) return false;
   }
   const file = await pickGathinApk();
@@ -3725,12 +3790,12 @@ async function offerInstallGathin() {
     r.readAsDataURL(file);
   });
   const info = await getApi().analyze_apk(file.name, b64, activeDevice.host, activeDevice.port);
-  if (info.package !== 'com.gathin.tvhome') {
-    alert(`File này là "${info.package || 'không rõ'}", không phải CleanYourTV (com.gathin.tvhome). Đã hủy cài đặt.`);
+  if (!isHomeLauncherPkg(info.package)) {
+    alert(`File này là "${info.package || 'không rõ'}", không phải launcher hỗ trợ (com.smtv_manager.home). Đã hủy cài đặt.`);
     return false;
   }
   addStep('apk_ok', `${info.package} ${info.version_name || ''}`.trim());
-  setHomeStatus('Đang đẩy APK và cài CleanYourTV...');
+  setHomeStatus('Đang đẩy APK và cài SmartTV Home...');
   const started = await getApi().install_apk_async(
     activeDevice.host, activeDevice.port, info._tmp_path, file.name, true, false, true
   );
@@ -3794,18 +3859,19 @@ async function applyTheme(id, btn, opts = {}) {
     await loadCurrentTheme();
     await loadHomeBackups();
     renderHomeThemeGrid();
+    await captureThemePreview(id, theme.name);
   } catch (err) {
     if (btn) setButtonLoading(btn, false);
     const msg = String(err);
     if (msg.includes('GATHIN_NOT_INSTALLED')) {
-      setHomeStatus('TV chưa cài CleanYourTV.');
+      setHomeStatus('TV chưa cài SmartTV Home.');
       try {
         if (await offerInstallGathin()) {
           return applyTheme(id, btn, { skipConfirm: true });
         }
       } catch (e2) {
-        setHomeStatus(`Cài CleanYourTV thất bại: ${e2}`);
-        alert(`Cài CleanYourTV thất bại: ${e2}`);
+        setHomeStatus(`Cài SmartTV Home thất bại: ${e2}`);
+        alert(`Cài SmartTV Home thất bại: ${e2}`);
       }
       return;
     }
@@ -3818,6 +3884,80 @@ if (homeDetectBtn) {
   homeDetectBtn.addEventListener('click', () => runHomeDetect(homeDetectBtn));
 }
 
+/** Copy a log block. navigator.clipboard may be unavailable in the embedded webview, so fall back to execCommand. */
+document.querySelectorAll('[data-copy-log]').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const text = document.getElementById(btn.dataset.copyLog)?.textContent || '';
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        ok = document.execCommand('copy');
+      } catch {
+        ok = false;
+      }
+      ta.remove();
+    }
+    setHomeStatus(ok ? 'Đã sao chép nhật ký vào clipboard.' : 'Không sao chép được — bôi đen rồi nhấn Ctrl+C.');
+  });
+});
+
+/** After a theme is applied, photograph the TV and keep it as that theme's real preview. */
+async function captureThemePreview(id, name) {
+  if (!activeDevice) return;
+  setHomeStatus(`Đang chụp màn hình TV để lưu ảnh thật của "${name}"...`);
+  try {
+    const shot = await getApi().capture_theme_screenshot(activeDevice.host, activeDevice.port, id, 5);
+    const themeEntry = homeThemes.find((x) => x.id === id);
+    if (themeEntry) {
+      themeEntry.screenshot = shot.jpg_b64;
+      themeEntry.screenshot_live = true;
+    }
+    const thumb = document.getElementById('homeActiveThumb');
+    const placeholder = document.getElementById('homeActiveThumbPlaceholder');
+    if (thumb) {
+      thumb.src = `data:image/jpeg;base64,${shot.jpg_b64}`;
+      thumb.hidden = false;
+    }
+    if (placeholder) placeholder.hidden = true;
+    const resBadge = document.getElementById('homeActiveRes');
+    if (resBadge) {
+      resBadge.textContent = 'Ảnh chụp thật từ TV';
+      resBadge.classList.add('has-preview');
+    }
+    renderHomeThemeGrid();
+    setHomeStatus(`Đã lưu ảnh thật của "${name}": ${shot.full_path}`);
+  } catch (err) {
+    setHomeStatus(`Đã áp dụng theme, nhưng không chụp được ảnh TV: ${err}`);
+  }
+}
+
+const homeResyncBtn = document.getElementById('homeResyncBtn');
+if (homeResyncBtn) {
+  homeResyncBtn.addEventListener('click', async () => {
+    if (!activeDevice) return;
+    if (!confirm('Tải lại APK SmartTV Home mới nhất từ GitHub (nvt-ak/smtv-home), kiểm tra SHA-256 và cài đè lên TV?\n\nCấu hình và theme trên TV được giữ nguyên.')) return;
+    setButtonLoading(homeResyncBtn, true, 'Đang đồng bộ...');
+    try {
+      await buildInstallGathin('resync');
+      setHomeStatus('Đã đồng bộ lại APK launcher.');
+      await runHomeDetect(homeDetectBtn);
+    } catch (err) {
+      setHomeStatus(`Đồng bộ APK thất bại: ${err}`);
+      alert(`Đồng bộ APK thất bại: ${err}`);
+    }
+    setButtonLoading(homeResyncBtn, false);
+  });
+}
+
 const homeDiagBtn = document.getElementById('homeDiagBtn');
 if (homeDiagBtn) {
   homeDiagBtn.addEventListener('click', async () => {
@@ -3826,11 +3966,13 @@ if (homeDiagBtn) {
     setButtonLoading(homeDiagBtn, true, 'Đang đọc...');
     try {
       const res = await getApi().diagnose_home(activeDevice.host, activeDevice.port);
-      if (out) {
-        out.textContent = res.text;
-        out.hidden = false;
+      const wrap = document.getElementById('homeDiagWrap');
+      if (out) out.textContent = res.text;
+      if (wrap) {
+        wrap.hidden = false;
+        wrap.open = true;
       }
-      setHomeStatus('Đã đọc xong chẩn đoán HOME — bôi đen nội dung bên dưới để sao chép.');
+      setHomeStatus('Đã đọc xong chẩn đoán HOME — xem trong «Nhật ký chẩn đoán HOME», bôi đen để sao chép.');
     } catch (err) {
       setHomeStatus(`Lỗi chẩn đoán: ${err}`);
     }
@@ -3841,15 +3983,16 @@ if (homeDiagBtn) {
 if (homeSetDefaultBtn) {
   homeSetDefaultBtn.addEventListener('click', async () => {
     if (!activeDevice) return;
-    if (!confirm('Đặt com.gathin.tvhome làm launcher mặc định?')) return;
+    if (!confirm('Đặt launcher đã cài (SmartTV Home) làm mặc định?')) return;
     setButtonLoading(homeSetDefaultBtn, true, 'Đang gửi...');
     try {
       const res = await getApi().set_default_home(activeDevice.host, activeDevice.port);
       if (res.launcher) renderHomeDetect(res.launcher);
       homeTvSync = { key: null, at: 0 };
       if (res.ok) {
-        showHomeToast('Đã đặt com.gathin.tvhome làm Home mặc định', 'home');
-        setHomeStatus('Home mặc định: com.gathin.tvhome. Phím HOME trên remote sẽ mở launcher này.');
+        const dp = res.launcher?.pkg || 'launcher';
+        showHomeToast(`Đã đặt ${dp} làm Home mặc định`, 'home');
+        setHomeStatus(`Home mặc định: ${dp}. Phím HOME trên remote sẽ mở launcher này.`);
       } else {
         const l = res.launcher || {};
         setHomeStatus(
@@ -3876,8 +4019,8 @@ if (homeInstallBtn) {
         await runHomeDetect(homeDetectBtn);
       }
     } catch (err) {
-      setHomeStatus(`Cài CleanYourTV thất bại: ${err}`);
-      alert(`Cài CleanYourTV thất bại: ${err}`);
+      setHomeStatus(`Cài SmartTV Home thất bại: ${err}`);
+      alert(`Cài SmartTV Home thất bại: ${err}`);
     }
     setButtonLoading(homeInstallBtn, false);
   });
@@ -3922,7 +4065,7 @@ if (homeAutoStock) {
 if (homeBackupBtn) {
   homeBackupBtn.addEventListener('click', async () => {
     if (!activeDevice) return;
-    if (!confirm('Tạo backup cấu hình gathin.tvhome? Khuyến nghị làm trước mọi thay đổi.')) return;
+    if (!confirm('Tạo backup cấu hình launcher? Khuyến nghị làm trước mọi thay đổi.')) return;
     setButtonLoading(homeBackupBtn, true, 'Đang sao lưu...');
     setHomeStatus('Đang sao lưu cấu hình...');
     try {

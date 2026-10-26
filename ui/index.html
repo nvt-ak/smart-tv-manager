@@ -350,6 +350,13 @@
                 <button type="button" class="remote-tool-card" id="remoteRebootBtn"><span class="material-symbols-outlined">restart_alt</span>Khởi động lại</button>
                 <button type="button" class="remote-tool-card" data-key="85" title="Play/Pause"><span class="material-symbols-outlined">play_pause</span>Play/Pause</button>
               </div>
+              <div id="remoteShotPreview" hidden style="margin-top:12px">
+                <img id="remoteShotImg" alt="Ảnh chụp màn hình TV" style="width:100%;border-radius:8px;display:block">
+                <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+                  <code id="remoteShotPath" style="flex:1;font-size:12px;word-break:break-all"></code>
+                  <button type="button" class="btn btn--surface" id="remoteShotFolderBtn">Mở thư mục</button>
+                </div>
+              </div>
               <div class="remote-keycode-row">
                 <span class="apps-stat-label" style="text-transform:none;">Keycode</span>
                 <input id="remoteCustomKeycode" class="remote-keycode-input" type="number" placeholder="85">
@@ -1036,7 +1043,7 @@
             <div>
               <div class="home-ribbon-title-row">
                 <span class="home-ribbon-title">Home / Theme Engine</span>
-                <span class="home-pkg-chip">gathin.tvhome</span>
+                <span class="home-pkg-chip" id="homePkgChip">smtv_manager.home</span>
               </div>
               <p class="home-ribbon-sub">
                 Thiết bị: <strong id="homeTarget" class="target-name">—</strong>
@@ -1049,6 +1056,10 @@
             <button type="button" id="homeReloadBtn" class="btn btn--surface">
               <span class="material-symbols-outlined">sync</span>
               Đồng bộ từ TV
+            </button>
+            <button type="button" id="homeDiagBtn" class="btn btn--surface" title="Xem cách TV định tuyến phím HOME">
+              <span class="material-symbols-outlined">bug_report</span>
+              Chẩn đoán HOME
             </button>
             <button type="button" id="backToDevicesFromHome" class="btn btn--ghost">
               <span class="material-symbols-outlined">arrow_back</span>
@@ -1063,6 +1074,12 @@
           <summary>Nhật ký áp dụng theme</summary>
           <p id="homeApplyLogHint" class="home-apply-log-hint"></p>
           <pre id="homeApplyLog" class="home-apply-log" aria-live="polite"></pre>
+          <button type="button" class="btn btn--surface home-log-copy" data-copy-log="homeApplyLog">Sao chép nhật ký</button>
+        </details>
+        <details id="homeDiagWrap" class="home-apply-log-wrap" hidden>
+          <summary>Nhật ký chẩn đoán HOME</summary>
+          <pre id="homeDiagOut" class="home-apply-log" aria-live="polite"></pre>
+          <button type="button" class="btn btn--surface home-log-copy" data-copy-log="homeDiagOut">Sao chép nhật ký</button>
         </details>
 
         <div class="home-deck">
@@ -1075,21 +1092,25 @@
               <span id="homeDetectBadge" class="home-adb-badge">Chưa kiểm tra</span>
             </div>
             <div id="homeDetectInfo" class="home-kpi-list">
-              <div class="home-kpi-row"><span class="home-kpi-label">CleanYourTV</span><span id="homeKpiInstalled" class="home-kpi-value">—</span></div>
+              <div class="home-kpi-row"><span class="home-kpi-label">SmartTV Home</span><span id="homeKpiInstalled" class="home-kpi-value">—</span></div>
               <div class="home-kpi-row"><span class="home-kpi-label">Launcher gốc</span><span id="homeKpiStock" class="home-kpi-value">—</span></div>
               <div class="home-kpi-row"><span class="home-kpi-label">Phím HOME mở</span><span id="homeKpiDefault" class="home-kpi-value">—</span></div>
               <div class="home-kpi-row" hidden><span id="homeKpiPackage"></span><span id="homeKpiCompat"></span></div>
             </div>
-            <label class="hw-switch home-auto-stock" title="Khi áp dụng theme, tự tắt Google TV Launcher để phím HOME vật lý mở CleanYourTV. Có thể làm P+/P- và phím chuyển chế độ TV ngừng hoạt động.">
+            <label class="hw-switch home-auto-stock" title="Khi áp dụng theme, tự tắt Google TV Launcher để phím HOME vật lý mở SmartTV Home. Có thể làm P+/P- và phím chuyển chế độ TV ngừng hoạt động.">
               <input type="checkbox" id="homeAutoStock" checked>
               <span>Tự tắt launcher gốc khi áp dụng theme</span>
             </label>
             <div class="home-launcher-actions">
-              <button type="button" id="homeInstallBtn" class="btn btn--accent home-launcher-actions__wide" hidden title="Chọn file APK CleanYourTV để cài lên TV">
+              <button type="button" id="homeInstallBtn" class="btn btn--accent home-launcher-actions__wide" hidden title="Tải SmartTV Home từ GitHub (nvt-ak/smtv-home), kiểm tra SHA-256 và cài lên TV">
                 <span class="material-symbols-outlined">download</span>
-                <span>Cài CleanYourTV</span>
+                <span>Cài SmartTV Home</span>
               </button>
-              <button type="button" id="homeStockOnBtn" class="btn btn--surface home-launcher-actions__wide" title="Bật lại Google TV Launcher (trạng thái ban đầu của TV)">
+              <button type="button" id="homeResyncBtn" class="btn btn--surface home-launcher-actions__wide" title="Tải lại APK SmartTV Home mới nhất từ GitHub (kiểm tra SHA-256) và cài đè lên TV, kể cả khi app cho rằng đã cập nhật">
+                <span class="material-symbols-outlined">cloud_sync</span>
+                <span>Đồng bộ lại APK launcher</span>
+              </button>
+              <button type="button" id="homeStockOnBtn" class="btn btn--surface" title="Bật lại Google TV Launcher (trạng thái ban đầu của TV)">
                 <span class="material-symbols-outlined">undo</span>
                 <span>Đặt lại launcher gốc</span>
               </button>
@@ -1097,12 +1118,7 @@
                 <span class="material-symbols-outlined">refresh</span>
                 <span>Kiểm tra lại</span>
               </button>
-              <button type="button" id="homeDiagBtn" class="btn btn--surface" title="Xem cách TV định tuyến phím HOME">
-                <span class="material-symbols-outlined">bug_report</span>
-                <span>Chẩn đoán HOME</span>
-              </button>
             </div>
-            <pre id="homeDiagOut" class="home-pre" hidden></pre>
           </div>
 
           <div class="home-panel home-panel--active glass-card">
@@ -1154,7 +1170,7 @@
         <details class="home-widgets-panel glass-card" id="homeWidgetsPanel">
           <summary class="home-widgets-summary">
             <span class="material-symbols-outlined">dashboard_customize</span>
-            Widget vàng &amp; xăng dầu
+            Widget Home: thời tiết, lịch âm, giá cả
             <span id="homeWidgetState" class="home-widgets-state">Tắt</span>
           </summary>
           <div class="hw-row">
@@ -1167,11 +1183,28 @@
               <option value="1">Xăng vùng 1</option>
               <option value="2">Xăng vùng 2</option>
             </select>
+            <select id="homeWidgetCity" class="field-input hw-select" title="Thành phố cho thời tiết">
+              <option>Hà Nội</option>
+              <option>TP.HCM</option>
+              <option>Đà Nẵng</option>
+              <option>Hải Phòng</option>
+              <option>Cần Thơ</option>
+              <option>Huế</option>
+              <option>Nha Trang</option>
+              <option>Đà Lạt</option>
+            </select>
+            <select id="homeWidgetLayout" class="field-input hw-select" title="Kích thước thẻ">
+              <option value="compact">Thẻ gọn</option>
+              <option value="tall">Thẻ cao (đủ dự báo)</option>
+            </select>
             <select id="homeWidgetTheme" class="field-input hw-select" title="Theme dùng làm ảnh nền"></select>
           </div>
           <div class="hw-chips">
             <label class="hw-chip"><input type="checkbox" id="homeWidgetShowGold" checked><span>Giá vàng</span></label>
             <label class="hw-chip"><input type="checkbox" id="homeWidgetShowFuel" checked><span>Xăng dầu</span></label>
+            <label class="hw-chip"><input type="checkbox" id="homeWidgetShowWeather" checked><span>Thời tiết</span></label>
+            <label class="hw-chip"><input type="checkbox" id="homeWidgetShowLunar" checked><span>Lịch âm</span></label>
+            <label class="hw-chip"><input type="checkbox" id="homeWidgetShowFx" checked><span>Tỷ giá USD</span></label>
             <label class="hw-chip"><input type="checkbox" id="homeWidgetWallpaper" checked><span>Vẽ vào ảnh nền</span></label>
             <label class="hw-chip"><input type="checkbox" id="homeWidgetShowName" checked><span>Tên</span></label>
             <label class="hw-chip"><input type="checkbox" id="homeWidgetShowStats"><span>CPU / RAM</span></label>
@@ -1182,7 +1215,7 @@
               Áp dụng lên TV
             </button>
           </div>
-          <p class="hw-hint">Giá tự lấy từ API (vang.today, Petrolimex) mỗi lần áp dụng; cấu hình tự lưu.</p>
+          <p class="hw-hint">Dữ liệu tự lấy mỗi lần áp dụng (Open-Meteo, vang.today, Petrolimex, Vietcombank); lịch âm tính ngay trên máy. Thẻ được vẽ vào ảnh nền nên chỉ cập nhật khi bạn áp dụng lại. Cấu hình tự lưu.</p>
         </details>
 
         <div class="home-gallery glass-card">
@@ -1190,7 +1223,7 @@
             <div>
               <div class="home-gallery-title-row">
                 <h2 class="home-gallery-title">Thư viện Theme Gallery</h2>
-                <span class="home-store-chip">cleanyourtv Store</span>
+                <span class="home-store-chip">SmartTV Home Store</span>
               </div>
               <p class="home-gallery-desc">Áp dụng theme tự động sao lưu snapshot cấu hình trước khi ghi lên TV.</p>
             </div>

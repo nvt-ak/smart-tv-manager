@@ -16,6 +16,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
+from . import vn_calendar, widget_sources
+
 DEFAULT_WIDGETS: Dict[str, Any] = {
     "enabled": False,
     "display_name": "",
@@ -26,6 +28,11 @@ DEFAULT_WIDGETS: Dict[str, Any] = {
     "always_show_app_names": False,
     "module_cards": True,
     "widget_wallpaper": True,
+    "show_weather": True,
+    "show_lunar": True,
+    "show_fx": True,
+    "weather_city": "Hà Nội",
+    "widget_layout": "compact",  # "compact" fits the default gap; "tall" is the full reference design
     "fuel_zone": 1,
     "fuel_ron95": "",
     "fuel_diesel": "",
@@ -90,6 +97,9 @@ def normalize_widgets(raw: Any) -> Dict[str, Any]:
         "always_show_app_names",
         "module_cards",
         "widget_wallpaper",
+        "show_weather",
+        "show_lunar",
+        "show_fx",
     ):
         out[b] = bool(out.get(b))
     out["display_name"] = str(out.get("display_name") or "").strip()
@@ -98,6 +108,9 @@ def normalize_widgets(raw: Any) -> Dict[str, Any]:
         out["fuel_zone"] = 2 if z == 2 else 1
     except (TypeError, ValueError):
         out["fuel_zone"] = 1
+    city = str(out.get("weather_city") or "")
+    out["weather_city"] = city if city in widget_sources.CITIES else widget_sources.DEFAULT_CITY
+    out["widget_layout"] = "tall" if out.get("widget_layout") == "tall" else "compact"
     return out
 
 
@@ -500,6 +513,20 @@ def widgets_data(cfg: Dict[str, Any]) -> Dict[str, Any]:
     cfg = normalize_widgets(cfg)
     out: Dict[str, Any] = {"gold": None, "fuel": None, "errors": {},
                            "generated": datetime.now(_VN_TZ).strftime("%H:%M %d/%m/%Y")}
+    out.update({"weather": None, "lunar": None, "fx": None, "layout": cfg["widget_layout"]})
+    if cfg["show_weather"]:
+        out["weather"], err = widget_sources.fetch_weather(cfg["weather_city"])
+        if err:
+            out["errors"]["weather"] = err
+    if cfg["show_lunar"]:
+        try:
+            out["lunar"] = vn_calendar.lunar_card(datetime.now(_VN_TZ).date(), 2)
+        except Exception as e:  # the calendar is offline, so this is a bug rather than an outage
+            out["errors"]["lunar"] = f"Không tính được lịch âm: {e}"
+    if cfg["show_fx"]:
+        out["fx"], err = widget_sources.fetch_usd_vnd()
+        if err:
+            out["errors"]["fx"] = err
     if cfg["show_gold"]:
         out["gold"], err = fetch_gold_all()
         if err:
@@ -572,6 +599,11 @@ def launcher_config_patch(cfg: Dict[str, Any], board_lines: Optional[List[str]] 
     patch["show_stats"] = bool(cfg["show_system_stats"])
     patch["always_show_names"] = bool(cfg["always_show_app_names"])
     patch["module_cards"] = bool(cfg["module_cards"])
+    # The launcher's own weather card reads the city and its position from the config.
+    coords = widget_sources.CITIES.get(cfg.get("weather_city"))
+    if coords:
+        patch["weather_city"] = cfg["weather_city"]
+        patch["weather_lat"], patch["weather_lon"] = coords
     return patch
 
 
@@ -591,7 +623,8 @@ def board_payload(cfg: Dict[str, Any], board_lines: Optional[List[str]] = None) 
 def wallpaper_mode(cfg: Dict[str, Any]) -> bool:
     """True when gold/fuel are drawn into the wallpaper instead of the greeting text."""
     cfg = normalize_widgets(cfg)
-    return bool(cfg["enabled"] and cfg["widget_wallpaper"] and (cfg["show_gold"] or cfg["show_fuel"]))
+    cards = ("show_gold", "show_fuel", "show_weather", "show_lunar", "show_fx")
+    return bool(cfg["enabled"] and cfg["widget_wallpaper"] and any(cfg[k] for k in cards))
 
 
 def preview(cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -607,8 +640,8 @@ def preview(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "launcher_patch": {k: v for k, v in patch.items() if v is not None},
         "errors": errors,
         "note": (
-            "Giá vàng / xăng dầu được vẽ vào ảnh nền (xem ảnh bên dưới); dòng chào chỉ giữ tên."
+            "Các thẻ widget (thời tiết, lịch âm, giá cả) được vẽ vào ảnh nền (xem ảnh bên dưới); dòng chào chỉ giữ tên."
             if wallpaper_mode(cfg)
-            else "Trên TV (CleanYourTV): ticker hiện gộp vào dòng chào (`greeting_name`)."
+            else "Trên TV (SmartTV Home): ticker hiện gộp vào dòng chào (`greeting_name`)."
         ),
     }

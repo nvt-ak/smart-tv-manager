@@ -959,6 +959,8 @@
   user-select: none;
 }
 
+.home-log-copy { margin: var(--space-xs) 0 0; }
+
 .home-apply-log-hint {
   margin: var(--space-xs) 0 var(--space-sm);
   font: var(--text-body-sm);
@@ -966,6 +968,10 @@
 }
 
 .home-apply-log {
+  /* Logs are meant to be pasted into a bug report; the app shell is user-select: none. */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
   margin: 0;
   max-height: 12rem;
   overflow: auto;
