@@ -10,9 +10,22 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-26
+
 ### Added
 
+- Themes: Aurora Midnight (live dashboard with weather, gold, fuel and a lunar card), Hà Nội Về Đêm (`ha-noi-night`, sidebar and three cards) and Hà Nội Về Đêm 2 (`ha-noi-night-2`, "Trang chủ" pill, timeline, one card column with air quality and the month).
+- Launcher config keys known to the theme manager: `design_profile`, `weather_city`, `weather_lat`, `weather_lon`, `tagline`, `corner_bottom`, `corner_right`, `subline`, `lunar_date`, `single_row`, `app_subtitles`. Applying a theme with a dashboard passes the weather city and coordinates to the launcher.
 - Intro video (45 s, Vietnamese and English) on the landing page ("See it in 45 seconds" section, language-aware) and in the README.
+
+### Changed
+
+- Only `aurora-midnight`, `ha-noi-night` and `ha-noi-night-2` ship in the theme gallery; the older themes were removed.
+- Themes with their own dashboard no longer bake the widget wallpaper or the greeting name into the launcher config.
+
+### Fixed
+
+- Syncing the launcher APK failed with "different signature" when the installed copy used another key. The app now uninstalls the old launcher, installs the new one and re-applies the last theme automatically.
 
 ## [1.7.0] - 2026-10-25
 
