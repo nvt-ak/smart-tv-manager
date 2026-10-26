@@ -15,6 +15,7 @@ class ThemeWidgetsTest(unittest.TestCase):
         self.assertNotIn("show_gold", keys("aurora"))
         self.assertIn("show_prices", keys("aurora"))
         self.assertEqual([], keys("crimson"))
+        self.assertEqual(["show_weather", "show_gold", "show_fuel", "show_calendar", "show_footer"], keys("hanoi3"))
 
     def test_default_is_on_unless_the_theme_turns_it_off(self):
         cfg = {"dashboard": True, "design_profile": "hanoi2", "show_fuel": False}

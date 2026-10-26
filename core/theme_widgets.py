@@ -13,6 +13,7 @@ _FUEL = ("show_fuel", "Giá xăng", "Xăng RON 95-III, kèm mức tăng giảm")
 _PRICES = ("show_prices", "Giá vàng và xăng dầu", "Thẻ giá vàng, nhẫn, xăng, dầu")
 _CALENDAR_MONTH = ("show_calendar", "Lịch tháng", "Lịch tháng và ngày âm lịch hôm nay")
 _CALENDAR_LUNAR = ("show_calendar", "Lịch âm", "Thẻ lịch âm: can chi, giờ hoàng đạo")
+_CALENDAR_DAY = ("show_calendar", "Lịch âm dương", "Ngày âm lịch hôm nay, tháng, năm và ngày tốt")
 _LUNAR_HEADER = ("show_lunar_header", "Âm lịch cạnh đồng hồ", "Ngày âm lịch và nhãn Hoàng Đạo")
 _QUOTE = ("show_quote", "Câu chữ chủ đề", "Câu chào hoặc câu trích của theme")
 _FOOTER = ("show_footer", "Chữ ở góc màn hình", "Các dòng chữ nhỏ cuối màn hình")
@@ -21,6 +22,7 @@ _BY_PROFILE = {
     "aurora": (_WEATHER, _CALENDAR_LUNAR, _PRICES, _QUOTE, _FOOTER),
     "hanoi": (_WEATHER, _CALENDAR_LUNAR, _PRICES, _QUOTE, _FOOTER),
     "hanoi2": (_WEATHER, _GOLD, _FUEL, _CALENDAR_MONTH, _LUNAR_HEADER, _QUOTE, _FOOTER),
+    "hanoi3": (_WEATHER, _GOLD, _FUEL, _CALENDAR_DAY, _FOOTER),
 }
 
 KEYS = sorted({w[0] for ws in _BY_PROFILE.values() for w in ws})

@@ -1,0 +1,29 @@
+{
+  "dock_apps": [
+    "com.teamsmart.videomanager.tv",
+    "com.google.android.youtube.tv",
+    "com.netflix.ninja",
+    "com.spotify.tv.android",
+    "com.fplay.activity",
+    "com.android.tv.settings"
+  ],
+  "background_color": "#050A12",
+  "wallpaper": true,
+  "columns": 1,
+  "rows_below_dock": 0,
+  "dock_row": false,
+  "dock_title": false,
+  "dashboard": true,
+  "design_frame": true,
+  "design_profile": "hanoi3",
+  "icon_only_buttons": true,
+  "show_inputs_pill": false,
+  "ambient_glow": false,
+  "focus_overshoot": false,
+  "home_idle_clock_minutes": 15,
+  "app_library": true,
+  "tagline": "Chúc bạn một ngày thật tốt!",
+  "corner_bottom": "Nhấn nút Trợ lý để tìm kiếm bằng giọng nói",
+  "corner_right": "Kết nối những điều tốt đẹp",
+  "weather_city": "Hà Nội"
+}
