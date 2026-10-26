@@ -1216,6 +1216,8 @@ class Api:
             ("installed launchers", "pm list packages --show-versioncode 2>&1 | grep -E 'smtv_manager|gathin'"),
             ("old CleanYourTV files (com.gathin.tvhome)", "ls -la /sdcard/Android/data/com.gathin.tvhome/files 2>&1 | head -20; cat /sdcard/Android/data/com.gathin.tvhome/files/config.json 2>&1 | head -40"),
             ("launcher package", f"dumpsys package {LauncherDetector.SMTV_PKG} 2>&1 | grep -E 'versionName|versionCode|lastUpdateTime|firstInstallTime|enabled=' | head -8"),
+            ("launcher build has widget switches (count of show_lunar_header in the APK)", f"unzip -p $(pm path {LauncherDetector.SMTV_PKG} | head -1 | cut -d: -f2) classes.dex 2>&1 | grep -c show_lunar_header"),
+            ("launcher startup log (SmtvHome)", "logcat -d -s SmtvHome:I 2>&1 | tail -10"),
             ("focused app", "dumpsys activity activities 2>&1 | grep -E 'mFocusedApp|ResumedActivity' | head -4"),
             ("disabled launchers", "pm list packages -d 2>&1 | grep -i launcher"),
             ("theme files on the TV", f"ls -la /sdcard/Android/data/{LauncherDetector.SMTV_PKG}/files 2>&1 | head -20; cat /sdcard/Android/data/{LauncherDetector.SMTV_PKG}/files/config.json 2>&1 | head -120"),
