@@ -140,3 +140,27 @@ def set_launcher_sha(host: str, sha: str) -> None:
     rec[host] = sha
     data["launcher_installed"] = rec
     save(data)
+
+
+def _device_key(host, port=5555) -> str:
+    return f"{str(host or '').strip()}:{int(port or 5555)}"
+
+
+def get_last_theme(host, port=5555) -> str:
+    """The theme last applied on this TV. Never falls back to another TV's theme."""
+    by_dev = load().get("last_theme_by_device")
+    if not isinstance(by_dev, dict):
+        return ""
+    return str(by_dev.get(_device_key(host, port)) or "")
+
+
+def set_last_theme(host, port, theme_id) -> None:
+    data = load()
+    by_dev = data.get("last_theme_by_device")
+    if not isinstance(by_dev, dict):
+        by_dev = {}
+    by_dev[_device_key(host, port)] = str(theme_id or "")
+    data["last_theme_by_device"] = by_dev
+    # Kept as the default for the widget preview, which is not tied to a TV.
+    data["last_theme_id"] = str(theme_id or "")
+    save(data)

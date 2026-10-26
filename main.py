@@ -13,7 +13,7 @@ from core.safety import safety
 from core.apk_analyzer import ApkAnalyzer
 from core.apk_installer import ApkInstaller
 from core.launcher_detector import LauncherDetector
-from core import launcher_builder, launcher_download, adb_binary
+from core import launcher_builder, launcher_download, adb_binary, app_update
 from core.theme_manager import ThemeManager
 from core import theme_widgets
 from core import preview_check
@@ -55,10 +55,67 @@ class Api:
         self._clean_engine = CleanSuggestionEngine()
         self._device_profiles = DeviceProfiles()
         self._identity_cache = {}
+        self._update_progress = app_update.Progress()
 
     def app_version(self):
         """Single source of truth for the version label in the UI (app_brand.APP_VERSION)."""
         return APP_VERSION
+
+    # ---- self-update (core/app_update.py) -------------------------------------------------------
+    def check_app_update(self):
+        """Newest GitHub release vs this build. Never raises: the UI shows `error` quietly."""
+        try:
+            info = app_update.check_latest(APP_VERSION)
+        except Exception as exc:
+            return {"available": False, "current": APP_VERSION, "error": f"Không kiểm tra được bản mới: {exc}"}
+        info["error"] = ""
+        info["previous_failure"] = app_update.pop_failure()
+        return info
+
+    def download_app_update(self):
+        """Start downloading the newest release in the background; the UI polls app_update_status()."""
+        if self._update_progress.get()["state"] == "downloading":
+            return {"started": False}
+        try:
+            info = app_update.check_latest(APP_VERSION)
+        except Exception as exc:
+            raise Exception(f"Không kiểm tra được bản mới: {exc}") from exc
+        if not info["available"]:
+            raise Exception("Đang dùng bản mới nhất.")
+        if not info["can_self_update"]:
+            raise Exception("Bản cài này không tự cập nhật được (chạy từ mã nguồn hoặc thư mục cài không ghi được).")
+        asset = info["asset"]
+        self._update_progress.set(state="downloading", done=0, total=asset["size"], error="", path="")
+
+        def run():
+            try:
+                app_update.cleanup_old()
+                path = app_update.download(
+                    asset, lambda done, total: self._update_progress.set(done=done, total=total or asset["size"])
+                )
+                self._update_progress.set(state="ready", path=path)
+            except Exception as exc:
+                self._update_progress.set(state="error", error=str(exc))
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"started": True, "version": info["version"]}
+
+    def app_update_status(self):
+        return self._update_progress.get()
+
+    def apply_app_update(self):
+        """Start the helper that swaps the files, then quit so it can. The app reopens by itself."""
+        st = self._update_progress.get()
+        if st["state"] != "ready" or not st["path"] or not os.path.isfile(st["path"]):
+            raise Exception("Chưa tải xong bản cập nhật.")
+        app_update.prepare_and_launch(st["path"])
+        threading.Timer(1.0, lambda: os._exit(0)).start()
+        return {"quitting": True}
+
+    def open_release_page(self):
+        import webbrowser
+        webbrowser.open(app_update.RELEASE_PAGE)
+        return True
 
     def _dev_op_lock(self, host, port=5555):
         key = f"{host}:{port}"
@@ -418,8 +475,12 @@ class Api:
         }
 
     @staticmethod
-    def theme_shot_path(theme_id: str) -> str:
+    def theme_shot_path(theme_id: str, host=None, port=5555) -> str:
+        """A real-TV capture belongs to one device: the same theme looks different on another TV."""
         safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(theme_id or ""))[:80] or "theme"
+        if host:
+            dev = re.sub(r"[^A-Za-z0-9_.-]", "_", f"{host}_{int(port or 5555)}")[:60]
+            safe = f"{safe}@{dev}"
         d = os.path.join(os.path.expanduser("~"), ".smarttv-manager", "theme-shots")
         os.makedirs(d, exist_ok=True)
         return os.path.join(d, safe + ".jpg")
@@ -440,7 +501,7 @@ class Api:
                 "Giữ ảnh mẫu của theme, không ghi đè."
             )
         from PIL import Image
-        out = self.theme_shot_path(theme_id)
+        out = self.theme_shot_path(theme_id, host, port)
         with Image.open(shot["path"]) as im:
             im.convert("RGB").resize((1280, 720), Image.LANCZOS).save(out, quality=82, optimize=True)
         with open(out, "rb") as f:
@@ -978,7 +1039,7 @@ class Api:
                 if migrated:
                     # The old install took the theme with it: put the last applied theme back (this also sets Home
                     # and disables the stock launcher again, with the usual Home guard).
-                    last = settings_store.load().get("last_theme_id")
+                    last = settings_store.get_last_theme(host, port) or settings_store.load().get("last_theme_id")
                     if last:
                         step("reapply_theme", str(last))
                         try:
@@ -1133,7 +1194,7 @@ class Api:
             state = tm.read_state()
             wallpaper_b64 = tm.read_wallpaper_preview_b64() if include_wallpaper else None
             state["wallpaper_b64"] = wallpaper_b64
-            state["last_theme_id"] = settings_store.load().get("last_theme_id") or ""
+            state["last_theme_id"] = settings_store.get_last_theme(host, port)
             state["has_overlay"] = (
                 bool(state["config"]) or bool(state["revision"]) or bool(wallpaper_b64)
             )
@@ -1243,13 +1304,14 @@ class Api:
             )
         }
 
-    def list_gathin_themes(self):
+    def list_gathin_themes(self, host=None, port=5555):
+        """The theme library. A real-TV capture is only offered for the device it was taken on."""
         themes = self._themes.list_themes()
         result = []
         for t in themes:
             screenshot_b64 = None
-            live = self.theme_shot_path(t["id"])
-            has_live = os.path.isfile(live)
+            live = self.theme_shot_path(t["id"], host, port) if host else ""
+            has_live = bool(live) and os.path.isfile(live)
             if has_live and preview_check.is_black(live):
                 # A black frame (TV asleep or screen protected) saved by an earlier Apply is no preview: drop it.
                 try:
@@ -1594,9 +1656,7 @@ class Api:
                     on_step("error", str(exc))
                     raise
                 try:
-                    data = settings_store.load()
-                    data["last_theme_id"] = theme_id
-                    settings_store.save(data)
+                    settings_store.set_last_theme(host, port, theme_id)
                 except Exception:
                     pass
                 result["backup"] = backup
@@ -1732,7 +1792,7 @@ class Api:
         patch, sidecar, prev = self._home_widgets_tv_bundle()
         if not patch:
             raise Exception("Bật «Widget Home» trước khi áp dụng lên TV")
-        last = theme_id or settings_store.load().get("last_theme_id")
+        last = theme_id or settings_store.get_last_theme(host, port) or settings_store.load().get("last_theme_id")
         if self._wants_widget_wallpaper():
             if not last:
                 raise Exception(

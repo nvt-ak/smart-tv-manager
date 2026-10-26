@@ -75,7 +75,7 @@ class ThemeShotTests(unittest.TestCase):
             Image.new("RGB", (1920, 1080), (10, 20, 30)).save(src)
             api.capture_screenshot = lambda host, port=5555: {"path": src, "name": "full.png", "bytes": 1}
             res = api.capture_theme_screenshot("192.168.1.50", 5555, "aurora-midnight", delay_s=0)
-            self.assertTrue(res["path"].endswith("aurora-midnight.jpg"))
+            self.assertTrue(res["path"].endswith("aurora-midnight@192.168.1.50_5555.jpg"))
             with Image.open(res["path"]) as im:
                 self.assertEqual(im.size, (1280, 720))
             self.assertTrue(res["jpg_b64"])

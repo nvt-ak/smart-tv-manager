@@ -28,10 +28,11 @@ function disableNativeSpellcheck() {
 function bootApp() {
   disableNativeSpellcheck();
   getApi().app_version().then((v) => {
-    const el = document.querySelector('.brand-version');
+    const el = document.getElementById('brandVersion');
     if (el && v) el.textContent = `v${v}`;
   }).catch(() => {});
   initDevGuide();
+  initAppUpdate();
   refreshList('cache')
     .catch((err) => {
       setStatus(String(err.message || err));
@@ -42,6 +43,80 @@ function bootApp() {
   window.setTimeout(() => {
     refreshList('port').catch(() => {});
   }, 350);
+}
+
+// ---- Self-update: check GitHub releases, download, swap the files, reopen -----------------------
+let appUpdateInfo = null;
+let appUpdateBusy = false;
+
+function setUpdateButton(text, disabled = false) {
+  const btn = document.getElementById('appUpdateBtn');
+  if (!btn) return;
+  btn.hidden = !text;
+  btn.textContent = text || '';
+  btn.disabled = disabled;
+}
+
+async function checkAppUpdate(manual) {
+  try {
+    const info = await getApi().check_app_update();
+    if (info.previous_failure) {
+      showHomeToast(`Lần cập nhật trước chưa thay được file: ${info.previous_failure}`, 'error');
+    }
+    if (info.error) {
+      if (manual) showHomeToast(info.error, 'error');
+      return;
+    }
+    appUpdateInfo = info;
+    if (info.available) {
+      setUpdateButton(`Cập nhật v${info.version}`);
+      if (manual) showHomeToast(`Có bản mới v${info.version}`, 'refresh');
+    } else {
+      setUpdateButton('');
+      if (manual) showHomeToast(`Đang dùng bản mới nhất (v${info.current})`, 'check_circle');
+    }
+  } catch (err) {
+    if (manual) showHomeToast(`Không kiểm tra được bản mới: ${err}`, 'error');
+  }
+}
+
+async function runAppUpdate() {
+  const info = appUpdateInfo;
+  if (!info || !info.available || appUpdateBusy) return;
+  if (!info.can_self_update) {
+    // Source run, or an install folder this user cannot write to: the website download is the way.
+    if (confirm(`Có bản v${info.version}. Bản cài này không tự cập nhật được — mở trang tải về?`)) {
+      getApi().open_release_page();
+    }
+    return;
+  }
+  const notes = (info.notes || '').split('\n').slice(0, 12).join('\n');
+  if (!confirm(`Cập nhật SmartTV Manager lên v${info.version}?\n\n${notes}\n\nApp sẽ tải bản mới, đóng lại rồi tự mở lại.`)) return;
+  appUpdateBusy = true;
+  try {
+    await getApi().download_app_update();
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 500));
+      const st = await getApi().app_update_status();
+      if (st.state === 'error') throw new Error(st.error || 'tải không thành công');
+      if (st.state === 'ready') break;
+      const pct = st.total ? Math.floor((st.done * 100) / st.total) : 0;
+      setUpdateButton(`Đang tải ${pct}%`, true);
+    }
+    setUpdateButton('Đang cài đặt…', true);
+    await getApi().apply_app_update();
+  } catch (err) {
+    appUpdateBusy = false;
+    setUpdateButton(`Cập nhật v${info.version}`);
+    showHomeToast(`Cập nhật lỗi: ${err.message || err}`, 'error');
+  }
+}
+
+function initAppUpdate() {
+  document.getElementById('appUpdateBtn')?.addEventListener('click', runAppUpdate);
+  document.getElementById('brandVersion')?.addEventListener('click', () => checkAppUpdate(true));
+  // Quietly look once shortly after start; the ADB work above comes first.
+  window.setTimeout(() => checkAppUpdate(false), 4000);
 }
 
 function waitForPywebviewAndBoot() {
@@ -239,6 +314,42 @@ function resetPerDeviceState() {
   if (appsList) appsList.innerHTML = '';
   smartCleanSuggestions = [];
   smartCleanDismissed = new Set();
+  resetHomeState();
+}
+
+/** Theme tab: forget the previous TV's active theme, wallpaper and live captures until the new TV answers. */
+function resetHomeState() {
+  homeThemes = [];
+  homeThemesKey = '';
+  homeThemesLoading = null;
+  homeActiveThemeId = null;
+  homeTvSync = { key: null, at: 0 };
+  homeTvLoading = null;
+  homeWallCache = { key: null, revision: null, b64: null };
+  widgetThemeSynced = null;
+  if (homeThemesGrid) homeThemesGrid.innerHTML = '';
+  const set = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+  set('homeActiveTitle', 'Đang đọc theme từ TV…');
+  set('homeActiveDesc', '');
+  set('homeActiveWall', '—');
+  set('homeActiveRevision', '—');
+  set('homeActiveProvider', '—');
+  set('homeActiveUpdated', '—');
+  set('homeActiveRes', '—');
+  document.getElementById('homeActiveRes')?.classList.remove('has-preview');
+  const thumb = document.getElementById('homeActiveThumb');
+  if (thumb) {
+    thumb.removeAttribute('src');
+    thumb.hidden = true;
+  }
+  const placeholder = document.getElementById('homeActiveThumbPlaceholder');
+  if (placeholder) placeholder.hidden = false;
+  if (homeCurrentInfo) homeCurrentInfo.textContent = '';
+  const sel = document.getElementById('homeWidgetTheme');
+  if (sel) sel.innerHTML = '';
 }
 
 function setActiveDevice(dev) {
@@ -3039,6 +3150,7 @@ async function pollApplyThemeJob(jobId, btn) {
 
 let homeThemes = [];
 let homeThemesLoading = null;
+let homeThemesKey = ''; // device the loaded list (and its live TV captures) belongs to
 let previewThemeId = null;
 let homeActiveThemeId = null;
 let homeToastTimer = null;
@@ -3219,7 +3331,8 @@ if (homeWidgetApplyBtn) {
 async function loadHomeThemes(opts = {}) {
   const force = !!opts.force;
   const btn = opts.btn || null;
-  if (!force && homeThemes.length) {
+  const devKey = deviceKey(activeDevice);
+  if (!force && homeThemes.length && homeThemesKey === devKey) {
     renderHomeThemeGrid();
     return;
   }
@@ -3234,8 +3347,10 @@ async function loadHomeThemes(opts = {}) {
     );
     if (force && homeThemesGrid) homeThemesGrid.innerHTML = '';
     try {
-      const themes = await getApi().list_gathin_themes();
+      const themes = await getApi().list_gathin_themes(activeDevice?.host || null, activeDevice?.port || 5555);
+      if (deviceKey(activeDevice) !== devKey) return; // another TV was picked meanwhile
       homeThemes = themes || [];
+      homeThemesKey = devKey;
       if (!homeThemes.length) {
         setHomeStatus('Không tìm thấy theme trong data/cleanyourtv/themes');
         return;

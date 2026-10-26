@@ -102,9 +102,34 @@ body.app-shell {
 .brand-version {
   font: var(--text-code-sm);
   padding: 2px var(--space-xs);
+  border: 0;
   border-radius: var(--radius-sm);
   background: var(--color-surface-container);
   color: var(--color-on-surface-variant);
+  cursor: pointer;
+}
+
+.brand-version:hover {
+  color: var(--color-on-surface);
+}
+
+.app-update-btn {
+  font: var(--text-code-sm);
+  padding: 2px var(--space-sm);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  cursor: pointer;
+}
+
+.app-update-btn[hidden] {
+  display: none;
+}
+
+.app-update-btn:disabled {
+  opacity: 0.75;
+  cursor: progress;
 }
 
 .adb-pill {

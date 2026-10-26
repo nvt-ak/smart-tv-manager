@@ -12,11 +12,13 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ### Added
 
+- In-app update: the app checks the GitHub releases a few seconds after start (and when the version label is clicked), shows an "Cập nhật vX.Y.Z" button, downloads the release file with a size and SHA-256 check, closes, swaps the installed files (Windows: robocopy over the install folder; macOS: replaces the .app from the DMG) and reopens. Source runs and install folders the user cannot write to open the release page instead. If the swap fails, the next start says why.
 - Theme Hà Nội Về Đêm 3 (`ha-noi-night-3`, `design_profile: hanoi3`): apps in a dark panel on the right with a gold ring on the focused row, the clock, date and a time-of-day greeting on top, a weather card with a five day forecast, a gold and fuel card and a lunar date card on the left. Its widget switches are weather, gold, fuel, lunar calendar and corner texts. Needs the matching smtv-home build.
 - Per-theme widget switches: the theme dialog lists the dashboard widgets of themes that draw their own dashboard (weather, gold, fuel, month or lunar calendar, lunar date beside the clock, quote, footer texts). Each choice is saved per theme and written to the TV as `show_*` keys when the theme is applied, including the automatic re-apply after a launcher reinstall. Needs the matching smtv-home build.
 
 ### Fixed
 
+- Switching to another TV no longer shows the previous TV's theme: the last applied theme is now remembered per device (it used to be one global value that every TV matched against), real-TV preview captures are stored per device, and the Theme tab is cleared and reloaded when the active device changes.
 - A black capture of the TV (screen in standby, or a protected screen) is no longer saved as the theme's preview, and a black preview saved earlier is dropped in favour of the bundled screenshot. The TV is woken before the capture.
 - After applying a theme with widget switches, config.json is read back from the TV and compared with the switches; the apply log gets a `verify_widgets` line, and the toast lists the widgets that are off.
 - The Home diagnostic prints up to 120 lines of the TV's config.json instead of 40.
