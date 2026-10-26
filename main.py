@@ -15,6 +15,7 @@ from core.apk_installer import ApkInstaller
 from core.launcher_detector import LauncherDetector
 from core import launcher_builder, launcher_download, adb_binary
 from core.theme_manager import ThemeManager
+from core import theme_widgets
 from core.cleanyourtv_themes import CleanyourtvThemes
 from core.clean_suggestions import CleanSuggestionEngine
 from core.device_profiles import DeviceProfiles
@@ -1253,11 +1254,37 @@ class Api:
                 "screenshot": screenshot_b64,
                 "screenshot_live": has_live,
                 "config": t.get("config") or {},
+                "widgets": theme_widgets.resolve(t.get("config"), self._saved_theme_widgets(t["id"])),
                 "valid": check["ok"],
                 "errors": check["errors"],
                 "warnings": check["warnings"],
             })
         return result
+
+    @staticmethod
+    def _saved_theme_widgets(theme_id):
+        saved = (settings_store.load().get("theme_widgets") or {}).get(str(theme_id))
+        return saved if isinstance(saved, dict) else {}
+
+    def get_theme_widgets(self, theme_id=""):
+        """Which dashboard widgets of a theme are on (saved choice, else the theme's own default)."""
+        theme = next((t for t in self._themes.list_themes() if t["id"] == theme_id), None)
+        if not theme:
+            raise Exception("Không tìm thấy theme")
+        return theme_widgets.resolve(theme.get("config"), self._saved_theme_widgets(theme_id))
+
+    def set_theme_widgets(self, theme_id="", values=None):
+        """Save widget switches for a theme; they are written to the TV the next time the theme is applied."""
+        theme = next((t for t in self._themes.list_themes() if t["id"] == theme_id), None)
+        if not theme:
+            raise Exception("Không tìm thấy theme")
+        data = settings_store.load()
+        all_saved = data.get("theme_widgets") if isinstance(data.get("theme_widgets"), dict) else {}
+        merged = {**self._saved_theme_widgets(theme_id), **theme_widgets.clean(theme.get("config"), values)}
+        all_saved[str(theme_id)] = merged
+        data["theme_widgets"] = all_saved
+        settings_store.save(data)
+        return theme_widgets.resolve(theme.get("config"), merged)
 
     def _home_widgets_tv_bundle(self):
         """Launcher patch + sidecar when Widget Home is enabled in settings."""
@@ -1488,6 +1515,8 @@ class Api:
                     **self._layout_defaults(theme),
                     **self._remote_key_overrides(theme, profile),
                     **(widget_patch or {}),
+                    # The owner's widget switches for this theme win over everything else.
+                    **theme_widgets.overrides(theme.get("config"), self._saved_theme_widgets(theme_id)),
                 } or None
                 if widget_drawn:
                     # Themes like Default ship `"wallpaper": false`; the baked image would never show.

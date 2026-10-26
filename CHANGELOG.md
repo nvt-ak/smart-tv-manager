@@ -10,6 +10,10 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+### Added
+
+- Per-theme widget switches: the theme dialog lists the dashboard widgets of themes that draw their own dashboard (weather, gold, fuel, month or lunar calendar, lunar date beside the clock, quote, footer texts). Each choice is saved per theme and written to the TV as `show_*` keys when the theme is applied, including the automatic re-apply after a launcher reinstall. Needs the matching smtv-home build.
+
 ## [1.8.0] - 2026-10-26
 
 ### Added

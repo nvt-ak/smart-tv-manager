@@ -149,6 +149,9 @@ const themeModalApply = document.getElementById('themeModalApply');
 const themeModalClose = document.getElementById('themeModalClose');
 const themeModalCancel = document.getElementById('themeModalCancel');
 const themeModalDesc = document.getElementById('themeModalDesc');
+const themeModalWidgets = document.getElementById('themeModalWidgets');
+const themeWidgetsList = document.getElementById('themeWidgetsList');
+const themeWidgetsAll = document.getElementById('themeWidgetsAll');
 const homeSearchInput = document.getElementById('homeSearchInput');
 const homeSetDefaultBtn = document.getElementById('homeSetDefaultBtn');
 const homeImportBtn = document.getElementById('homeImportBtn');
@@ -3268,7 +3271,8 @@ function stableThemeJson(obj) {
   if (!obj || typeof obj !== 'object') return '{}';
   const sorted = {};
   // Keys the Widget Home panel overwrites must not break "which theme is active".
-  const widgetKeys = ['greeting_name', 'show_stats', 'always_show_names', 'module_cards'];
+  const widgetKeys = ['greeting_name', 'show_stats', 'always_show_names', 'module_cards',
+    'show_weather', 'show_gold', 'show_fuel', 'show_prices', 'show_calendar', 'show_lunar_header', 'show_quote', 'show_footer'];
   Object.keys(obj)
     .filter((k) => !widgetKeys.includes(k))
     .sort()
@@ -3656,6 +3660,46 @@ function closeThemeModal() {
   previewThemeId = null;
 }
 
+/** One switch per dashboard widget of the theme; the choice is saved at once and written to the TV on Apply. */
+function renderThemeWidgets(t) {
+  if (!themeModalWidgets || !themeWidgetsList) return;
+  const list = t.widgets || [];
+  themeModalWidgets.hidden = !list.length;
+  themeWidgetsList.innerHTML = list
+    .map(
+      (w) => `<label class="theme-widget"><input type="checkbox" data-key="${escapeHtml(w.key)}"${w.enabled ? ' checked' : ''}>
+        <span>${escapeHtml(w.label)}<small>${escapeHtml(w.hint || '')}</small></span></label>`
+    )
+    .join('');
+}
+
+async function saveThemeWidgets(values) {
+  const t = homeThemes.find((x) => x.id === previewThemeId);
+  if (!t) return;
+  try {
+    t.widgets = await getApi().set_theme_widgets(t.id, values);
+  } catch (e) {
+    showHomeToast(`Không lưu được tuỳ chọn widget: ${e.message || e}`, 'error');
+  }
+  renderThemeWidgets(t);
+}
+
+if (themeWidgetsList) {
+  themeWidgetsList.addEventListener('change', (e) => {
+    const box = e.target.closest('input[data-key]');
+    if (box) saveThemeWidgets({ [box.dataset.key]: box.checked });
+  });
+}
+if (themeWidgetsAll) {
+  themeWidgetsAll.addEventListener('click', () => {
+    const t = homeThemes.find((x) => x.id === previewThemeId);
+    if (!t) return;
+    const all = {};
+    (t.widgets || []).forEach((w) => { all[w.key] = true; });
+    saveThemeWidgets(all);
+  });
+}
+
 function openThemeModal(id) {
   const t = homeThemes.find((x) => x.id === id);
   if (!t || !themeModal) return;
@@ -3682,6 +3726,7 @@ function openThemeModal(id) {
       ${warns.length ? `<div class="theme-warn">Cảnh báo: ${escapeHtml(warns.join('; '))}</div>` : ''}
     `;
   }
+  renderThemeWidgets(t);
   if (themeModalConfig) {
     themeModalConfig.textContent = t.has_config
       ? JSON.stringify(t.config || {}, null, 2)
