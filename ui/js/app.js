@@ -3895,6 +3895,7 @@ async function applyTheme(id, btn, opts = {}) {
     homeActiveThemeId = id;
     const widgetExtra = (res.home_widgets ? ' (kèm widget Home)' : '') +
       (res.stock_launcher ? ' · đã tắt launcher gốc' : '') +
+      ((res.widgets_off || []).length ? ` · widget đang tắt: ${res.widgets_off.join(', ')}` : '') +
       (res.widgets_wallpaper ? ' · đã vẽ widget vàng/xăng vào ảnh nền' : '');
     showHomeToast(`Đã áp dụng theme "${theme.name}"${widgetExtra}`, 'palette');
     if (res.widgets_skipped) {

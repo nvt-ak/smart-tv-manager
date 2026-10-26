@@ -16,6 +16,7 @@ from core.launcher_detector import LauncherDetector
 from core import launcher_builder, launcher_download, adb_binary
 from core.theme_manager import ThemeManager
 from core import theme_widgets
+from core import preview_check
 from core.cleanyourtv_themes import CleanyourtvThemes
 from core.clean_suggestions import CleanSuggestionEngine
 from core.device_profiles import DeviceProfiles
@@ -425,8 +426,19 @@ class Api:
 
     def capture_theme_screenshot(self, host, port=5555, theme_id="", delay_s=5):
         """Wait for Home to redraw, capture the TV and keep a 1280x720 JPEG as that theme's real preview."""
+        try:
+            # A TV in standby captures as a black frame, and shows nothing of the new Home either.
+            with self._dev_op_lock(host, port):
+                adb_client.run_shell(self._get_dev(host, int(port)), "input keyevent KEYCODE_WAKEUP")
+        except Exception:
+            pass
         time.sleep(max(0.0, min(float(delay_s), 15.0)))
         shot = self.capture_screenshot(host, port)
+        if preview_check.is_black(shot["path"]):
+            raise Exception(
+                "TV chụp ra ảnh đen (TV đang ở chế độ chờ, hoặc màn hình bị chặn chụp). "
+                "Giữ ảnh mẫu của theme, không ghi đè."
+            )
         from PIL import Image
         out = self.theme_shot_path(theme_id)
         with Image.open(shot["path"]) as im:
@@ -1206,7 +1218,7 @@ class Api:
             ("launcher package", f"dumpsys package {LauncherDetector.SMTV_PKG} 2>&1 | grep -E 'versionName|versionCode|lastUpdateTime|firstInstallTime|enabled=' | head -8"),
             ("focused app", "dumpsys activity activities 2>&1 | grep -E 'mFocusedApp|ResumedActivity' | head -4"),
             ("disabled launchers", "pm list packages -d 2>&1 | grep -i launcher"),
-            ("theme files on the TV", f"ls -la /sdcard/Android/data/{LauncherDetector.SMTV_PKG}/files 2>&1 | head -20; cat /sdcard/Android/data/{LauncherDetector.SMTV_PKG}/files/config.json 2>&1 | head -40"),
+            ("theme files on the TV", f"ls -la /sdcard/Android/data/{LauncherDetector.SMTV_PKG}/files 2>&1 | head -20; cat /sdcard/Android/data/{LauncherDetector.SMTV_PKG}/files/config.json 2>&1 | head -120"),
         ]
 
         def run(tm):
@@ -1236,6 +1248,13 @@ class Api:
             screenshot_b64 = None
             live = self.theme_shot_path(t["id"])
             has_live = os.path.isfile(live)
+            if has_live and preview_check.is_black(live):
+                # A black frame (TV asleep or screen protected) saved by an earlier Apply is no preview: drop it.
+                try:
+                    os.remove(live)
+                except OSError:
+                    pass
+                has_live = False
             # A capture taken from the real TV after applying the theme beats the bundled preview.
             shot_path = live if has_live else t.get("screenshot")
             if shot_path and os.path.exists(shot_path):
@@ -1535,6 +1554,9 @@ class Api:
                             pass
                     if widget_patch:
                         result["home_widgets"] = True
+                    widgets_off = self._verify_theme_widgets(tm, theme, theme_id, on_step)
+                    if widgets_off is not None:
+                        result["widgets_off"] = widgets_off
                 except Exception as exc:
                     on_step("error", str(exc))
                     on_step("restore_backup", backup.get("path") or "")
@@ -1585,6 +1607,27 @@ class Api:
                 except Exception:
                     pass
                 self._drop_dev(host, port)
+
+    @staticmethod
+    def _verify_theme_widgets(tm, theme, theme_id, on_step):
+        """Read config.json back from the TV and compare it with the widget switches that were meant to be written.
+
+        Returns the labels of the widgets that are off, or None for a theme without switches. A mismatch is logged,
+        so the apply log shows whether the TV really got the choice.
+        """
+        config = theme.get("config")
+        widgets = theme_widgets.resolve(config, Api._saved_theme_widgets(theme_id))
+        if not widgets:
+            return None
+        off = [w["label"] for w in widgets if not w["enabled"]]
+        try:
+            on_tv = tm.read_config()
+            wrong = [w["key"] for w in widgets if on_tv.get(w["key"], True) is not w["enabled"]]
+        except Exception as exc:
+            on_step("verify_widgets", f"không đọc lại được config.json: {exc}")
+            return off
+        on_step("verify_widgets", ("khớp; đang tắt: " + (", ".join(off) or "không có")) if not wrong else "LỆCH: " + ", ".join(wrong))
+        return off
 
     def apply_gathin_theme(self, host, port=5555, theme_id=""):
         steps = []
