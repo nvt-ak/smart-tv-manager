@@ -10,6 +10,8 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-27
+
 ### Added
 
 - In-app update: the app checks the GitHub releases a few seconds after start (and when the version label is clicked), shows an "Cập nhật vX.Y.Z" button, downloads the release file with a size and SHA-256 check, closes, swaps the installed files (Windows: robocopy over the install folder; macOS: replaces the .app from the DMG) and reopens. Source runs and install folders the user cannot write to open the release page instead. If the swap fails, the next start says why.
