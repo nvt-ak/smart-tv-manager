@@ -37,6 +37,13 @@
     g2_t: "Nhập PIN bằng remote TV", g2_d: "Lên và Xuống đổi số, Phải thêm số, OK xác nhận. PIN chỉ được lưu trên TV dưới dạng băm, và nhập sai nhiều lần sẽ phải chờ lâu hơn.",
     g3_t: "Khoá ngay, mở khoá tạm", g3_d: "Che màn hình ngay lập tức, hoặc cho xem thêm 30 phút mà không đổi lịch.",
     g4_t: "Cài đặt luôn được bảo vệ", g4_d: "Cài đặt và cửa hàng ứng dụng luôn hỏi PIN nên không thể tắt khoá dễ dàng. Không chặn được đổi cổng HDMI, cast từ điện thoại hay reset nhà máy.",
+    lg_h: "Nay đã có TV LG webOS (bản đầu).",
+    lg_p: "Quét mạng một lần, SmartTV Manager tìm cả TV Android lẫn TV LG. Ghép cặp TV LG bằng cách chấp nhận thông báo trên màn hình, rồi điều khiển từ máy tính.",
+    lg1_t: "Remote, nhập chữ và app", lg1_d: "Phím điều hướng, nhập chữ vào ô văn bản, mở app và chuyển cổng HDMI. Nút nguồn chỉ tắt TV; muốn bật lại hãy dùng remote LG.",
+    lg2_t: "Theme Home", lg2_d: "Cùng bốn bố cục Home và công tắc widget, cài dưới dạng app snapshot. Cần bật Developer Mode trên TV, cài Node.js và webOS CLI của LG. Muốn làm mới dữ liệu thì Apply lại.",
+    lg3_t: "Những gì LG chưa có", lg3_d: "Cài APK, Smart Clean và khoá trẻ em chỉ dành cho Android.",
+    lg4_t: "Chưa thử trên TV LG thật", lg4_d: "Hãy xem đây là bản dùng thử. Rất hoan nghênh báo cáo từ TV thật, kèm model và phiên bản webOS, trên GitHub.",
+    how_lg: "Dùng TV LG? Chọn LG webOS khi thêm thiết bị và chấp nhận thông báo ghép cặp trên TV. Nếu TV không hiện, bật LG Connect Apps trong cài đặt mạng của TV.",
     how_h: "Ba bước là dùng được.",
     s1_t: "Bật gỡ lỗi trên TV", s1_d: "Cài đặt, Tuỳ chọn thiết bị, Giới thiệu: nhấn OK bảy lần vào Bản dựng. Sau đó bật gỡ lỗi USB hoặc gỡ lỗi mạng trong Tuỳ chọn nhà phát triển.",
     s2_t: "Kết nối qua Wi‑Fi", s2_d: "Nhập địa chỉ IP của TV vào app và chấp nhận thông báo hiện trên TV.",
@@ -45,15 +52,16 @@
     dl_win: "Windows 10 trở lên, 64-bit. Giải nén rồi chạy SmartTVManager.exe.",
     dl_mac: "Mở file .dmg và kéo app vào Applications.",
     dl_zip: "Tải .zip", dl_dmg: "Tải .dmg",
-    dl_note: "App chưa được ký số. Windows SmartScreen có thể cảnh báo (chọn Thông tin thêm, rồi Vẫn chạy), còn macOS có thể yêu cầu cho phép trong Cài đặt hệ thống, Quyền riêng tư và bảo mật. Mã nguồn công khai nếu bạn muốn tự kiểm tra hoặc tự build.",
+    dl_note: "App chưa được ký số. Windows SmartScreen có thể cảnh báo (chọn Thông tin thêm, rồi Vẫn chạy). Nếu Windows báo không nạp được Python.Runtime, chuột phải file .zip, mở Properties, tick Unblock rồi giải nén lại, còn macOS có thể yêu cầu cho phép trong Cài đặt hệ thống, Quyền riêng tư và bảo mật. Mã nguồn công khai nếu bạn muốn tự kiểm tra hoặc tự build.",
     dl_all: "Tất cả bản phát hành", dl_src: "Mã nguồn trên GitHub",
     faq_h: "Hỏi đáp",
     q1: "Có an toàn không?", a1: "App chạy trên máy tính của bạn và nói chuyện với TV qua mạng nội bộ bằng ADB. Nó không thu thập dữ liệu. App chỉ kết nối GitHub để tải launcher và các nguồn giá công khai cho widget, khi bạn dùng các tính năng đó. Vô hiệu hoá một app có thể hoàn tác. Gỡ cài đặt thì không, nên app luôn hỏi trước.",
     q2: "Dùng được với TV nào?", a2: "App được viết và thử trên TCL Google TV chạy Android 11. Quản lý app và cài APK dùng ADB thông thường nên các TV Android TV hoặc Google TV khác nhiều khả năng dùng được. Gán phím remote được chuẩn bị cho remote TCL. Launcher cần Android 8 trở lên. TV LG webOS được hỗ trợ ở bản đầu (remote, app, HDMI, theme Home), chưa kiểm chứng trên TV LG thật; cài APK và Smart Clean chỉ dành cho Android.",
+    q7: "Có dùng được với TV LG không?", a7: "Có, ở dạng bản đầu cho LG webOS: remote, app, cổng HDMI và theme Home. Chưa được kiểm chứng trên TV LG thật, và cài APK, Smart Clean, khoá trẻ em không có trên LG.",
     q3: "Có cần root TV không?", a3: "Không. Bạn chỉ cần bật gỡ lỗi USB hoặc gỡ lỗi mạng.",
     q4: "Làm sao hoàn tác thay đổi?", a4: "Bật lại app đã tắt trong danh sách app, dùng “Đặt lại launcher gốc” để trả màn hình chính ban đầu, và khôi phục bản sao lưu cấu hình launcher trước đó.",
     q5: "Widget chỉ dành cho Việt Nam?", a5: "Widget vàng và xăng dầu có sẵn dùng nguồn dữ liệu Việt Nam, tính bằng VND. Quản lý app, cài APK và theme dùng được ở mọi nơi.",
-    q6: "Đây có phải công cụ chính thức của TCL hay Google không?", a6: "Không. Đây là dự án độc lập, không liên kết với TCL, Google hay tác giả CleanYourTV. CleanYourTV dùng giấy phép MIT.",
+    q6: "Đây có phải công cụ chính thức của TCL hay Google không?", a6: "Không. Đây là dự án độc lập, không liên kết với TCL, Google, LG hay tác giả CleanYourTV. CleanYourTV dùng giấy phép MIT.",
     foot: "SmartTV Manager là phần mềm tự do. Launcher mà app cài là CleanYourTV của Gathin23, giấy phép MIT. Tên sản phẩm thuộc về chủ sở hữu của chúng.",
     foot_issue: "Báo lỗi",
     foot_support: "Mời mình ly cà phê",
@@ -70,8 +78,8 @@
   });
   var EN_META = { title: document.title, desc: document.querySelector('meta[name="description"]').content };
   var VI_META = {
-    title: "SmartTV Manager: dọn dẹp và tuỳ biến Android TV",
-    desc: "Gỡ quảng cáo và app không dùng, dựng màn hình chính riêng và quản lý Android TV hoặc Google TV từ máy tính. Miễn phí, mã nguồn mở cho Windows và macOS."
+    title: "SmartTV Manager: dọn dẹp và tuỳ biến Android TV và TV LG webOS",
+    desc: "Gỡ quảng cáo và app không dùng, dựng màn hình chính riêng và quản lý Android TV, Google TV hoặc TV LG webOS từ máy tính. Miễn phí, mã nguồn mở cho Windows và macOS."
   };
 
   var lang = "en";

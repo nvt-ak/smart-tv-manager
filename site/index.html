@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SmartTV Manager: clean up and customise your Android TV</title>
-<meta name="description" content="Remove ads and unused apps, build your own Home screen and manage your Android TV or Google TV from your computer. Free and open source for Windows and macOS.">
+<title>SmartTV Manager: clean up and customise your Android TV and LG webOS TV</title>
+<meta name="description" content="Remove ads and unused apps, build your own Home screen and manage your Android TV, Google TV or LG webOS TV from your computer. Free and open source for Windows and macOS.">
 <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
 <meta property="og:title" content="SmartTV Manager">
-<meta property="og:description" content="Clean up and customise your Android TV from your computer. Free and open source.">
+<meta property="og:description" content="Clean up and customise your Android TV or LG webOS TV from your computer. Free and open source.">
 <meta property="og:type" content="website">
 <link rel="canonical" href="https://nvt-ak.github.io/smart-tv-manager/">
 <meta property="og:url" content="https://nvt-ak.github.io/smart-tv-manager/">
@@ -143,6 +143,19 @@
   </div>
 </section>
 
+<section id="lg">
+  <div class="wrap">
+    <h2 data-i18n="lg_h">Now with LG webOS TVs (early version).</h2>
+    <p class="lede" style="margin-top:14px" data-i18n="lg_p">Scan the network once and SmartTV Manager finds both Android TVs and LG TVs. Pair an LG TV by accepting a prompt on screen, then use it from your computer.</p>
+    <ul class="points">
+      <li><b data-i18n="lg1_t">Remote, text and apps</b><span data-i18n="lg1_d">Navigation keys, typing into text fields, opening apps and switching HDMI input. The power button turns the TV off; use the LG remote to turn it on.</span></li>
+      <li><b data-i18n="lg2_t">Home themes</b><span data-i18n="lg2_d">The same four Home layouts and widget switches, installed as a snapshot app. This needs Developer Mode on the TV, Node.js and LG’s webOS CLI. Apply again to refresh the data.</span></li>
+      <li><b data-i18n="lg3_t">What LG does not get</b><span data-i18n="lg3_d">APK install, Smart Clean and the child lock are Android only.</span></li>
+      <li><b data-i18n="lg4_t">Not tested on a real LG TV yet</b><span data-i18n="lg4_d">Treat it as a preview. Reports from real TVs, with the model and webOS version, are very welcome on GitHub.</span></li>
+    </ul>
+  </div>
+</section>
+
 <section id="how">
   <div class="wrap">
     <h2 data-i18n="how_h">Up and running in three steps.</h2>
@@ -151,6 +164,7 @@
       <li><h3 data-i18n="s2_t">Connect over Wi‑Fi</h3><p data-i18n="s2_d">Type the TV’s IP address into the app and accept the prompt that appears on the TV.</p></li>
       <li><h3 data-i18n="s3_t">Clean up and customise</h3><p data-i18n="s3_d">Disable apps you don’t need. When asked, let the app install CleanYourTV, then pick a theme.</p></li>
     </ol>
+    <p class="fine note" data-i18n="how_lg">Using an LG TV? Choose LG webOS when you add it, and accept the pairing prompt on the TV. If the TV does not show one, switch on LG Connect Apps in its network settings.</p>
     <figure class="shot" style="margin-top:40px"><img src="assets/img/app-devices.webp" width="1600" height="808" loading="lazy" alt="The device screen: scan the network or type the TV address, then open the remote"></figure>
   </div>
 </section>
@@ -171,7 +185,7 @@
         <a class="btn btn-primary" id="linkMac" href="https://github.com/nvt-ak/smart-tv-manager/releases/latest"><span data-i18n="dl_dmg">Download .dmg</span></a>
       </div>
     </div>
-    <p class="fine note" data-i18n="dl_note">The app is not code-signed yet. Windows SmartScreen may warn you (choose More info, then Run anyway), and macOS may ask you to allow it in System Settings, Privacy &amp; Security. The source is public if you would rather check or build it yourself.</p>
+    <p class="fine note" data-i18n="dl_note">The app is not code-signed yet. Windows SmartScreen may warn you (choose More info, then Run anyway). If Windows says it cannot load Python.Runtime, right-click the .zip, open Properties, tick Unblock, and extract it again, and macOS may ask you to allow it in System Settings, Privacy &amp; Security. The source is public if you would rather check or build it yourself.</p>
     <p class="fine note links"><a href="https://github.com/nvt-ak/smart-tv-manager/releases" data-i18n="dl_all">All releases</a> <a href="https://github.com/nvt-ak/smart-tv-manager" data-i18n="dl_src">Source code on GitHub</a></p>
   </div>
 </section>
@@ -181,10 +195,11 @@
     <h2 style="margin-bottom:22px" data-i18n="faq_h">Questions</h2>
     <details><summary data-i18n="q1">Is it safe?</summary><p data-i18n="a1">The app runs on your computer and talks to the TV over your local network using ADB. It collects no data. It contacts GitHub to download the launcher and public price sources for the widgets, only when you use those features. Disabling an app is reversible. Uninstalling is not, so the app asks first.</p></details>
     <details><summary data-i18n="q2">Which TVs does it work with?</summary><p data-i18n="a2">It was built and tested on a TCL Google TV running Android 11. App management and APK install use plain ADB, so other Android TV and Google TV models should work. Remote-key mapping is set up for TCL remotes. The launcher needs Android 8 or later. LG webOS TVs are supported as an early version (remote, apps, HDMI input, Home theme) and have not yet been verified on a real LG TV; APK install and Smart Clean are Android only.</p></details>
+    <details><summary data-i18n="q7">Does it work with LG TVs?</summary><p data-i18n="a7">Yes, as an early version for LG webOS: remote, apps, HDMI input and Home themes. It has not been verified on a real LG TV yet, and APK install, Smart Clean and the child lock are not available on LG.</p></details>
     <details><summary data-i18n="q3">Do I need to root the TV?</summary><p data-i18n="a3">No. You only turn on USB or network debugging.</p></details>
     <details><summary data-i18n="q4">How do I undo my changes?</summary><p data-i18n="a4">Re-enable disabled apps in the app list, use “Reset stock launcher” to bring back the original Home screen, and restore a backup of your previous launcher settings.</p></details>
     <details><summary data-i18n="q5">Are the widgets only for Vietnam?</summary><p data-i18n="a5">The built-in gold and fuel widgets use Vietnamese sources, in VND. App management, APK install and themes work anywhere.</p></details>
-    <details><summary data-i18n="q6">Is this an official TCL or Google tool?</summary><p data-i18n="a6">No. It is an independent project, not affiliated with TCL, Google or the author of CleanYourTV. CleanYourTV is MIT licensed.</p></details>
+    <details><summary data-i18n="q6">Is this an official TCL or Google tool?</summary><p data-i18n="a6">No. It is an independent project, not affiliated with TCL, Google, LG or the author of CleanYourTV. CleanYourTV is MIT licensed.</p></details>
   </div></div>
 </section>
 <section class="support" id="support">
