@@ -20,8 +20,11 @@ bị gửi lại tự động sau khi có thể đã tới TV. Phím điều hư
 trong vài giây liên tiếp rồi mở kênh mới; khoảng này là ước lượng, chưa đo trên TV thật.
 
 Remote, nhập văn bản, mở ứng dụng và chuyển HDMI dùng giao thức LG. Nút nguồn
-chỉ **tắt** TV; bật lại bằng remote LG. Quét LAN chỉ tìm cổng đang mở, chưa chứng
-minh đó là LG và chưa ghép cặp. Tên/model có thể chỉ là LG webOS nếu firmware từ
+chỉ **tắt** TV; bật lại bằng remote LG. Nút **Quét mạng** dò một lượt cả cổng 5555
+(Android/Google TV) lẫn 3001/3000 (LG webOS) và đoán loại TV theo cổng mở. Đó chỉ là gợi
+ý: cổng 3000/3001 cũng hay bị máy khác dùng, chưa chứng minh đó là LG và chưa ghép cặp.
+Thiết bị mở cả hai nhóm cổng có hai nút kết nối để bạn chọn. TV LG đời cũ chỉ mở 3000
+(WS không mã hóa) nên được kết nối qua cổng đó. Tên/model có thể chỉ là LG webOS nếu firmware từ
 chối API metadata. Trạng thái cổng mở không có nghĩa TV đã cho phép điều khiển.
 
 ## Cài Home và áp dụng theme/widget

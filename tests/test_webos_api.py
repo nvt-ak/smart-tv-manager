@@ -356,5 +356,34 @@ class LgDeviceLifecycle(unittest.TestCase):
         self.assertEqual(self.api._device_platform(HOST), "android_tv")
 
 
+class ScanAllTests(unittest.TestCase):
+    def test_classification_is_a_hint_derived_from_open_ports(self):
+        classify = main.classify_scan_ports
+        self.assertEqual(classify([5555]), [{"platform": "android_tv", "port": 5555}])
+        self.assertEqual(classify([3001]), [{"platform": "lg_webos", "port": 3001}])
+        self.assertEqual(classify([3000]), [{"platform": "lg_webos", "port": 3000}])
+        self.assertEqual(classify([3000, 3001]), [{"platform": "lg_webos", "port": 3001}])
+        self.assertEqual([c["platform"] for c in classify([3001, 5555])], ["android_tv", "lg_webos"])
+        self.assertEqual(classify([8080]), [])
+
+    def test_scan_ports_reports_open_ports_per_host(self):
+        open_ports = {("10.0.0.5", 5555), ("10.0.0.9", 3001), ("10.0.0.9", 3000)}
+        with mock.patch.object(adb_client, "_local_subnets", return_value={"10.0.0.0/30", "10.0.0.8/30"}), \
+                mock.patch.object(adb_client, "_port_open", side_effect=lambda h, p, t: (h, p) in open_ports):
+            # /30 networks hold hosts .1-.2 and .9-.10: only .9 is in range, .5 is not scanned.
+            found = adb_client.scan_ports([5555, 3001, 3000])
+        self.assertEqual(found, {"10.0.0.9": [3000, 3001]})
+
+    def test_scan_all_merges_platforms_and_sorts_by_ip(self):
+        found = {"192.168.1.20": [3001], "192.168.1.3": [5555], "192.168.1.9": [3000, 5555], "192.168.1.50": []}
+        api = main.Api()
+        with mock.patch.object(adb_client, "scan_ports", return_value=found) as scan:
+            rows = api.scan_all()
+        self.assertEqual(sorted(scan.call_args.args[0]), [3000, 3001, 5555])
+        self.assertEqual([r["host"] for r in rows], ["192.168.1.3", "192.168.1.9", "192.168.1.20"])
+        self.assertEqual([c["platform"] for c in rows[1]["candidates"]], ["android_tv", "lg_webos"])
+        self.assertEqual(rows[2]["candidates"], [{"platform": "lg_webos", "port": 3001}])
+
+
 if __name__ == "__main__":
     unittest.main()

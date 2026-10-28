@@ -14,6 +14,7 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 - Hỗ trợ thêm TV LG webOS, ghép cặp riêng, remote/nhập văn bản, mở ứng dụng và chuyển HDMI qua giao thức LG.
 - Home webOS dùng catalog theme và công tắc widget của SmartTV Manager; Apply đóng gói snapshot và cài bằng profile webOS CLI được kiểm tra đúng IP TV.
 - Tài liệu use case/task, bằng chứng TDD và hướng dẫn Developer Mode, giới hạn snapshot và checklist TV thật.
+- Quét mạng dò một lượt cả cổng Android (5555) và LG (3001/3000), gợi ý loại TV theo cổng mở; thiết bị mở cả hai nhóm cổng cho chọn nền tảng khi kết nối.
 - Nút **Quên ghép cặp** cho TV LG; xóa TV LG cũng xóa khóa ghép cặp và dấu vân tay chứng chỉ đã lưu.
 - Gói Home webOS giới hạn 12 ảnh nền / 24 MB; CLI webOS tìm thêm trong các thư mục npm toàn cục thường gặp trên macOS/Linux.
 

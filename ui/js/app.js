@@ -2410,36 +2410,46 @@ if (scanQuickBtn && scanBtn) {
   scanQuickBtn.addEventListener('click', () => scanBtn.click());
 }
 
+const SCAN_LABELS = { android_tv: 'Android / Google TV', lg_webos: 'LG webOS' };
+
 scanBtn.addEventListener('click', async () => {
   scanResultsEl.innerHTML = '';
   setStatus('Đang quét mạng, có thể mất 10-30 giây tùy mạng...');
-  appendTerminal('scan_subnet', 'Quét nền tảng TV đã chọn trên các mạng local...', 'log-info');
+  appendTerminal('scan_all', 'Quét cổng Android (5555) và LG webOS (3001/3000) trên các mạng local...', 'log-info');
   setButtonLoading(scanBtn, true, 'Đang quét...');
   try {
-    const scanPlatform = document.getElementById('manualPlatform').value;
-    const ips = await getApi().scan(scanPlatform);
-    if (!ips.length) {
-      setStatus('Không tìm thấy TV thuộc nền tảng đã chọn. Có thể thêm bằng IP.');
+    const rows = await getApi().scan_all();
+    if (!rows.length) {
+      setStatus('Không tìm thấy TV nào. Có thể thêm bằng IP.');
     } else {
-      setStatus(`Tìm thấy ${ips.length} địa chỉ có cổng kết nối; ghép cặp để xác minh TV`);
-      for (const ip of ips) {
+      setStatus(`Tìm thấy ${rows.length} địa chỉ; loại TV chỉ đoán theo cổng mở, kết nối để xác minh`);
+      for (const row of rows) {
         const div = document.createElement('div');
         div.className = 'scan-item';
-        div.innerHTML = `<span>${ip}</span><button data-host="${ip}">Kết nối</button>`;
-        div.querySelector('button').addEventListener('click', async (e) => {
-          const btn = e.target;
-          setButtonLoading(btn, true, 'Đang kết nối...');
-          setStatus(`Đang kết nối ${ip}...`);
-          try {
-            const info = await getApi().connect(ip, scanPlatform === 'lg_webos' ? 3001 : 5555, null, scanPlatform);
-            setStatus(`${ip}: ${info.model} · ${platformIdentity(info)}`);
-            div.remove();
-            await refreshList();
-          } catch (err) {
-            setStatus(`Lỗi kết nối ${ip}: ${err}`);
-            setButtonLoading(btn, false);
-          }
-        });
+        const hint = row.candidates.map(c => `${SCAN_LABELS[c.platform] || c.platform} · cổng ${c.port}`).join(' hoặc ');
+        div.innerHTML = `<span>${row.host}</span><span class="scan-hint">${hint}</span>`;
+        for (const cand of row.candidates) {
+          const btn = document.createElement('button');
+          btn.dataset.host = row.host;
+          btn.dataset.platform = cand.platform;
+          btn.textContent = row.candidates.length > 1 ? `Kết nối như ${SCAN_LABELS[cand.platform]}` : 'Kết nối';
+          btn.addEventListener('click', async () => {
+            setButtonLoading(btn, true, 'Đang kết nối...');
+            setStatus(cand.platform === 'lg_webos'
+              ? `Chấp nhận yêu cầu ghép cặp trên TV LG ${row.host}…`
+              : `Đang kết nối ${row.host}...`);
+            try {
+              const info = await getApi().connect(row.host, cand.port, null, cand.platform);
+              setStatus(`${row.host}: ${info.model} · ${platformIdentity(info)}`);
+              div.remove();
+              await refreshList();
+            } catch (err) {
+              if (!promptPairingIfNeeded(err, row.host)) setStatus(`Lỗi kết nối ${row.host}: ${err}`);
+              setButtonLoading(btn, false);
+            }
+          });
+          div.appendChild(btn);
+        }
         scanResultsEl.appendChild(div);
       }
     }

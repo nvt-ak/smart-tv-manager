@@ -14,7 +14,11 @@ const handlers={list_devices:async()=>[lg,android],app_version:async()=> '1.9.0'
  list_inputs:async()=>[{id:'HDMI_1',label:'Console'}],
  get_theme_widgets:async()=>[],apply_gathin_theme_job:async()=>({status:'done',steps:[],result:{}}),
  webos_apply_theme_async:async()=>({job_id:'lg1'}),
- forget_webos_pairing:async()=>({ok:true,removed:true})};
+ forget_webos_pairing:async()=>({ok:true,removed:true}),
+ scan_all:async()=>([{host:'192.168.1.3',ports:[5555],candidates:[{platform:'android_tv',port:5555}]},
+  {host:'192.168.1.20',ports:[3001],candidates:[{platform:'lg_webos',port:3001}]},
+  {host:'192.168.1.9',ports:[3001,5555],candidates:[{platform:'android_tv',port:5555},{platform:'lg_webos',port:3001}]}]),
+ connect:async(h,p,n,platform)=>({model:'Fake',platform})};
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{
  const dom=await JSDOM.fromFile(path.resolve(__dirname,'../ui/index.html'),{runScripts:'dangerously',resources:new LocalOnly(),pretendToBeVisual:true,beforeParse(w){w.confirm=()=>true;w.alert=()=>{};w.matchMedia=()=>({matches:false,addEventListener(){}});w.pywebview={api:new Proxy({},{get:(_,key)=>(...args)=>{calls.push([key,...args]);return (handlers[key]||(async()=>null))(...args);}})};}});
@@ -26,6 +30,13 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  w.document.querySelector('[data-host="192.168.1.9"][data-act="forget-pairing"]').click();await delay(50);
  assert(calls.some(c=>c[0]==='forget_webos_pairing'&&c[1]==='192.168.1.9'));
  assert($('statusText')?.textContent?.includes('Đã quên ghép cặp LG')||w.document.body.textContent.includes('Đã quên ghép cặp LG'));
+ $('scanBtn').click();await delay(100);
+ const scanned=[...w.document.querySelectorAll('#scanResults .scan-item')];
+ assert.equal(scanned.length,3);
+ assert.equal(scanned[0].querySelectorAll('button').length,1);
+ assert.equal(scanned[2].querySelectorAll('button').length,2,'ambiguous host offers both platforms');
+ scanned[1].querySelector('button').click();await delay(50);
+ assert(calls.some(c=>c[0]==='connect'&&c[1]==='192.168.1.20'&&c[2]===3001&&c[4]==='lg_webos'),'scan hit connects with its own platform and port');
  w.document.querySelector('[data-host="192.168.1.9"][data-act="control"]').click();await delay(50);
  assert.equal(w.eval('activeDevice.platform'),'lg_webos');
  assert.equal($('tabApkBtn').hidden,true);assert.equal($('tabGuardBtn').disabled,true);assert.equal($('remoteScreencapBtn').hidden,true);

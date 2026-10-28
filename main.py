@@ -38,6 +38,24 @@ import uuid
 
 THEME_APPLY_LOG = os.path.join(adb_client.KEY_DIR, "theme-apply.log")
 PLATFORM_CACHE_SECONDS = 5.0
+LG_SCAN_PORTS = (3001, 3000)  # secure first; 3000 is the plain WS port of older TVs
+
+
+def classify_scan_ports(open_ports):
+    """Platforms a host *might* be, judged only by which ports answered.
+
+    Ports 3000/3001 are also common development ports, so this is a hint: the user still
+    confirms by connecting (LG pairing then proves it is a TV). A host with both families
+    open yields two candidates and the user picks.
+    """
+    open_ports = set(open_ports)
+    candidates = []
+    if adb_client.PORT in open_ports:
+        candidates.append({"platform": "android_tv", "port": adb_client.PORT})
+    lg_port = next((p for p in LG_SCAN_PORTS if p in open_ports), None)
+    if lg_port:
+        candidates.append({"platform": "lg_webos", "port": lg_port})
+    return candidates
 
 
 class Api:
@@ -354,6 +372,16 @@ class Api:
             rows = list(pool.map(check_one, devices))
         store.batch_update_online({host: online for host, online, _ in rows})
         return [nd for _, _, nd in rows]
+
+    def scan_all(self):
+        """One sweep for every supported platform: [{host, ports, candidates}] sorted by IP."""
+        found = adb_client.scan_ports((adb_client.PORT, *LG_SCAN_PORTS))
+        rows = []
+        for host in sorted(found, key=lambda ip: tuple(int(p) for p in ip.split("."))):
+            candidates = classify_scan_ports(found[host])
+            if candidates:
+                rows.append({"host": host, "ports": found[host], "candidates": candidates})
+        return rows
 
     def scan(self, platform="android_tv"):
         if platform == "lg_webos":
