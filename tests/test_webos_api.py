@@ -90,6 +90,16 @@ class LgApiAcceptance(unittest.TestCase):
         self.lg.send_text.assert_called_once_with("Tìm kiếm tiếng Việt")
         self.adb_connect.assert_not_called()
 
+    def test_actual_manager_remote_buttons_map_to_supported_lg_commands(self):
+        # These keycodes come from ui/index.html, including Settings vs Input.
+        expected = {24: ("volume_up", "volumeup"), 25: ("volume_down", "volumedown"),
+                    166: ("channel_up", "channelup"), 167: ("channel_down", "channeldown"),
+                    176: ("settings",), 178: ("input",)}
+        for keycode, semantics in expected.items():
+            with self.subTest(keycode=keycode):
+                self.api.remote_key(HOST, 3001, keycode)
+                self.assertIn(self.lg.remote.call_args.args[0], semantics)
+
     def test_lg_app_list_retains_title_and_has_no_android_management(self):
         result = self.api.list_apps(HOST, 3001)
         app = result["apps"][0]
