@@ -237,6 +237,34 @@ const homeApplyLog = document.getElementById('homeApplyLog');
 const homeApplyLogHint = document.getElementById('homeApplyLogHint');
 
 let activeDevice = null;
+let savedDevices = [];
+function isLgDevice(dev = activeDevice) { return dev?.platform === 'lg_webos'; }
+function platformIdentity(info) { return isLgDevice(info) ? 'LG webOS' : `Android ${info.android || '?'}`; }
+function updatePlatformControls() {
+  const capabilities = window.DevicePlatform.policy(activeDevice);
+  const lg = !capabilities.apk;
+  const hide = (id, value) => { const el = document.getElementById(id); if (el) el.hidden = value; };
+  ['tabApkBtn','tabGuardBtn','smartCleanBtn','appsLogcatBtn','appsLauncherPickBtn','appsBatchBar','appsMasterCheckbox',
+   'remoteScreencapBtn','remoteDevBtn','remoteRebootBtn','remoteWakeBtn','remoteMouseScroll',
+   'homeDiagBtn','homeInstallBtn','homeResyncBtn','homeStockOnBtn','homeSetDefaultBtn','homeDetectBtn',
+   'homeBackupBtn','homeResetThemeBtn','homeLoadBackupsBtn','homeRestartBtn','homeDiscoverBtn','homeImportBtn'].forEach(id => hide(id, lg));
+  const auto = document.getElementById('homeAutoStock')?.closest('label'); if (auto) auto.hidden = lg;
+  const launcherPanel = document.querySelector('.home-panel--launcher'); if (launcherPanel) launcherPanel.hidden = lg;
+  const advanced = document.querySelector('#tab-home .home-advanced'); if (advanced) advanced.hidden = lg;
+  const hint = document.getElementById('homeAdbHint'); if (hint) hint.textContent = lg ? 'webOS CLI · đóng gói snapshot và cài lại Home' : 'adb shell — ThemeProvider / sdcard overlay';
+  const stats = document.getElementById('homeWidgetShowStats')?.closest('label'); if (stats) stats.hidden = lg;
+  const power = document.querySelector('#tab-remote [data-key="26"]'); if (power) { power.title = lg ? 'Tắt TV (bật lại bằng remote LG)' : 'Power'; power.setAttribute('aria-label', power.title); }
+  const keycodes = document.querySelector('.remote-keycode-row'); if (keycodes) keycodes.hidden = lg;
+  const trackpad = document.getElementById('remoteTrackpad'); if (trackpad) trackpad.hidden = lg;
+  hide('webosHomeSetup', !lg); hide('webosInputs', !lg);
+  if (tabApkBtn) tabApkBtn.disabled = lg;
+  if (tabGuardBtn) tabGuardBtn.disabled = lg;
+  if (appsFilterTabs) appsFilterTabs.hidden = lg;
+  if (lg) appsActiveFilter = 'all';
+  const sync = document.getElementById('appsSyncMeta'); if (sync) sync.textContent = lg ? 'LG webOS · mở ứng dụng' : 'Lệnh: pm list packages';
+  const chip = document.getElementById('homePkgChip'); if (chip) chip.textContent = lg ? 'SmartTV Home · webOS' : 'smtv_manager.home';
+}
+
 let keyThrottle = new Map();
 let appsCache = [];
 let appsHome = null;
@@ -353,6 +381,7 @@ function resetHomeState() {
 }
 
 function setActiveDevice(dev) {
+  dev = window.DevicePlatform.normalize(dev, savedDevices);
   const changed = deviceKey(dev) !== deviceKey(activeDevice);
   activeDevice = dev;
   if (changed) resetPerDeviceState();
@@ -370,6 +399,7 @@ function setActiveDevice(dev) {
   updateAppsDeviceHeader();
   syncSmartCleanDeviceBadge();
   updateDeviceCardHighlights();
+  updatePlatformControls();
   const homePane = document.getElementById('tab-home');
   if (homePane?.classList.contains('active')) activateHomeTab();
 }
@@ -624,7 +654,7 @@ async function updateAppsDeviceHeader() {
   const sub = document.getElementById('appsDeviceSub');
   if (sub) {
     sub.textContent = activeDevice.online
-      ? 'Điều khiển package qua ADB shell'
+      ? (isLgDevice() ? 'LG webOS · mở ứng dụng, không hỗ trợ vô hiệu hóa/gỡ app' : 'Điều khiển package qua ADB shell')
       : 'Thiết bị offline — một số thao tác có thể thất bại';
   }
 }
@@ -660,7 +690,7 @@ function getFilteredApps() {
   if (terms.length) {
     list = list.filter((a) => {
       // Mỗi từ khoá phải xuất hiện trong tên HOẶC package id (chứa, không phân biệt dấu/hoa thường).
-      const hay = normalizeSearchText(`${friendlyPkgName(a.package)} ${a.package}`);
+      const hay = normalizeSearchText(`${a.name || friendlyPkgName(a.package)} ${a.package}`);
       return terms.every((t) => hay.includes(t));
     });
   }
@@ -739,7 +769,7 @@ function renderApps() {
         <div class="app-row-icon"><span class="material-symbols-outlined">${appMaterialIcon(app.package)}</span></div>
         <div style="min-width:0;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span class="app-row-title">${escapeHtml(friendlyPkgName(app.package))}</span>
+            <span class="app-row-title">${escapeHtml(app.name || friendlyPkgName(app.package))}</span>
             ${homePill}${suggestPill}
           </div>
           <div class="app-row-pkg">${escapeHtml(app.package)}</div>
@@ -758,6 +788,9 @@ function renderApps() {
         ${toggleBtn}
         ${uninstallBtn}
       </div>`;
+    if (isLgDevice()) {
+      row.querySelectorAll('.app-row-checkbox, .app-row-actions button:not([data-act="open"])').forEach(el => el.remove());
+    }
     appsList.appendChild(row);
   });
   if (appsMasterCheckbox) appsMasterCheckbox.checked = false;
@@ -907,7 +940,7 @@ function applyAppsInfoMap(info) {
 }
 
 async function syncAppsVersions(maxTotal = APPS_VERSION_SYNC_MAX) {
-  if (!activeDevice || !appsCache.length || !window.pywebview?.api?.get_apps_info) return;
+  if (!activeDevice || isLgDevice() || !appsCache.length || !window.pywebview?.api?.get_apps_info) return;
   const syncGen = appsListSyncGen;
   const missing = appsCache
     .filter((a) => !a.version && !a.version_code)
@@ -965,7 +998,7 @@ async function loadApps() {
     renderApps();
     logAppsConsole('pm list packages', `Đồng bộ ${appsCache.length} gói`, 'log-ok');
     setAppsStatus(`Đã tải ${appsCache.length} package`);
-    scheduleAppsVersionSync();
+    if (!isLgDevice()) scheduleAppsVersionSync();
     setTimeout(() => setAppsStatus(''), 1500);
   } catch (err) {
     setAppsStatus(`Lỗi tải danh sách: ${err}`);
@@ -2066,6 +2099,13 @@ if (refreshAppsBtn) {
   });
 }
 
+function forgetPairingButton(d) {
+  if (d.platform !== 'lg_webos') return '';
+  return `<button type="button" class="btn btn--icon" data-act="forget-pairing" data-host="${d.host}" title="Quên ghép cặp LG (TV sẽ hỏi cho phép lại ở lần kết nối sau)">
+        <span class="material-symbols-outlined">link_off</span>
+      </button>`;
+}
+
 function deviceCardActions(d, featured) {
   const online = d.online;
   const name = escapeAttr(d.name);
@@ -2078,6 +2118,7 @@ function deviceCardActions(d, featured) {
       <button type="button" class="btn btn--icon" data-act="rename" data-host="${d.host}" title="Đổi tên">
         <span class="material-symbols-outlined">edit</span>
       </button>
+      ${forgetPairingButton(d)}
       <button type="button" class="btn btn--icon btn--danger-icon" data-act="remove" data-host="${d.host}" title="Xóa">
         <span class="material-symbols-outlined">delete</span>
       </button>`;
@@ -2090,6 +2131,7 @@ function deviceCardActions(d, featured) {
     <button type="button" class="btn btn--icon" data-act="rename" data-host="${d.host}" title="Đổi tên">
       <span class="material-symbols-outlined">edit</span>
     </button>
+    ${forgetPairingButton(d)}
     <button type="button" class="btn btn--icon btn--danger-icon" data-act="remove" data-host="${d.host}" title="Xóa">
       <span class="material-symbols-outlined">delete</span>
     </button>`;
@@ -2098,6 +2140,7 @@ function deviceCardActions(d, featured) {
 async function refreshList(check = 'adb') {
   try {
     const devices = await getApi().list_devices(check);
+    savedDevices = devices || [];
     listEl.innerHTML = '';
     updateAppChrome(devices.length);
     if (!devices.length) {
@@ -2124,7 +2167,7 @@ async function refreshList(check = 'adb') {
         telemetry = `
           <div class="telemetry-grid">
             <div class="telemetry-tile"><span class="telemetry-tile-label">Trạng thái</span><span class="telemetry-tile-value">${online ? 'Đang kết nối' : 'Offline'}</span></div>
-            <div class="telemetry-tile"><span class="telemetry-tile-label">ADB</span><span class="telemetry-tile-value">${online ? 'Authorized' : '—'}</span></div>
+            <div class="telemetry-tile"><span class="telemetry-tile-label">${isLgDevice(d) ? 'webOS' : 'ADB'}</span><span class="telemetry-tile-value">${online ? (isLgDevice(d) ? 'Cổng mở' : 'Authorized') : '—'}</span></div>
             <div class="telemetry-tile"><span class="telemetry-tile-label">Host</span><span class="telemetry-tile-value">${escapeHtml(d.host)}</span></div>
             <div class="telemetry-tile"><span class="telemetry-tile-label">Port</span><span class="telemetry-tile-value">${d.port}</span></div>
             <div class="telemetry-tile"><span class="telemetry-tile-label">Lần cuối</span><span class="telemetry-tile-value">${formatTime(d.last_seen)}</span></div>
@@ -2138,7 +2181,7 @@ async function refreshList(check = 'adb') {
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                 <span class="device-name">${escapeHtml(d.name)}</span>${badge}
               </div>
-              <div class="device-meta">${d.host}:${d.port} • Lần cuối: ${formatTime(d.last_seen)}</div>
+              <div class="device-meta">${isLgDevice(d) ? 'LG webOS' : 'Android TV'} • ${escapeHtml(d.host)}:${d.port} • Lần cuối: ${formatTime(d.last_seen)}</div>
             </div>
           </div>
           <div class="device-actions">${deviceCardActions(d, isActive)}</div>
@@ -2209,11 +2252,12 @@ listEl.addEventListener('click', async (e) => {
   if (btn.dataset.act === 'reconnect') {
     setButtonLoading(btn, true, 'Đang kết nối...');
     setStatus(`Đang kết nối ${host}...`);
-    appendTerminal(`connect ${host}:${port}`, 'Đang bắt tay ADB...', 'log-info');
+    appendTerminal(`connect ${host}:${port}`, 'Đang kết nối TV...', 'log-info');
     try {
-      const info = await getApi().connect(host, port);
-      appendTerminal(`connect ${host}`, `${info.model || host} · Android ${info.android || '?'}`, 'log-ok');
-      setStatus(`${host}: ${info.model} · Android ${info.android}`);
+      const selected = window.DevicePlatform.normalize({host, port}, savedDevices);
+      const info = await getApi().connect(host, port, null, selected.platform);
+      appendTerminal(`connect ${host}`, `${info.model || host} · ${platformIdentity(info)}`, 'log-ok');
+      setStatus(`${host}: ${info.model} · ${platformIdentity(info)}`);
       await refreshList();
     } catch (err) {
       if (!promptPairingIfNeeded(err, `${host}:${port}`)) setStatus(`Lỗi kết nối ${host}: ${err}`);
@@ -2242,6 +2286,22 @@ listEl.addEventListener('click', async (e) => {
       await refreshList();
     } catch (err) {
       setStatus(`Lỗi đổi tên: ${err}`);
+      setButtonLoading(btn, false);
+    }
+    return;
+  }
+
+  if (btn.dataset.act === 'forget-pairing') {
+    if (!confirm('Quên khóa ghép cặp của TV LG này? Lần kết nối sau TV sẽ hỏi cho phép lại.')) return;
+    setButtonLoading(btn, true, 'Đang xóa...');
+    try {
+      const result = await getApi().forget_webos_pairing(host);
+      setStatus(result && result.removed
+        ? 'Đã quên ghép cặp LG. Bấm Kết nối lại rồi chấp nhận yêu cầu trên TV.'
+        : 'Không có khóa ghép cặp LG đã lưu cho TV này.');
+    } catch (err) {
+      setStatus(`Lỗi quên ghép cặp: ${err}`);
+    } finally {
       setButtonLoading(btn, false);
     }
     return;
@@ -2332,11 +2392,12 @@ addBtn.addEventListener('click', async () => {
   const host = document.getElementById('manualHost').value.trim();
   if (!host) return;
   setButtonLoading(addBtn, true, 'Đang kết nối...');
-  setStatus(`Đang kết nối ${host}... (nếu lần đầu, chấp nhận "Allow USB debugging?" trên TV)`);
+  const platform = document.getElementById('manualPlatform').value;
+  setStatus(platform === 'lg_webos' ? 'Chấp nhận yêu cầu ghép cặp trên TV LG…' : `Đang kết nối ${host}... (chấp nhận Allow USB debugging trên TV)`);
   try {
-    const info = await getApi().connect(host);
-    setStatus(`${host}: ${info.model} · Android ${info.android}`);
-    appendTerminal(`connect ${host}`, `${info.model} · Android ${info.android}`, 'log-ok');
+    const info = await getApi().connect(host, platform === 'lg_webos' ? 3001 : 5555, null, platform);
+    setStatus(`${host}: ${info.model} · ${platformIdentity(info)}`);
+    appendTerminal(`connect ${host}`, `${info.model} · ${platformIdentity(info)}`, 'log-ok');
     document.getElementById('manualHost').value = '';
     await refreshList();
   } catch (err) {
@@ -2349,35 +2410,46 @@ if (scanQuickBtn && scanBtn) {
   scanQuickBtn.addEventListener('click', () => scanBtn.click());
 }
 
+const SCAN_LABELS = { android_tv: 'Android / Google TV', lg_webos: 'LG webOS' };
+
 scanBtn.addEventListener('click', async () => {
   scanResultsEl.innerHTML = '';
   setStatus('Đang quét mạng, có thể mất 10-30 giây tùy mạng...');
-  appendTerminal('scan_subnet', 'Quét cổng 5555 trên các mạng local...', 'log-info');
+  appendTerminal('scan_all', 'Quét cổng Android (5555) và LG webOS (3001/3000) trên các mạng local...', 'log-info');
   setButtonLoading(scanBtn, true, 'Đang quét...');
   try {
-    const ips = await getApi().scan();
-    if (!ips.length) {
-      setStatus('Không tìm thấy thiết bị mở cổng 5555 trên các mạng local.');
+    const rows = await getApi().scan_all();
+    if (!rows.length) {
+      setStatus('Không tìm thấy TV nào. Có thể thêm bằng IP.');
     } else {
-      setStatus(`Tìm thấy ${ips.length} thiết bị mở cổng 5555`);
-      for (const ip of ips) {
+      setStatus(`Tìm thấy ${rows.length} địa chỉ; loại TV chỉ đoán theo cổng mở, kết nối để xác minh`);
+      for (const row of rows) {
         const div = document.createElement('div');
         div.className = 'scan-item';
-        div.innerHTML = `<span>${ip}</span><button data-host="${ip}">Kết nối</button>`;
-        div.querySelector('button').addEventListener('click', async (e) => {
-          const btn = e.target;
-          setButtonLoading(btn, true, 'Đang kết nối...');
-          setStatus(`Đang kết nối ${ip}...`);
-          try {
-            const info = await getApi().connect(ip);
-            setStatus(`${ip}: ${info.model} · Android ${info.android}`);
-            div.remove();
-            await refreshList();
-          } catch (err) {
-            setStatus(`Lỗi kết nối ${ip}: ${err}`);
-            setButtonLoading(btn, false);
-          }
-        });
+        const hint = row.candidates.map(c => `${SCAN_LABELS[c.platform] || c.platform} · cổng ${c.port}`).join(' hoặc ');
+        div.innerHTML = `<span>${row.host}</span><span class="scan-hint">${hint}</span>`;
+        for (const cand of row.candidates) {
+          const btn = document.createElement('button');
+          btn.dataset.host = row.host;
+          btn.dataset.platform = cand.platform;
+          btn.textContent = row.candidates.length > 1 ? `Kết nối như ${SCAN_LABELS[cand.platform]}` : 'Kết nối';
+          btn.addEventListener('click', async () => {
+            setButtonLoading(btn, true, 'Đang kết nối...');
+            setStatus(cand.platform === 'lg_webos'
+              ? `Chấp nhận yêu cầu ghép cặp trên TV LG ${row.host}…`
+              : `Đang kết nối ${row.host}...`);
+            try {
+              const info = await getApi().connect(row.host, cand.port, null, cand.platform);
+              setStatus(`${row.host}: ${info.model} · ${platformIdentity(info)}`);
+              div.remove();
+              await refreshList();
+            } catch (err) {
+              if (!promptPairingIfNeeded(err, row.host)) setStatus(`Lỗi kết nối ${row.host}: ${err}`);
+              setButtonLoading(btn, false);
+            }
+          });
+          div.appendChild(btn);
+        }
         scanResultsEl.appendChild(div);
       }
     }
@@ -2413,7 +2485,7 @@ if (backToAppsFromApk) {
 
 refreshBtn.addEventListener('click', async () => {
   setButtonLoading(refreshBtn, true, 'Đang làm mới...');
-  setStatus('Đang cập nhật trạng thái thiết bị (ADB)...');
+  setStatus('Đang cập nhật trạng thái thiết bị...');
   await refreshList('adb');
   setStatus('Đã cập nhật trạng thái');
   setTimeout(() => setStatus(''), 1500);
@@ -2459,14 +2531,14 @@ async function sendRemoteKey(btn, keycode) {
   const label = btn?.title || btn?.dataset?.name || keycode;
   setButtonBusy(btn, true);
   setRemoteStatus(`Đang gửi ${label}...`);
-  logRemoteAdb(`input keyevent ${keycode}`, '...');
+  logRemoteAdb(`${isLgDevice() ? 'LG remote' : 'input keyevent'} ${keycode}`, '...');
   try {
     await getApi().remote_key(activeDevice.host, activeDevice.port, keycode);
-    logRemoteAdb(`input keyevent ${keycode}`, 'OK', 'ok');
+    logRemoteAdb(`${isLgDevice() ? 'LG remote' : 'input keyevent'} ${keycode}`, 'OK', 'ok');
     setRemoteStatus(`Đã gửi: ${label}`);
     setTimeout(() => setRemoteStatus(''), 800);
   } catch (err) {
-    logRemoteAdb(`input keyevent ${keycode}`, String(err), 'err');
+    logRemoteAdb(`${isLgDevice() ? 'LG remote' : 'input keyevent'} ${keycode}`, String(err), 'err');
     setRemoteStatus(`Lỗi: ${err}`);
   }
   setButtonBusy(btn, false);
@@ -2484,7 +2556,8 @@ document.addEventListener('click', async (e) => {
 document.getElementById('tab-remote')?.addEventListener('click', async (e) => {
   const appBtn = e.target.closest('[data-pkg]');
   if (!appBtn || !activeDevice) return;
-  const pkg = appBtn.dataset.pkg;
+  const pkg = window.DevicePlatform.appId(activeDevice, appBtn.dataset.pkg);
+  if (!pkg) { setRemoteStatus('Ứng dụng chưa được ánh xạ cho LG; mở từ tab Ứng dụng.'); return; }
   setRemoteStatus(`Đang mở ${pkg}...`);
   logRemoteAdb(`monkey -p ${pkg}`, '...');
   try {
@@ -2550,7 +2623,7 @@ document.getElementById('remoteMouseBack')?.addEventListener('click', (e) => {
   sendRemoteKey(e.currentTarget, 4);
 });
 document.getElementById('remoteMouseScroll')?.addEventListener('click', async () => {
-  if (!activeDevice) return;
+  if (!activeDevice || isLgDevice()) return;
   const cmd = 'input swipe 960 1400 960 600 300';
   logRemoteAdb(cmd, '...');
   try {
@@ -2646,7 +2719,7 @@ if (remoteTrackpad && remoteTrackpadDot) {
     remoteTrackpadDot.classList.add('visible');
     remoteTrackpadDot.style.left = `${x}px`;
     remoteTrackpadDot.style.top = `${y}px`;
-    if (!trackpadDragging || !activeDevice) return;
+    if (!trackpadDragging || !activeDevice || isLgDevice()) return;
     const now = Date.now();
     if (now - lastSwipeAt < 120) return;
     lastSwipeAt = now;
@@ -3314,6 +3387,7 @@ if (homeWidgetApplyBtn) {
     try {
       clearTimeout(homeWidgetSaveTimer);
       await getApi().save_home_widgets_settings(readHomeWidgetsFormPayload());
+      if (isLgDevice()) { await applyWebosTheme(widgetThemeId(), homeWidgetApplyBtn, {skipConfirm:true}); return; }
       setHomeStatus('Đang lấy giá và vẽ widget lên ảnh nền…');
       const res = await getApi().apply_home_widgets_to_tv(activeDevice.host, activeDevice.port, true, widgetThemeId());
       if (res.theme_id) homeActiveThemeId = res.theme_id;
@@ -3491,7 +3565,7 @@ function renderActiveThemePanel(cur, matchedTheme) {
   const keys = Object.keys(cur.config || {});
   const walls = cur.wallpapers || [];
   const lc = cur.launcher || {};
-  const inactive = lc.installed === true && lc.is_default_home === false;
+  const inactive = !isLgDevice() && lc.installed === true && lc.is_default_home === false;
   homeActiveThemeId = inactive ? null : (matchedTheme ? matchedTheme.id : guessActiveThemeId(cur.config));
   populateWidgetThemeSelect();
 
@@ -3508,7 +3582,7 @@ function renderActiveThemePanel(cur, matchedTheme) {
     descEl.textContent = inactive
       ? `Cấu hình ${matchedTheme ? `"${matchedTheme.name}"` : 'theme'} vẫn nằm trên TV nhưng Home đang là ${lc.current_home === 'com.google.android.apps.tv.launcherx' ? 'launcher gốc' : (lc.current_home || 'launcher khác')}, nên chưa hiển thị. Áp dụng lại theme để dùng.`
       : matchedTheme
-      ? `Khớp thư viện theme · ${keys.length} khoá config`
+      ? `${isLgDevice() ? 'Cấu hình lần áp dụng gần nhất; chưa xác minh trên TV' : 'Khớp thư viện theme'} · ${keys.length} khoá config`
       : keys.length
         ? `${keys.length} khoá config trên TV — chưa khớp theme local`
         : 'Launcher chưa có config.json overlay.';
@@ -3520,9 +3594,9 @@ function renderActiveThemePanel(cur, matchedTheme) {
   }
   if (revEl) revEl.textContent = cur.revision ? cur.revision.slice(0, 12) + '…' : '—';
   if (provEl) {
-    provEl.textContent = cur.provider ? 'ThemeProvider' : 'cp fallback';
+    provEl.textContent = isLgDevice() ? 'Gói snapshot .ipk' : cur.provider ? 'ThemeProvider' : 'cp fallback';
   }
-  if (updatedEl) updatedEl.textContent = `Đồng bộ ${new Date().toLocaleTimeString('vi-VN')}`;
+  if (updatedEl) updatedEl.textContent = isLgDevice() ? 'Bản ghi lần áp dụng · chưa xác minh TV' : `Đồng bộ ${new Date().toLocaleTimeString('vi-VN')}`;
 
   const resBadge = document.getElementById('homeActiveRes');
   if (thumb && placeholder) {
@@ -3589,7 +3663,7 @@ function renderHomeThemeGrid() {
     const activeBadge = isActive
       ? `<span class="home-theme-badge"><span class="home-theme-badge-dot"></span>ĐANG DÙNG</span>`
       : '';
-    const applyBtn = isActive
+    const applyBtn = isActive && !isLgDevice()
       ? `<button type="button" class="btn btn--surface" disabled><span class="material-symbols-outlined">check</span>Đang áp dụng</button>`
       : `<button type="button" class="btn btn--primary" data-act="apply-theme" data-id="${escapeAttr(t.id)}" ${errs.length ? 'disabled' : ''}><span class="material-symbols-outlined">play_arrow</span>Áp dụng</button>`;
     card.innerHTML = `
@@ -3613,7 +3687,7 @@ function renderHomeThemeGrid() {
 
 /** A newer SmartTV Home APK is published: offer to download (SHA-256 checked) and install it. */
 async function offerLauncherUpdate() {
-  if (!activeDevice) return;
+  if (!activeDevice || isLgDevice()) return;
   let up;
   try {
     up = await getApi().check_launcher_update(activeDevice.host, activeDevice.port);
@@ -3632,6 +3706,7 @@ async function offerLauncherUpdate() {
 }
 
 async function runHomeDetect(btn) {
+  if (isLgDevice()) { await loadCurrentTheme(); return; }
   if (!activeDevice) {
     setHomeStatus('Vui lòng chọn thiết bị trước');
     return;
@@ -3669,6 +3744,17 @@ async function loadCurrentTheme(btn, opts = {}) {
     return;
   }
   const { host, port } = activeDevice;
+  if (isLgDevice()) {
+    try {
+    const cur = await getApi().current_launcher_theme(host, port, false);
+    if (!isLgDevice() || activeDevice.host !== host || Number(activeDevice.port) !== Number(port)) return;
+    const matched = homeThemes.find(t => t.id === cur.last_theme_id);
+    if (matched) homeActiveThemeId = matched.id;
+    renderActiveThemePanel(cur, matched || null);
+    setHomeStatus('LG Home: dữ liệu ghi nhận lần áp dụng gần nhất; áp dụng lại để cập nhật widget.');
+    } catch (err) { setHomeStatus(`Lỗi đọc bản ghi LG Home: ${err}`); }
+    return;
+  }
   const key = `${host}:${port}`;
   if (opts.useCache) {
     if (homeTvSync.key === key && Date.now() - homeTvSync.at < HOME_TV_FRESH_MS) return;
@@ -3740,6 +3826,7 @@ async function loadCurrentTheme(btn, opts = {}) {
 }
 
 async function loadHomeBackups(btn) {
+  if (isLgDevice()) return;
   if (!activeDevice) {
     setHomeStatus('Vui lòng chọn thiết bị trước');
     return;
@@ -3962,6 +4049,57 @@ async function offerInstallGathin() {
   return pollInstallJob(started.job_id, log, t0);
 }
 
+async function applyWebosTheme(id, btn, opts = {}) {
+  if (!id) { setHomeStatus('Chọn theme trong catalog trước khi áp dụng.'); if (btn) setButtonLoading(btn, false); return; }
+  const target = {...activeDevice};
+  if (!opts.skipConfirm && !confirm('Cài lại SmartTV Home webOS với theme và widget hiện tại? Developer Mode và SSH key phải được thiết lập.')) return;
+  if (btn) setButtonLoading(btn, true, 'Đang cài Home…');
+  try {
+    await getApi().save_home_widgets_settings(readHomeWidgetsFormPayload());
+    const device = document.getElementById('webosDeveloperDevice').value.trim();
+    if (!device) throw new Error('Nhập tên thiết bị đã thiết lập trong webOS CLI.');
+    renderHomeApplyLog([], {open:true});
+    const started = await getApi().webos_apply_theme_async(target.host, target.port, id, device);
+    const res = await pollApplyThemeJob(started.job_id, btn);
+    if (deviceKey(activeDevice) !== deviceKey(target)) return;
+    homeActiveThemeId = id;
+    renderHomeApplyLog(res.steps || []);
+    closeThemeModal();
+    await loadCurrentTheme();
+    renderHomeThemeGrid();
+    setHomeStatus('Đã cài Home webOS. Widget là dữ liệu tại lần áp dụng này; áp dụng lại để cập nhật.');
+    showHomeToast('Đã áp dụng theme trên LG webOS', 'palette');
+  } catch (err) { setHomeStatus(`Lỗi áp dụng LG: ${err}`); }
+  finally { if (btn) setButtonLoading(btn, false); }
+}
+
+async function loadWebosInputs() {
+  if (!isLgDevice()) return;
+  const target = {...activeDevice};
+  const status = document.getElementById('webosInputStatus');
+  status.textContent = 'Đang tải đầu vào…';
+  try {
+    const inputs = await getApi().list_inputs(target.host, target.port);
+    if (deviceKey(target) !== deviceKey(activeDevice)) return;
+    const select = document.getElementById('webosInputSelect'); select.replaceChildren();
+    for (const input of inputs) {
+      const option = document.createElement('option'); option.value = input.id; option.textContent = input.label || input.id; select.appendChild(option);
+    }
+    status.textContent = inputs.length ? '' : 'TV chưa trả về đầu vào.';
+  } catch (err) { status.textContent = String(err); }
+}
+document.getElementById('webosInputsRefresh')?.addEventListener('click', loadWebosInputs);
+document.getElementById('webosInputSwitch')?.addEventListener('click', async () => {
+  if (!isLgDevice()) return;
+  const id = document.getElementById('webosInputSelect').value; if (!id) return;
+  const status = document.getElementById('webosInputStatus');
+  try { await getApi().switch_input(activeDevice.host, activeDevice.port, id); status.textContent = 'Đã chuyển đầu vào.'; }
+  catch (err) { status.textContent = String(err); }
+});
+document.getElementById('manualPlatform')?.addEventListener('change', e => {
+  document.getElementById('manualHost').placeholder = e.target.value === 'lg_webos' ? 'IP TV LG, ví dụ 192.168.1.20' : '192.168.1.x hoặc 192.168.1.x:5555';
+});
+
 async function applyTheme(id, btn, opts = {}) {
   if (!activeDevice) {
     setHomeStatus('Vui lòng chọn thiết bị trước');
@@ -3969,6 +4107,7 @@ async function applyTheme(id, btn, opts = {}) {
   }
   const theme = homeThemes.find((t) => t.id === id);
   if (!theme) return;
+  if (isLgDevice()) { await applyWebosTheme(id, btn, opts); return; }
   if ((theme.errors || []).length) {
     setHomeStatus(`Theme không hợp lệ: ${theme.errors.join('; ')}`);
     return;
@@ -4073,6 +4212,7 @@ document.querySelectorAll('[data-copy-log]').forEach((btn) => {
 
 /** After a theme is applied, photograph the TV and keep it as that theme's real preview. */
 async function captureThemePreview(id, name) {
+  if (isLgDevice()) return;
   if (!activeDevice) return;
   setHomeStatus(`Đang chụp màn hình TV để lưu ảnh thật của "${name}"...`);
   try {

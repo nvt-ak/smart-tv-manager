@@ -51,6 +51,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const dom = await JSDOM.fromFile(UI, {
     runScripts: 'dangerously', resources: new LocalOnly(), pretendToBeVisual: true,
     beforeParse(win) {
+      win.HTMLElement.prototype.scrollIntoView = function () {};
       win.pywebview = { api: new Proxy({}, { get: (_, k) => handlers[k] || (async () => null) }) };
       win.confirm = () => true;
       win.alert = () => {};

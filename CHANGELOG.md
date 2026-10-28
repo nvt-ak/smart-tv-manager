@@ -10,6 +10,26 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+### Added
+- Hỗ trợ thêm TV LG webOS, ghép cặp riêng, remote/nhập văn bản, mở ứng dụng và chuyển HDMI qua giao thức LG.
+- Home webOS dùng catalog theme và công tắc widget của SmartTV Manager; Apply đóng gói snapshot và cài bằng profile webOS CLI được kiểm tra đúng IP TV.
+- Tài liệu use case/task, bằng chứng TDD và hướng dẫn Developer Mode, giới hạn snapshot và checklist TV thật.
+- Quét mạng dò một lượt cả cổng Android (5555) và LG (3001/3000), gợi ý loại TV theo cổng mở; thiết bị mở cả hai nhóm cổng cho chọn nền tảng khi kết nối.
+- Nút **Quên ghép cặp** cho TV LG; xóa TV LG cũng xóa khóa ghép cặp và dấu vân tay chứng chỉ đã lưu.
+- Gói Home webOS giới hạn 12 ảnh nền / 24 MB; CLI webOS tìm thêm trong các thư mục npm toàn cục thường gặp trên macOS/Linux.
+
+### Changed
+- Giao diện chọn nền tảng theo thiết bị; LG ẩn APK, Smart Clean, TV Guard và tiện ích ADB không tương thích; thiết bị cũ tiếp tục là Android TV.
+
+### Fixed
+- Windows: app tự gỡ Mark-of-the-Web (Zone.Identifier) khỏi thư mục cài trước khi nạp WebView2/pythonnet; lỗi "Failed to resolve Python.Runtime.Loader.Initialize" nay hiện hộp thoại hướng dẫn kèm log `%LOCALAPPDATA%\SmartTVManager\startup-error.log`. Ghim `pythonnet==3.0.5` và CI kiểm tra bundle có `Python.Runtime.dll`/`ClrLoader.dll`.
+- Ghi danh sách thiết bị tạo file tạm cạnh file đích, tránh lỗi EXDEV khi thư mục lưu và thư mục mặc định nằm trên hai filesystem khác nhau (gồm GitHub Actions).
+- LG webOS: tự kết nối lại một lần khi kết nối đã lưu bị chết sau khi TV ngủ (lệnh có tác dụng phụ không bị gửi lại); phím điều hướng dùng lại kênh phím thay vì mở kênh mới mỗi lần; kênh phím được kiểm tra theo địa chỉ thật của TV nên TV thêm bằng hostname vẫn điều khiển được.
+- Áp dụng Home webOS không còn giữ khóa thao tác của TV trong lúc đóng gói/cài (remote và mở app không bị chặn); không thể bấm Áp dụng hai lần song song; danh sách input bị firmware từ chối không làm hỏng Áp dụng.
+- LG webOS dùng cổng đã lưu của TV thay vì cổng mặc định Android; tra cứu nền tảng TV được nhớ tạm thay vì đọc devices.json cho mỗi phím.
+- `devices.json` chỉ nhận các trường phụ trong danh sách cho phép (`model`, `developer_device`).
+- Chuỗi mô tả hàm bị `_require_android` đẩy xuống nên không còn là docstring ở một số API Android.
+
 ## [1.9.0] - 2026-10-27
 
 ### Added

@@ -1,4 +1,6 @@
 pywebview==5.3.2
+# Windows backend; pinned so release builds bundle a known Python.Runtime.dll
+pythonnet==3.0.5; sys_platform == "win32"
 certifi>=2024.2.2
 adb-shell==0.4.4
 rsa==4.9.1
@@ -9,3 +11,6 @@ androguard>=3.4.0
 
 # Widget vàng/xăng vẽ vào wallpaper
 pillow>=10.0
+
+# LG webOS second-screen transport
+websocket-client>=1.8,<2

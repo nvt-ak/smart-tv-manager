@@ -355,3 +355,40 @@ def scan_subnet(progress=None):
             except Exception:
                 pass
     return sorted(set(found), key=lambda ip: tuple(int(p) for p in ip.split(".")))
+
+
+def scan_ports(ports, progress=None):
+    """Scan every local /24 for hosts with any of `ports` open (plain TCP connect, no auth).
+
+    Returns {ip: sorted list of open ports}; hosts with nothing open are omitted. An open
+    port is only a hint about what the device is.
+    """
+    from concurrent.futures import as_completed
+
+    hosts = set()
+    for net in _local_subnets():
+        try:
+            hosts.update(str(h) for h in ipaddress.ip_network(net).hosts())
+        except Exception:
+            pass
+    ports = sorted({int(p) for p in ports})
+    found = {}
+    if not hosts or not ports:
+        return found
+    with ThreadPoolExecutor(max_workers=96) as pool:
+        futures = {pool.submit(_port_open, h, p, SCAN_PORT_TIMEOUT): (h, p)
+                   for h in hosts for p in ports}
+        total = len(futures)
+        for done, fut in enumerate(as_completed(futures), 1):
+            if progress:
+                try:
+                    progress(done, total)
+                except Exception:
+                    pass
+            try:
+                if fut.result():
+                    host, port = futures[fut]
+                    found.setdefault(host, []).append(port)
+            except Exception:
+                pass
+    return {h: sorted(p) for h, p in found.items()}

@@ -40,6 +40,15 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller ${{ matrix.spec }} --noconfirm --clean
 
+      - name: Verify bundled .NET runtime files (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($rel in @("pythonnet/runtime/Python.Runtime.dll", "clr_loader/ffi/dlls/amd64/ClrLoader.dll")) {
+            $hit = @("dist/SmartTVManager/$rel", "dist/SmartTVManager/_internal/$rel") | Where-Object { Test-Path $_ }
+            if (-not $hit) { throw "Missing $rel in the Windows bundle" }
+          }
+
       - name: Package macOS DMG
         if: runner.os == 'macOS'
         run: |

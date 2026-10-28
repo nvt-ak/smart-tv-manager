@@ -23,6 +23,7 @@ def analysis_bundle(extra_datas=None):
         ("ui", "ui"),
         ("data", "data"),
         ("assets", "assets"),
+        ("webos-home", "webos-home"),
     ]
     if extra_datas:
         datas.extend(extra_datas)

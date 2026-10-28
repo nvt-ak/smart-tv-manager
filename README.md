@@ -1,5 +1,7 @@
 # SmartTV Manager
 
+Hỗ trợ LG webOS (remote, ứng dụng/HDMI và Home theme/widget snapshot): xem [hướng dẫn LG](docs/lg-webos.md). Cần kiểm chứng TV thật trước khi phát hành.
+
 Desktop app (Python + pywebview): quét Android TV trên LAN, kết nối ADB (cổng 5555), remote, quản lý app, cài APK, theme Home (Gathin launcher).
 
 ADB key riêng tại `~/.smarttv-manager/adbkey` — **không** dùng chung với CLI `cleanyourtv`; lần đầu kết nối TV vẫn cần chấp nhận «Allow USB debugging». Nếu bạn đã dùng bản cũ, dữ liệu từ `~/.tv-remote-hub/` được **copy sang** `~/.smarttv-manager/` lần chạy đầu.
@@ -57,7 +59,7 @@ Dữ liệu người dùng: `~/.smarttv-manager/` (macOS/Linux) hoặc `%USERPRO
 
 Cả hai script cài `requirements.txt` + `requirements-build.txt` rồi gọi PyInstaller với spec tương ứng (`tv_remote_hub_mac.spec` / `tv_remote_hub.spec`).
 
-**Người dùng Windows:** cần [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (Win 10/11 thường đã có).
+**Người dùng Windows:** cần [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (Win 10/11 thường đã có). Nếu gặp `Failed to resolve Python.Runtime.Loader.Initialize`: app đã tự gỡ chặn file tải về; nếu vẫn lỗi, chuột phải file zip → Properties → Unblock rồi giải nén lại vào đường dẫn ngắn (vd `C:\Tools\`), kiểm tra Windows Security có cách ly `Python.Runtime.dll`, và gửi `%LOCALAPPDATA%\SmartTVManager\startup-error.log`.
 
 **macOS bản unsigned:** lần mở đầu có thể **Right-click → Open**.
 

@@ -286,6 +286,12 @@
   font: var(--text-code-md);
 }
 
+.scan-item .scan-hint {
+  flex: 1;
+  color: var(--color-on-surface-variant);
+  font: var(--text-code-sm);
+}
+
 .telemetry-tile {
   padding: var(--space-sm);
   border-radius: var(--radius-lg);

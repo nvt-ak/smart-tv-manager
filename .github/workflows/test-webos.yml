@@ -1,0 +1,39 @@
+name: Test LG webOS and Android regression
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    # Windows is informational until it has been green once: the Linux job gates the PR.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test dependencies
+        shell: bash
+        run: |
+          # requirements.txt stays the single source of truth. The GUI shell and the APK
+          # analyzer are not needed by the tests (they stub or skip them).
+          grep -Ev '^(#|$|pywebview|androguard)' requirements.txt > "$RUNNER_TEMP/test-requirements.txt"
+          python -m pip install -r "$RUNNER_TEMP/test-requirements.txt"
+          npm install --no-save jsdom@24
+      - name: Python regression
+        run: python -m unittest discover -s tests -v
+      - name: JavaScript behavior and Manager UI
+        shell: bash
+        run: |
+          bash tests/run_js_tests.sh
+          node tests/lg_webos_ui_smoke.js
+          node tests/guard_ui_smoke.js
