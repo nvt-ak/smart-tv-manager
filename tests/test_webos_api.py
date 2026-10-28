@@ -36,13 +36,15 @@ class DeviceStoreAcceptance(unittest.TestCase):
         self.assertEqual(second["port"], 5555)
 
     def test_upsert_keeps_existing_metadata_without_credentials(self):
-        store.upsert(HOST, 3001, "LG", platform="lg_webos", model="C6", developer_device="living-room")
+        store.upsert(HOST, 3001, "LG", platform="lg_webos", model="C6", developer_device="living-room",
+                     client_key="pair-secret", secret="guard-secret", private_key="ssh-secret")
         store.upsert(HOST, 3001, "LG renamed", platform="lg_webos")
         device = store.load()[0]
         self.assertEqual(device["platform"], "lg_webos")
         self.assertEqual(device["model"], "C6")
         self.assertEqual(device["developer_device"], "living-room")
         self.assertEqual(device["name"], "LG renamed")
+        self.assertFalse({"client_key", "secret", "private_key"}.intersection(device))
 
 
 class LgApiAcceptance(unittest.TestCase):
@@ -176,6 +178,7 @@ class LgThemeApplyAcceptance(unittest.TestCase):
         self.assertTrue(status["result"]["ok"])
         self.assertEqual(deploy.call_count, 1)
         self.assertEqual(deploy.call_args.args[1], "living-room")
+        self.assertEqual(deploy.call_args.kwargs["expected_host"], HOST)
         save.assert_called_once_with(HOST, 3001, self.theme_id)
         self.adb_connect.assert_not_called()
 
@@ -185,6 +188,27 @@ class LgThemeApplyAcceptance(unittest.TestCase):
         self.assertIn("Developer Mode expired", status["error"])
         save.assert_not_called()
         self.adb_connect.assert_not_called()
+
+    def test_shared_display_name_enters_snapshot_without_mutating_catalog(self):
+        import copy
+        source = copy.deepcopy(self.theme)
+        original_build = webos_home.build_bundle
+        snapshots = []
+
+        def build(*args, **kwargs):
+            directory = original_build(*args, **kwargs)
+            with open(os.path.join(directory, "runtime.json"), encoding="utf-8") as stream:
+                snapshots.append(json.load(stream))
+            return directory
+
+        with mock.patch.object(main.settings_store, "get_home_widgets",
+                               return_value={"enabled": True, "display_name": "Gia đình Tài", "show_name": True}), \
+                mock.patch.object(main.home_widgets, "build_board_lines", return_value=([], {})), \
+                mock.patch.object(webos_home, "build_bundle", side_effect=build):
+            status, _, _ = self._apply()
+        self.assertEqual(status["status"], "done")
+        self.assertEqual(snapshots[0]["config"]["greeting_name"], "Gia đình Tài")
+        self.assertEqual(self.theme, source)
 
     def test_unknown_theme_is_rejected_without_deploy_or_state_change(self):
         self.theme_id = "../../not-a-theme"

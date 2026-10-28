@@ -1,5 +1,7 @@
 # SmartTV Manager
 
+Hỗ trợ LG webOS (remote, ứng dụng/HDMI và Home theme/widget snapshot): xem [hướng dẫn LG](docs/lg-webos.md). Cần kiểm chứng TV thật trước khi phát hành.
+
 Desktop app (Python + pywebview): quét Android TV trên LAN, kết nối ADB (cổng 5555), remote, quản lý app, cài APK, theme Home (Gathin launcher).
 
 ADB key riêng tại `~/.smarttv-manager/adbkey` — **không** dùng chung với CLI `cleanyourtv`; lần đầu kết nối TV vẫn cần chấp nhận «Allow USB debugging». Nếu bạn đã dùng bản cũ, dữ liệu từ `~/.tv-remote-hub/` được **copy sang** `~/.smarttv-manager/` lần chạy đầu.

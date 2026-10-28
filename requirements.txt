@@ -9,3 +9,6 @@ androguard>=3.4.0
 
 # Widget vàng/xăng vẽ vào wallpaper
 pillow>=10.0
+
+# LG webOS second-screen transport
+websocket-client>=1.8,<2

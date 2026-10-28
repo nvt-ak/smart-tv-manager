@@ -94,3 +94,6 @@ button.secondary:not(.btn):hover:not(:disabled):not(.loading) {
   min-height: 1.125rem;
   margin: var(--space-sm) 0;
 }
+
+/* Capability-gated controls must stay hidden even when components define display:flex/grid. */
+[hidden] { display: none !important; }

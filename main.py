@@ -41,6 +41,7 @@ THEME_APPLY_LOG = os.path.join(adb_client.KEY_DIR, "theme-apply.log")
 
 class Api:
     def __init__(self):
+        self._webos_cache = {}
         self._pm_cache = {}
         self._dev_cache = {}
         self._themes = CleanyourtvThemes()
@@ -117,10 +118,44 @@ class Api:
         webbrowser.open(app_update.RELEASE_PAGE)
         return True
 
+    def _device_platform(self, host):
+        return next((d.get("platform", "android_tv") for d in store.load()
+                     if d.get("host") == host), "android_tv")
+
+    def _require_android(self, host):
+        if self._device_platform(host) == "lg_webos":
+            raise Exception("Chức năng này chỉ hỗ trợ Android TV; không hỗ trợ LG webOS.")
+
+    def _get_webos(self, host, port=3001):
+        from core.webos_client import WebOsClient
+        key = f"{host}:{int(port)}"
+        with self._dev_op_lock(host, port):
+            client = self._webos_cache.get(key)
+            if client is None:
+                client = WebOsClient(host, int(port))
+                try:
+                    client.connect()
+                except Exception:
+                    client.close()
+                    raise
+                self._webos_cache[key] = client
+            return client
+
+    def list_inputs(self, host, port=3001):
+        if self._device_platform(host) != "lg_webos":
+            raise Exception("Danh sách HDMI này dành cho LG webOS.")
+        return self._get_webos(host, port).list_inputs()
+
+    def switch_input(self, host, port=3001, input_id=""):
+        if self._device_platform(host) != "lg_webos":
+            raise Exception("Chuyển HDMI này dành cho LG webOS.")
+        self._get_webos(host, port).switch_input(input_id)
+        return {"ok": True}
+
     def _dev_op_lock(self, host, port=5555):
         key = f"{host}:{port}"
         if key not in self._dev_locks:
-            self._dev_locks[key] = threading.Lock()
+            self._dev_locks[key] = threading.RLock()
         return self._dev_locks[key]
 
     def _drop_dev(self, host, port=5555):
@@ -140,6 +175,9 @@ class Api:
 
     def shutdown(self):
         """Close every cached ADB session (call when the app exits)."""
+        for client in list(self._webos_cache.values()):
+            client.close()
+        self._webos_cache.clear()
         for kd in list(self._key_devs.values()):
             try:
                 kd.close()
@@ -166,6 +204,7 @@ class Api:
             return False
 
     def _get_dev(self, host, port=5555):
+        self._require_android(host)
         key = f"{host}:{port}"
         if key in self._dev_cache:
             if self._ping_cached_dev(self._dev_cache[key]):
@@ -186,6 +225,7 @@ class Api:
         return home
 
     def _get_pm(self, host, port=5555):
+        self._require_android(host)
         key = f"{host}:{port}"
         if key in self._pm_cache:
             if self._ping_cached_dev(self._pm_cache[key].device):
@@ -253,7 +293,9 @@ class Api:
         def check_one(d):
             host = d["host"]
             port = int(d.get("port", 5555))
-            if mode == "port":
+            if d.get("platform") == "lg_webos":
+                online = adb_client.port_reachable(host, port)
+            elif mode == "port":
                 online = adb_client.port_reachable(host, port)
             else:
                 online = self._online_via_cache(host, port)
@@ -269,7 +311,14 @@ class Api:
         store.batch_update_online({host: online for host, online, _ in rows})
         return [nd for _, _, nd in rows]
 
-    def scan(self):
+    def scan(self, platform="android_tv"):
+        if platform == "lg_webos":
+            import ipaddress
+            hosts = [str(h) for net in adb_client._local_subnets()
+                     for h in ipaddress.ip_network(net).hosts()]
+            with ThreadPoolExecutor(max_workers=48) as pool:
+                return sorted(h for h, ok in zip(hosts, pool.map(
+                    lambda h: adb_client.port_reachable(h, 3001), hosts)) if ok)
         found = adb_client.scan_subnet()
         # Return all found devices (including already saved) so user can see them
         return found
@@ -297,7 +346,18 @@ class Api:
             self._dev_cache[f"{host}:{int(port)}"] = dev
             return info
 
-    def connect(self, host, port=5555, name=None):
+    def connect(self, host, port=5555, name=None, platform=None):
+        parsed_host, _parsed_port = adb_client.parse_host_port(host, port)
+        platform = platform or self._device_platform(parsed_host)
+        if platform not in ("android_tv", "lg_webos"):
+            raise Exception("Nền tảng TV không hợp lệ.")
+        if platform == "lg_webos":
+            host, port = adb_client.parse_host_port(host, 3001 if int(port or 5555) == 5555 else port)
+            client = self._get_webos(host, port)
+            info = dict(client.get_info())
+            info.update(platform="lg_webos", port=port)
+            store.upsert(host, port, name or info.get("model") or host, platform="lg_webos")
+            return info
         # Accept "ip:port" typed into the host field (e.g. 192.168.1.3:44525).
         host, port = adb_client.parse_host_port(host, port)
         try:
@@ -330,7 +390,7 @@ class Api:
                     "(4) máy tính và TV cùng mạng Wi‑Fi/LAN. Sau đó bấm Kết nối lại."
                 ) from e
             raise
-        store.upsert(host, int(port), name or info["model"] or host)
+        store.upsert(host, int(port), name or info["model"] or host, platform="android_tv")
         return info
 
     def adb_wireless_setup(self, host, pair_port, code, connect_port=None):
@@ -373,9 +433,26 @@ class Api:
         return True
 
     def remove(self, host):
+        for key in list(self._webos_cache):
+            if key.rpartition(":")[0] == host:
+                self._webos_cache.pop(key).close()
         return store.remove(host)
 
     def remote_key(self, host, port=5555, keycode=4):
+        if self._device_platform(host) == "lg_webos":
+            commands = {3:"home", 4:"back", 19:"up", 20:"down", 21:"left", 22:"right",
+                        23:"enter", 66:"enter", 24:"volume_up", 25:"volume_down", 164:"mute",
+                        26:"power", 85:"play", 86:"stop", 87:"fast_forward", 88:"rewind",
+                        89:"rewind", 90:"fast_forward", 126:"play", 127:"pause",
+                        82:"menu", 176:"settings", 178:"input", 166:"channel_up", 167:"channel_down", 183:"red", 184:"green", 185:"yellow", 186:"blue"}
+            if 7 <= int(keycode) <= 16:
+                command = str(int(keycode) - 7)
+            else:
+                command = commands.get(int(keycode))
+            if not command:
+                raise Exception("Phím này chưa được hỗ trợ trên LG webOS.")
+            self._get_webos(host, port).remote(command)
+            return {"ok": True}
         keycode = int(keycode)
         cmd = f"input keyevent {keycode}"
         if keycode == 3:
@@ -411,6 +488,11 @@ class Api:
             raise self._adb_shell_error(host, port, last)
 
     def send_input_text(self, host, port=5555, text=""):
+        if self._device_platform(host) == "lg_webos":
+            if not str(text).strip():
+                raise Exception("Nội dung trống")
+            self._get_webos(host, port).send_text(text)
+            return {"ok": True}
         text = (text or "").strip()
         if not text:
             raise Exception("Nội dung trống")
@@ -423,6 +505,7 @@ class Api:
                 raise self._adb_shell_error(host, port, e) from e
 
     def device_shell(self, host, port=5555, command=""):
+        self._require_android(host)
         command = (command or "").strip()
         if not command:
             raise Exception("Lệnh trống")
@@ -440,6 +523,7 @@ class Api:
         return d
 
     def capture_screenshot(self, host, port=5555):
+        self._require_android(host)
         """Capture the TV screen, pull the PNG to ~/.smarttv-manager/screenshots and return it.
 
         Live TV, HDMI inputs and some streaming apps give a black frame: that is the TV, not an error.
@@ -519,6 +603,13 @@ class Api:
         return {"path": d}
 
     def list_apps(self, host, port=5555):
+        if self._device_platform(host) == "lg_webos":
+            rows = self._get_webos(host, port).list_apps()
+            return {"apps": [{"package": a["id"], "name": a.get("title") or a["id"],
+                     "type": "user", "enabled": True, "can_disable": False,
+                     "protected": True, "is_home": False, "icon": a.get("icon"),
+                     "disable_reason": "LG webOS chỉ hỗ trợ mở ứng dụng."} for a in rows],
+                    "current_home": "", "platform": "lg_webos"}
         with self._dev_op_lock(host, port):
             try:
                 pm = self._get_pm(host, port)
@@ -774,6 +865,7 @@ class Api:
         }
 
     def smart_clean_apply(self, host, port=5555, packages=None):
+        self._require_android(host)
         pkgs = [p for p in (packages or []) if p]
         if not pkgs:
             raise Exception("Không có package nào để vô hiệu hóa")
@@ -802,6 +894,11 @@ class Api:
                 raise Exception(f"Không đọc được thông tin app: {e}") from e
 
     def app_action(self, host, port=5555, action="", package=""):
+        if self._device_platform(host) == "lg_webos":
+            if action != "open":
+                raise Exception("LG webOS chỉ hỗ trợ mở ứng dụng.")
+            self._get_webos(host, port).launch_app(package)
+            return {"ok": True}
         with self._dev_op_lock(host, port):
             try:
                 pm = self._get_pm(host, port)
@@ -848,6 +945,8 @@ class Api:
                 raise
 
     def analyze_apk(self, filename="", data_base64="", host=None, port=5555):
+        if host:
+            self._require_android(host)
         if not filename or not data_base64:
             raise Exception("Thiếu file APK")
         try:
@@ -959,6 +1058,7 @@ class Api:
         return {"started": True}
 
     def build_and_install_gathin_async(self, host, port=5555, mode="build"):
+        self._require_android(host)
         """Clone smtv-home, build bằng Gradle rồi cài lên TV. Tiến trình đọc bằng apply_gathin_theme_job."""
         job_id = uuid.uuid4().hex
         job = {"id": job_id, "status": "running", "steps": [], "error": None, "result": None,
@@ -1062,6 +1162,7 @@ class Api:
 
     def install_apk_async(self, host, port=5555, tmp_path="", filename="",
                           reinstall=True, allow_downgrade=False, grant_permissions=True):
+        self._require_android(host)
         """Cài APK nền, có tiến trình thật (đẩy file / pm install). Đọc bằng apply_gathin_theme_job."""
         if not tmp_path or not os.path.exists(tmp_path):
             raise Exception("File tạm không tồn tại hoặc đã hết hạn. Hãy chọn lại file APK.")
@@ -1185,6 +1286,10 @@ class Api:
         return self._launcher_op(host, port, lambda tm: {"ok": tm.restart_launcher()})
 
     def current_launcher_theme(self, host, port=5555, include_wallpaper=True):
+        if self._device_platform(host) == "lg_webos":
+            tid = settings_store.get_last_theme(host, port)
+            return {"config": {}, "last_theme_id": tid, "has_overlay": bool(tid),
+                    "wallpaper_b64": None, "snapshot": True, "verified_on_tv": False}
         """Overlay state in one ADB round trip. Raises when the TV is unreachable.
 
         The wallpaper preview (up to 1.5 MB) is slow: the UI asks for it separately via
@@ -1203,6 +1308,7 @@ class Api:
         return self._launcher_op(host, port, run)
 
     def set_default_home(self, host, port=5555):
+        self._require_android(host)
         """Make the installed launcher the default Home (what the remote's HOME key opens) and verify."""
 
         def run(tm):
@@ -1246,6 +1352,7 @@ class Api:
         return self._launcher_op(host, port, run)
 
     def set_stock_launcher(self, host, port=5555, disable=True):
+        self._require_android(host)
         """Disable (HOME → Gathin) or re-enable (original state) the stock Google TV launcher."""
         def run(tm):
             return tm.disable_stock_launcher() if disable else tm.enable_stock_launcher()
@@ -1692,11 +1799,13 @@ class Api:
         return off
 
     def apply_gathin_theme(self, host, port=5555, theme_id=""):
+        self._require_android(host)
         steps = []
         job_id = uuid.uuid4().hex
         return self._apply_gathin_theme_impl(host, port, theme_id, job_id, steps)
 
     def apply_gathin_theme_async(self, host, port=5555, theme_id=""):
+        self._require_android(host)
         job_id = uuid.uuid4().hex
         job = {
             "id": job_id,
@@ -1722,6 +1831,51 @@ class Api:
 
         threading.Thread(target=run, daemon=True).start()
         return {"job_id": job_id, "log_path": THEME_APPLY_LOG}
+
+    def webos_apply_theme_async(self, host, port=3001, theme_id="", developer_device="lgtv"):
+        """Build and deploy a snapshot, keeping saved state unchanged on failure."""
+        from core import webos_home
+        if self._device_platform(host) != "lg_webos":
+            raise Exception("Chỉ áp dụng Home webOS cho TV LG.")
+        theme = next((t for t in self._themes.list_themes() if t["id"] == theme_id), None)
+        if theme is None:
+            raise Exception("Theme không tồn tại trong thư viện SmartTV Manager.")
+        job_id = uuid.uuid4().hex
+        job = {"id": job_id, "status": "running", "steps": [], "error": None, "result": None}
+        with self._apply_jobs_lock:
+            self._apply_jobs[job_id] = job
+
+        def run():
+            try:
+                with self._dev_op_lock(host, port):
+                    client = self._get_webos(host, port)
+                    job["steps"].append({"msg": "snapshot", "detail": "Đọc ứng dụng, HDMI và widget hiện tại"})
+                    cfg = settings_store.get_home_widgets()
+                    if not cfg.get("enabled"):
+                        cfg["weather_city"] = theme["config"].get("weather_city") or cfg.get("weather_city")
+                    import copy
+                    snapshot_theme = copy.deepcopy(theme)
+                    snapshot_theme["config"].update(home_widgets.launcher_config_patch(cfg, board_lines=[]))
+                    switches = self._saved_theme_widgets(theme_id)
+                    data = home_widgets.widgets_data(cfg)
+                    with tempfile.TemporaryDirectory(prefix="smarttv-lg-home-") as tmp:
+                        bundle = webos_home.build_bundle(snapshot_theme, os.path.join(tmp, "app"),
+                            apps=client.list_apps(), inputs=client.list_inputs(),
+                            widget_data=data, widget_switches=switches)
+                        job["steps"].append({"msg": "install", "detail": "Đóng gói và cài Home webOS qua Developer Mode"})
+                        result = webos_home.deploy(bundle, developer_device, expected_host=host)
+                    if not result.get("ok"):
+                        raise Exception("Cài Home webOS chưa thành công.")
+                    settings_store.set_last_theme(host, int(port), theme_id)
+                    result.update(theme_id=theme_id, snapshot=True, widget_errors=data.get("errors", {}))
+                    job["result"] = result
+                    job["steps"].append({"msg": "done", "detail": "Đã triển khai snapshot; Apply lại để cập nhật dữ liệu"})
+                    job["status"] = "done"
+            except Exception as exc:
+                job["error"] = str(exc)
+                job["status"] = "failed"
+        threading.Thread(target=run, daemon=True).start()
+        return {"job_id": job_id}
 
     def apply_gathin_theme_job(self, job_id=""):
         with self._apply_jobs_lock:
@@ -1789,6 +1943,7 @@ class Api:
         }
 
     def apply_home_widgets_to_tv(self, host, port=5555, restart=True, theme_id=""):
+        self._require_android(host)
         patch, sidecar, prev = self._home_widgets_tv_bundle()
         if not patch:
             raise Exception("Bật «Widget Home» trước khi áp dụng lên TV")
@@ -1860,6 +2015,7 @@ class Api:
         return self._guard_call(host, port, lambda g, _dev: g.summary())
 
     def guard_setup_async(self, host, port=5555, pin="", policy=None):
+        self._require_android(host)
         """Install, pair and configure TV Guard in the background. Poll with guard_job."""
         port = int(port)
         job_id = uuid.uuid4().hex

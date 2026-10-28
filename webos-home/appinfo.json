@@ -1,0 +1,1 @@
+{"id":"com.smtvmanager.home","version":"1.0.0","vendor":"SmartTV Manager","type":"web","main":"index.html","title":"SmartTV Home","icon":"icon.png","resolution":"1920x1080","disableBackHistoryAPI":true,"requiredACG":["application.launcher"]}

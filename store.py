@@ -17,8 +17,9 @@ def _normalize_devices(devices):
             d["last_seen"] = None
         if "online" not in d:
             d["online"] = False
+        d.setdefault("platform", "android_tv")
         if "port" not in d:
-            d["port"] = 5555
+            d["port"] = 3001 if d["platform"] == "lg_webos" else 5555
     return devices
 
 
@@ -93,7 +94,7 @@ def batch_update_online(status_by_host: dict):
         return _snapshot_devices(devices)
 
 
-def upsert(host, port, name):
+def upsert(host, port, name, platform=None, **metadata):
     with _lock:
         devices = []
         if os.path.exists(PATH):
@@ -102,14 +103,18 @@ def upsert(host, port, name):
                     devices = _normalize_devices(json.load(f))
             except Exception:
                 devices = []
+        previous = next((d for d in devices if d["host"] == host), {})
         devices = [d for d in devices if d["host"] != host]
-        devices.append({
+        previous.update({k: v for k, v in metadata.items() if k not in ("client_key", "secret", "private_key")})
+        previous.update({
+            "platform": platform or previous.get("platform", "android_tv"),
             "name": name,
             "host": host,
             "port": int(port),
             "last_seen": datetime.now().isoformat(),
             "online": True,
         })
+        devices.append(previous)
         _write_devices_file(devices)
     return _snapshot_devices(devices)
 

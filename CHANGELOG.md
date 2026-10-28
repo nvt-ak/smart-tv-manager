@@ -10,6 +10,15 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+### Added
+- Hỗ trợ thêm TV LG webOS, ghép cặp riêng, remote/nhập văn bản, mở ứng dụng và chuyển HDMI qua giao thức LG.
+- Home webOS dùng catalog theme và công tắc widget của SmartTV Manager; Apply đóng gói snapshot và cài bằng profile webOS CLI được kiểm tra đúng IP TV.
+- Tài liệu use case/task, bằng chứng TDD và hướng dẫn Developer Mode, giới hạn snapshot và checklist TV thật.
+
+### Changed
+- Giao diện chọn nền tảng theo thiết bị; LG ẩn APK, Smart Clean, TV Guard và tiện ích ADB không tương thích; thiết bị cũ tiếp tục là Android TV.
+
+
 ## [1.9.0] - 2026-10-27
 
 ### Added

@@ -132,6 +132,7 @@
               </div>
 
               <div class="connect-row">
+                <select id="manualPlatform" class="field-input" aria-label="Nền tảng TV" style="width:auto;"><option value="android_tv">Android / Google TV</option><option value="lg_webos">LG webOS</option></select>
                 <div class="field-input-wrap">
                   <span class="material-symbols-outlined field-icon">router</span>
                   <input id="manualHost" class="field-input" type="text" placeholder="192.168.1.x hoặc 192.168.1.x:5555" autocomplete="off">
@@ -344,13 +345,14 @@
             </div>
 
             <div class="remote-module">
-              <h3 class="remote-module-title">Lối tắt ADB</h3>
+              <h3 class="remote-module-title">Tiện ích điều khiển</h3>
               <div class="remote-tool-grid">
                 <button type="button" class="remote-tool-card" id="remoteScreencapBtn"><span class="material-symbols-outlined">screenshot_monitor</span>Chụp màn hình</button>
                 <button type="button" class="remote-tool-card" id="remoteDevBtn"><span class="material-symbols-outlined">developer_mode</span>Dev options</button>
                 <button type="button" class="remote-tool-card" id="remoteRebootBtn"><span class="material-symbols-outlined">restart_alt</span>Khởi động lại</button>
                 <button type="button" class="remote-tool-card" data-key="85" title="Play/Pause"><span class="material-symbols-outlined">play_pause</span>Play/Pause</button>
               </div>
+              <div id="webosInputs" hidden style="margin-top:12px;"><label>Đầu vào LG <select id="webosInputSelect" class="field-input" aria-label="Đầu vào LG"></select></label><button type="button" id="webosInputsRefresh" class="btn btn--surface">Tải đầu vào</button><button type="button" id="webosInputSwitch" class="btn btn--primary">Chuyển đầu vào</button><p id="webosInputStatus" role="status"></p></div>
               <div id="remoteShotPreview" hidden style="margin-top:12px">
                 <img id="remoteShotImg" alt="Ảnh chụp màn hình TV" style="width:100%;border-radius:8px;display:block">
                 <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
@@ -1069,6 +1071,12 @@
           </div>
         </div>
 
+        <section id="webosHomeSetup" class="glass-card" hidden style="padding:16px;margin-bottom:16px;">
+          <strong>SmartTV Home cho LG webOS</strong>
+          <p>Cài Developer Mode trên TV, bật Key Server và thiết lập SSH key bằng webOS CLI trước khi áp dụng. Theme và widget dùng chung catalog SmartTV Manager.</p>
+          <label>Thiết bị đã thiết lập trong webOS CLI <input id="webosDeveloperDevice" class="field-input" value="lgtv" autocomplete="off" placeholder="lgtv"></label>
+          <p>Áp dụng sẽ đóng gói và cài lại Home .ipk với dữ liệu widget tại thời điểm áp dụng. Áp dụng lại để cập nhật. Phím Home hệ thống vẫn mở LG Home; dùng Quick Access để mở SmartTV Home.</p>
+        </section>
         <div id="homeStatus" class="status-line" role="status"></div>
         <input type="file" id="gathinApkInput" accept=".apk" hidden>
         <details id="homeApplyLogWrap" class="home-apply-log-wrap" hidden>
@@ -1524,6 +1532,7 @@
   </div>
 
   <script src="js/smart_clean_model_logic.js"></script>
+  <script src="js/device_platform.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
