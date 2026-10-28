@@ -15,6 +15,7 @@ except ImportError:
 import adb_client
 import main
 import store
+from core import webos_home
 
 HOST = "192.168.1.90"
 
@@ -129,6 +130,69 @@ class LgApiAcceptance(unittest.TestCase):
                 with self.assertRaises(Exception):
                     operation()
         self.adb_connect.assert_not_called()
+
+
+class InlineThread:
+    """Run a queued job immediately, so assertions do not race real threads."""
+    def __init__(self, target, **kwargs):
+        self.target = target
+
+    def start(self):
+        self.target()
+
+
+class LgThemeApplyAcceptance(unittest.TestCase):
+    def setUp(self):
+        LgApiAcceptance.setUp(self)
+        self.theme_id = "aurora-midnight"
+        self.theme = next(t for t in self.api._themes.list_themes() if t["id"] == self.theme_id)
+
+    def _apply(self, deploy_error=None):
+        with mock.patch.object(main.threading, "Thread", InlineThread), \
+                mock.patch.object(main.home_widgets, "widgets_data", return_value={"generated": "12:00"}), \
+                mock.patch.object(main.settings_store, "load", return_value={}), \
+                mock.patch.object(main.settings_store, "set_last_theme") as save, \
+                mock.patch.object(webos_home, "deploy", side_effect=deploy_error,
+                                  return_value={"ok": True, "snapshot": True}) as deploy:
+            response = self.api.webos_apply_theme_async(HOST, 3001, self.theme_id,
+                                                         developer_device="living-room")
+            status = self.api.apply_gathin_theme_job(response["job_id"])
+        return status, save, deploy
+
+    def test_theme_apply_reports_done_and_persists_only_after_deploy(self):
+        status, save, deploy = self._apply()
+        self.assertEqual(status["status"], "done")
+        self.assertIsNone(status["error"])
+        self.assertTrue(status["result"]["ok"])
+        self.assertEqual(deploy.call_count, 1)
+        self.assertEqual(deploy.call_args.args[1], "living-room")
+        save.assert_called_once_with(HOST, 3001, self.theme_id)
+        self.adb_connect.assert_not_called()
+
+    def test_failed_deploy_never_sets_last_theme_or_reports_done(self):
+        status, save, deploy = self._apply(RuntimeError("Developer Mode expired"))
+        self.assertEqual(status["status"], "failed")
+        self.assertIn("Developer Mode expired", status["error"])
+        save.assert_not_called()
+        self.adb_connect.assert_not_called()
+
+    def test_unknown_theme_is_rejected_without_deploy_or_state_change(self):
+        self.theme_id = "../../not-a-theme"
+        try:
+            status, save, deploy = self._apply()
+        except Exception as exc:
+            self.assertRegex(str(exc).lower(), "theme|giao diện")
+        else:
+            self.assertEqual(status["status"], "failed")
+            save.assert_not_called()
+            deploy.assert_not_called()
+
+    def test_webos_theme_apply_refuses_android_device(self):
+        with mock.patch.object(store, "load", return_value=[]), \
+                mock.patch.object(webos_home, "deploy") as deploy:
+            with self.assertRaises(Exception):
+                self.api.webos_apply_theme_async("android", 5555, self.theme_id)
+        deploy.assert_not_called()
 
 
 if __name__ == "__main__":
