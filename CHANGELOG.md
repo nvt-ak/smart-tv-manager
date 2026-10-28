@@ -10,6 +10,8 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-28
+
 ### Added
 - Hỗ trợ thêm TV LG webOS, ghép cặp riêng, remote/nhập văn bản, mở ứng dụng và chuyển HDMI qua giao thức LG.
 - Home webOS dùng catalog theme và công tắc widget của SmartTV Manager; Apply đóng gói snapshot và cài bằng profile webOS CLI được kiểm tra đúng IP TV.
