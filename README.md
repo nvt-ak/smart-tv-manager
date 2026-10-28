@@ -59,7 +59,7 @@ Dữ liệu người dùng: `~/.smarttv-manager/` (macOS/Linux) hoặc `%USERPRO
 
 Cả hai script cài `requirements.txt` + `requirements-build.txt` rồi gọi PyInstaller với spec tương ứng (`tv_remote_hub_mac.spec` / `tv_remote_hub.spec`).
 
-**Người dùng Windows:** cần [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (Win 10/11 thường đã có).
+**Người dùng Windows:** cần [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (Win 10/11 thường đã có). Nếu gặp `Failed to resolve Python.Runtime.Loader.Initialize`: app đã tự gỡ chặn file tải về; nếu vẫn lỗi, chuột phải file zip → Properties → Unblock rồi giải nén lại vào đường dẫn ngắn (vd `C:\Tools\`), kiểm tra Windows Security có cách ly `Python.Runtime.dll`, và gửi `%LOCALAPPDATA%\SmartTVManager\startup-error.log`.
 
 **macOS bản unsigned:** lần mở đầu có thể **Right-click → Open**.
 

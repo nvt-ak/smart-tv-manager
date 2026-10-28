@@ -2214,4 +2214,9 @@ if __name__ == "__main__":
 
     window.events.closing += _on_window_closing
     start_kwargs = {"icon": icon_path} if os.path.isfile(icon_path) else {}
-    webview.start(**start_kwargs)
+    if os.name == "nt" and getattr(sys, "frozen", False):
+        import win_runtime
+
+        win_runtime.start_guarded(lambda: webview.start(**start_kwargs), root, APP_DISPLAY_NAME)
+    else:
+        webview.start(**start_kwargs)

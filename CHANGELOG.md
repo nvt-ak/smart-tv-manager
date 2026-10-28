@@ -22,6 +22,7 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 - Giao diện chọn nền tảng theo thiết bị; LG ẩn APK, Smart Clean, TV Guard và tiện ích ADB không tương thích; thiết bị cũ tiếp tục là Android TV.
 
 ### Fixed
+- Windows: app tự gỡ Mark-of-the-Web (Zone.Identifier) khỏi thư mục cài trước khi nạp WebView2/pythonnet; lỗi "Failed to resolve Python.Runtime.Loader.Initialize" nay hiện hộp thoại hướng dẫn kèm log `%LOCALAPPDATA%\SmartTVManager\startup-error.log`. Ghim `pythonnet==3.0.5` và CI kiểm tra bundle có `Python.Runtime.dll`/`ClrLoader.dll`.
 - Ghi danh sách thiết bị tạo file tạm cạnh file đích, tránh lỗi EXDEV khi thư mục lưu và thư mục mặc định nằm trên hai filesystem khác nhau (gồm GitHub Actions).
 - LG webOS: tự kết nối lại một lần khi kết nối đã lưu bị chết sau khi TV ngủ (lệnh có tác dụng phụ không bị gửi lại); phím điều hướng dùng lại kênh phím thay vì mở kênh mới mỗi lần; kênh phím được kiểm tra theo địa chỉ thật của TV nên TV thêm bằng hostname vẫn điều khiển được.
 - Áp dụng Home webOS không còn giữ khóa thao tác của TV trong lúc đóng gói/cài (remote và mở app không bị chặn); không thể bấm Áp dụng hai lần song song; danh sách input bị firmware từ chối không làm hỏng Áp dụng.
