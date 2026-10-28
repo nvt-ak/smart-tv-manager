@@ -13,13 +13,19 @@ const handlers={list_devices:async()=>[lg,android],app_version:async()=> '1.9.0'
  list_apps:async()=>({apps:[{package:'netflix',name:'Netflix',enabled:true,type:'user'}]}),
  list_inputs:async()=>[{id:'HDMI_1',label:'Console'}],
  get_theme_widgets:async()=>[],apply_gathin_theme_job:async()=>({status:'done',steps:[],result:{}}),
- webos_apply_theme_async:async()=>({job_id:'lg1'})};
+ webos_apply_theme_async:async()=>({job_id:'lg1'}),
+ forget_webos_pairing:async()=>({ok:true,removed:true})};
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{
  const dom=await JSDOM.fromFile(path.resolve(__dirname,'../ui/index.html'),{runScripts:'dangerously',resources:new LocalOnly(),pretendToBeVisual:true,beforeParse(w){w.confirm=()=>true;w.alert=()=>{};w.matchMedia=()=>({matches:false,addEventListener(){}});w.pywebview={api:new Proxy({},{get:(_,key)=>(...args)=>{calls.push([key,...args]);return (handlers[key]||(async()=>null))(...args);}})};}});
  try {
  const w=dom.window; const $=id=>w.document.getElementById(id);const errors=[];w.addEventListener('error',e=>errors.push(e.message));
  await delay(500); await w.eval('refreshList()');
+ assert(w.document.querySelector('[data-host="192.168.1.9"][data-act="forget-pairing"]'),'LG card offers forgetting the pairing');
+ assert.equal(w.document.querySelector('[data-host="192.168.1.8"][data-act="forget-pairing"]'),null,'Android card never does');
+ w.document.querySelector('[data-host="192.168.1.9"][data-act="forget-pairing"]').click();await delay(50);
+ assert(calls.some(c=>c[0]==='forget_webos_pairing'&&c[1]==='192.168.1.9'));
+ assert($('statusText')?.textContent?.includes('Đã quên ghép cặp LG')||w.document.body.textContent.includes('Đã quên ghép cặp LG'));
  w.document.querySelector('[data-host="192.168.1.9"][data-act="control"]').click();await delay(50);
  assert.equal(w.eval('activeDevice.platform'),'lg_webos');
  assert.equal($('tabApkBtn').hidden,true);assert.equal($('tabGuardBtn').disabled,true);assert.equal($('remoteScreencapBtn').hidden,true);

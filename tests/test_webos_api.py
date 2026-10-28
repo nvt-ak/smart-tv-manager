@@ -3,6 +3,8 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -15,7 +17,8 @@ except ImportError:
 import adb_client
 import main
 import store
-from core import webos_home
+from core import webos_client, webos_home
+from core.webos_client import WebOsCommandError, WebOsError
 
 HOST = "192.168.1.90"
 
@@ -45,6 +48,12 @@ class DeviceStoreAcceptance(unittest.TestCase):
         self.assertEqual(device["developer_device"], "living-room")
         self.assertEqual(device["name"], "LG renamed")
         self.assertFalse({"client_key", "secret", "private_key"}.intersection(device))
+
+    def test_upsert_drops_metadata_that_is_not_allowlisted(self):
+        store.upsert(HOST, 3001, "LG", platform="lg_webos", model="C6", token="pair-secret", note="x")
+        device = store.load()[0]
+        self.assertEqual(device["model"], "C6")
+        self.assertFalse({"token", "note"}.intersection(device))
 
 
 class LgApiAcceptance(unittest.TestCase):
@@ -211,15 +220,14 @@ class LgThemeApplyAcceptance(unittest.TestCase):
         self.assertEqual(self.theme, source)
 
     def test_unknown_theme_is_rejected_without_deploy_or_state_change(self):
-        self.theme_id = "../../not-a-theme"
-        try:
-            status, save, deploy = self._apply()
-        except Exception as exc:
-            self.assertRegex(str(exc).lower(), "theme|giao diện")
-        else:
-            self.assertEqual(status["status"], "failed")
-            save.assert_not_called()
-            deploy.assert_not_called()
+        with mock.patch.object(main.threading, "Thread", InlineThread), \
+                mock.patch.object(main.settings_store, "set_last_theme") as save, \
+                mock.patch.object(webos_home, "deploy") as deploy:
+            with self.assertRaisesRegex(Exception, "Theme không tồn tại"):
+                self.api.webos_apply_theme_async(HOST, 3001, "../../not-a-theme")
+        save.assert_not_called()
+        deploy.assert_not_called()
+        self.assertEqual(self.api._webos_deploying, set())
 
     def test_webos_theme_apply_refuses_android_device(self):
         with mock.patch.object(store, "load", return_value=[]), \
@@ -227,6 +235,125 @@ class LgThemeApplyAcceptance(unittest.TestCase):
             with self.assertRaises(Exception):
                 self.api.webos_apply_theme_async("android", 5555, self.theme_id)
         deploy.assert_not_called()
+
+    def test_denied_input_list_does_not_fail_apply(self):
+        self.lg.list_inputs.side_effect = WebOsCommandError("403 access denied")
+        status, save, deploy = self._apply()
+        self.assertEqual(status["status"], "done")
+        save.assert_called_once()
+        self.assertEqual(deploy.call_count, 1)
+
+    def test_transport_failure_reading_apps_still_fails_apply(self):
+        self.lg.list_apps.side_effect = WebOsError("LG đã đóng kết nối.")
+        status, save, deploy = self._apply()
+        self.assertEqual(status["status"], "failed")
+        save.assert_not_called()
+        deploy.assert_not_called()
+
+
+class LgDeploymentConcurrency(unittest.TestCase):
+    def setUp(self):
+        LgApiAcceptance.setUp(self)
+        self.theme_id = "aurora-midnight"
+
+    def test_deploy_neither_blocks_the_tv_nor_allows_a_second_apply(self):
+        observed = {}
+
+        def deploy(*args, **kwargs):
+            lock = self.api._dev_op_lock(HOST, 3001)
+            probe = []
+
+            def try_lock():  # a remote key press would need this lock from another thread
+                got = lock.acquire(timeout=1)
+                probe.append(got)
+                if got:
+                    lock.release()
+
+            thread = threading.Thread(target=try_lock)
+            thread.start()
+            thread.join()
+            observed["lock_free"] = probe == [True]
+            try:
+                self.api.webos_apply_theme_async(HOST, 3001, self.theme_id)
+            except Exception as exc:
+                observed["second_apply"] = str(exc)
+            return {"ok": True, "snapshot": True}
+
+        with mock.patch.object(main.home_widgets, "widgets_data", return_value={"generated": "12:00"}), \
+                mock.patch.object(main.settings_store, "load", return_value={}), \
+                mock.patch.object(main.settings_store, "set_last_theme"), \
+                mock.patch.object(webos_home, "deploy", side_effect=deploy):
+            job_id = self.api.webos_apply_theme_async(HOST, 3001, self.theme_id)["job_id"]
+            deadline = time.monotonic() + 20
+            while self.api.apply_gathin_theme_job(job_id)["status"] == "running":
+                self.assertLess(time.monotonic(), deadline, "apply job did not finish")
+                time.sleep(0.02)
+            status = self.api.apply_gathin_theme_job(job_id)
+            self.assertEqual(status["status"], "done", status["error"])
+            self.assertTrue(observed["lock_free"], "deploy must not hold the per-TV operation lock")
+            self.assertIn("Đang cài Home webOS", observed["second_apply"])
+            # The slot is released afterwards, so a later Apply is accepted again.
+            again = self.api.webos_apply_theme_async(HOST, 3001, self.theme_id)["job_id"]
+            while self.api.apply_gathin_theme_job(again)["status"] == "running":
+                time.sleep(0.02)
+
+
+class LgDeviceLifecycle(unittest.TestCase):
+    def setUp(self):
+        LgApiAcceptance.setUp(self)
+        self.keys_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.keys_dir.cleanup)
+        for patcher in (mock.patch.object(webos_client, "user_data_dir", return_value=self.keys_dir.name),
+                        mock.patch.object(store, "remove", return_value=[])):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.keys = webos_client.WebOsKeyStore()
+        for endpoint in ((HOST, 3001), (HOST, 3000), ("192.168.1.91", 3001)):
+            self.keys.save(webos_client.identity_for(*endpoint),
+                           {"client_key": "k", "certificate_sha256": "pin"})
+
+    def test_removing_an_lg_tv_forgets_its_pairing_but_not_other_tvs(self):
+        cached = mock.Mock()
+        self.api._webos_cache[f"{HOST}:3001"] = cached
+        self.api.remove(HOST)
+        cached.close.assert_called_once()
+        self.assertEqual(self.api._webos_cache, {})
+        self.assertEqual(self.keys.load(webos_client.identity_for(HOST, 3001)), {})
+        self.assertEqual(self.keys.load(webos_client.identity_for(HOST, 3000)), {})
+        self.assertEqual(self.keys.load(webos_client.identity_for("192.168.1.91", 3001))["client_key"], "k")
+
+    def test_removing_an_android_tv_leaves_webos_keys_alone(self):
+        store.load.return_value = [{"host": HOST, "port": 5555, "platform": "android_tv"}]
+        self.api.remove(HOST)
+        self.assertEqual(self.keys.load(webos_client.identity_for(HOST, 3001))["client_key"], "k")
+
+    def test_forget_pairing_clears_key_and_certificate_pin_on_every_endpoint(self):
+        result = self.api.forget_webos_pairing(HOST)
+        self.assertTrue(result["removed"])
+        for port in (3000, 3001):
+            self.assertEqual(self.keys.load(webos_client.identity_for(HOST, port)), {})
+        self.assertFalse(self.api.forget_webos_pairing(HOST)["removed"])
+
+    def test_forget_pairing_is_refused_for_android(self):
+        store.load.return_value = [{"host": HOST, "port": 5555, "platform": "android_tv"}]
+        with self.assertRaises(Exception):
+            self.api.forget_webos_pairing(HOST)
+        self.assertEqual(self.keys.load(webos_client.identity_for(HOST, 3001))["client_key"], "k")
+
+    def test_saved_port_wins_over_the_android_default_argument(self):
+        self.api.remote_key(HOST, 5555, 3)
+        self.api._get_webos.assert_called_with(HOST, 3001)
+        self.api.list_apps(HOST)
+        self.api._get_webos.assert_called_with(HOST, 3001)
+
+    def test_platform_lookup_is_cached_and_cleared_by_remove(self):
+        store.load.reset_mock()
+        for _ in range(5):
+            self.assertEqual(self.api._device_platform(HOST), "lg_webos")
+        self.assertEqual(store.load.call_count, 1)
+        self.api.remove(HOST)
+        store.load.return_value = []
+        self.assertEqual(self.api._device_platform(HOST), "android_tv")
 
 
 if __name__ == "__main__":

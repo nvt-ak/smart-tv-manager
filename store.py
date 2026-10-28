@@ -96,6 +96,11 @@ def batch_update_online(status_by_host: dict):
         return _snapshot_devices(devices)
 
 
+# Extra per-device fields devices.json may hold. Anything else (pairing keys, secrets) is
+# dropped, so a caller cannot leak credentials into this plain-text file by accident.
+ALLOWED_METADATA = ("model", "developer_device")
+
+
 def upsert(host, port, name, platform=None, **metadata):
     with _lock:
         devices = []
@@ -107,7 +112,7 @@ def upsert(host, port, name, platform=None, **metadata):
                 devices = []
         previous = next((d for d in devices if d["host"] == host), {})
         devices = [d for d in devices if d["host"] != host]
-        previous.update({k: v for k, v in metadata.items() if k not in ("client_key", "secret", "private_key")})
+        previous.update({k: v for k, v in metadata.items() if k in ALLOWED_METADATA})
         previous.update({
             "platform": platform or previous.get("platform", "android_tv"),
             "name": name,

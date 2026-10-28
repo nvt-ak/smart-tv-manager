@@ -2099,6 +2099,13 @@ if (refreshAppsBtn) {
   });
 }
 
+function forgetPairingButton(d) {
+  if (d.platform !== 'lg_webos') return '';
+  return `<button type="button" class="btn btn--icon" data-act="forget-pairing" data-host="${d.host}" title="Quên ghép cặp LG (TV sẽ hỏi cho phép lại ở lần kết nối sau)">
+        <span class="material-symbols-outlined">link_off</span>
+      </button>`;
+}
+
 function deviceCardActions(d, featured) {
   const online = d.online;
   const name = escapeAttr(d.name);
@@ -2111,6 +2118,7 @@ function deviceCardActions(d, featured) {
       <button type="button" class="btn btn--icon" data-act="rename" data-host="${d.host}" title="Đổi tên">
         <span class="material-symbols-outlined">edit</span>
       </button>
+      ${forgetPairingButton(d)}
       <button type="button" class="btn btn--icon btn--danger-icon" data-act="remove" data-host="${d.host}" title="Xóa">
         <span class="material-symbols-outlined">delete</span>
       </button>`;
@@ -2123,6 +2131,7 @@ function deviceCardActions(d, featured) {
     <button type="button" class="btn btn--icon" data-act="rename" data-host="${d.host}" title="Đổi tên">
       <span class="material-symbols-outlined">edit</span>
     </button>
+    ${forgetPairingButton(d)}
     <button type="button" class="btn btn--icon btn--danger-icon" data-act="remove" data-host="${d.host}" title="Xóa">
       <span class="material-symbols-outlined">delete</span>
     </button>`;
@@ -2277,6 +2286,22 @@ listEl.addEventListener('click', async (e) => {
       await refreshList();
     } catch (err) {
       setStatus(`Lỗi đổi tên: ${err}`);
+      setButtonLoading(btn, false);
+    }
+    return;
+  }
+
+  if (btn.dataset.act === 'forget-pairing') {
+    if (!confirm('Quên khóa ghép cặp của TV LG này? Lần kết nối sau TV sẽ hỏi cho phép lại.')) return;
+    setButtonLoading(btn, true, 'Đang xóa...');
+    try {
+      const result = await getApi().forget_webos_pairing(host);
+      setStatus(result && result.removed
+        ? 'Đã quên ghép cặp LG. Bấm Kết nối lại rồi chấp nhận yêu cầu trên TV.'
+        : 'Không có khóa ghép cặp LG đã lưu cho TV này.');
+    } catch (err) {
+      setStatus(`Lỗi quên ghép cặp: ${err}`);
+    } finally {
       setButtonLoading(btn, false);
     }
     return;
