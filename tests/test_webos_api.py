@@ -48,7 +48,7 @@ class LgApiAcceptance(unittest.TestCase):
     def setUp(self):
         self.api = main.Api()
         self.lg = mock.Mock()
-        self.lg.info.return_value = {"model": "OLED C6", "webos": "26"}
+        self.lg.get_info.return_value = {"model": "OLED C6", "webos": "26"}
         self.lg.list_apps.return_value = [{"id": "netflix", "title": "Netflix"}]
         self.lg.list_inputs.return_value = [{"id": "HDMI_1", "label": "Console"}]
         self.api._get_webos = mock.Mock(return_value=self.lg)
@@ -83,8 +83,8 @@ class LgApiAcceptance(unittest.TestCase):
 
     def test_numeric_remote_and_text_dispatch_to_lg(self):
         self.api.remote_key(HOST, 3001, 3)
-        self.assertEqual(self.lg.remote_key.call_count, 1)
-        self.assertEqual(str(self.lg.remote_key.call_args.args[0]).lower(), "home")
+        self.assertEqual(self.lg.remote.call_count, 1)
+        self.assertEqual(str(self.lg.remote.call_args.args[0]).lower(), "home")
         self.api.send_input_text(HOST, 3001, "Tìm kiếm tiếng Việt")
         self.lg.send_text.assert_called_once_with("Tìm kiếm tiếng Việt")
         self.adb_connect.assert_not_called()
