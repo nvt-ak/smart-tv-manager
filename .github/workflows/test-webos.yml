@@ -6,7 +6,13 @@ permissions:
   contents: read
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    # Windows is informational until it has been green once: the Linux job gates the PR.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,12 +22,17 @@ jobs:
         with:
           node-version: '22'
       - name: Install test dependencies
+        shell: bash
         run: |
-          python -m pip install adb-shell==0.4.4 rsa cryptography pillow certifi 'websocket-client>=1.8,<2'
+          # requirements.txt stays the single source of truth. The GUI shell and the APK
+          # analyzer are not needed by the tests (they stub or skip them).
+          grep -Ev '^(#|$|pywebview|androguard)' requirements.txt > "$RUNNER_TEMP/test-requirements.txt"
+          python -m pip install -r "$RUNNER_TEMP/test-requirements.txt"
           npm install --no-save jsdom@24
       - name: Python regression
         run: python -m unittest discover -s tests -v
       - name: JavaScript behavior and Manager UI
+        shell: bash
         run: |
           bash tests/run_js_tests.sh
           node tests/lg_webos_ui_smoke.js

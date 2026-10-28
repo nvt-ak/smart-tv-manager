@@ -7,14 +7,14 @@ compatibility or successful installation on a particular firmware.
 
 ## Test-first evidence
 
-The PM approved and committed the use-case/task breakdown (`d406bf5`) before product
+The PM approved and committed the use-case/task breakdown (`e119f31`) before product
 implementation. Each owner ran missing-behavior tests before implementing its module.
 
 | Area | Observed RED | GREEN evidence |
 | --- | --- | --- |
-| API/storage | 10 tests failed with 5 failures and 6 errors; legacy platform missing, new connect/input endpoints absent and LG attempted ADB. RED committed `d349ff5`; fixtures aligned to agreed client names in `52d4a8c`. | 15 API/storage/job tests passed independently. |
-| Theme apply jobs | Missing `webos_apply_theme_async` caused 2 errors. RED committed `92ee303`. | Failed deploy never saves last theme; success records host/port only after deploy; Android/unknown theme rejected; selected host passed to CLI verification. |
-| Actual remote buttons | Reading `ui/index.html` exposed missing Input/channel mappings and Settings mapped to Input. RED committed `62b9e30`. | Actual numeric keycodes now reach supported semantic LG commands. |
+| API/storage | 10 tests failed with 5 failures and 6 errors; legacy platform missing, new connect/input endpoints absent and LG attempted ADB. RED committed `48710ad`; fixtures aligned to agreed client names in `df5320e`. | 15 API/storage/job tests passed independently. |
+| Theme apply jobs | Missing `webos_apply_theme_async` caused 2 errors. RED committed `5096624`. | Failed deploy never saves last theme; success records host/port only after deploy; Android/unknown theme rejected; selected host passed to CLI verification. |
+| Actual remote buttons | Reading `ui/index.html` exposed missing Input/channel mappings and Settings mapped to Input. RED committed `13afc97`. | Actual numeric keycodes now reach supported semantic LG commands. |
 | Client | Senior owner recorded missing-module RED, followed by malformed frame/certificate/optional-info/pointer behavior RED cases. | QA independently ran 25 protocol tests successfully. |
 | Home bundle/model | Home owner recorded missing-module RED before implementation, then target-device and schema regression cases. | QA independently ran 8 bundle/deploy tests and 6 Node model tests successfully. |
 | Manager UI | UI owner recorded missing platform-helper RED; current-theme load failure regression reproduced rejected promise before correction. | QA independently ran 4 platform-helper tests and actual Manager DOM smoke successfully. |
@@ -58,7 +58,7 @@ selection, UI gates, launch-only app rows, canonical-catalog apply and failure p
 HDMI selection, current-state read errors and return to Android. It is a DOM behavior
 test, not a rendered image comparison.
 
-Final full-suite counts and visual evidence will be recorded below after integration.
+Final full-suite counts and visual evidence are in "Final integration results" below; later review fixes are in the addendum at the end.
 
 ## Hardware and release acceptance still required
 
@@ -125,3 +125,27 @@ Repository write access was initially rejected with HTTP403. After authorization
 was updated, the branch and PR were published via the GitHub API. The large QA
 image montage is retained in the local Git bundle and omitted from this PR.
 No real-TV, target-OS installation or merge/release is claimed.
+
+## Addendum: pull request review follow-ups
+
+Changes made after the first review of the pull request. Automated results below use
+fake transports and CLIs, like everything above; none of it is real-TV evidence.
+
+| Review finding | Change | Test evidence |
+| --- | --- | --- |
+| Removing a TV left its pairing key and pinned certificate on disk, blocking re-add after a certificate change | `WebOsKeyStore.delete`; `Api.remove` forgets keys of every endpoint of an LG host; new `forget_webos_pairing` API and a "Quên ghép cặp" button on LG cards | `LgDeviceLifecycle` (4 tests), key-store delete test, LG UI smoke (button present on LG only, calls the API) |
+| Apply held the per-TV lock for the whole package/install (minutes) | Lock dropped; `WebOsClient` already serializes its own socket. In-flight set rejects a second Apply for the same TV | `LgDeploymentConcurrency`: probes the lock from another thread during deploy (fails if the lock is held) and checks the second Apply is rejected and the slot is released |
+| First key after idle failed on a stale cached socket | Closed sockets are replaced before use. One retry on a fresh connection only when the frame was never written, or the request is read-only. Mutations are never replayed after they may have reached the TV. A failed fresh connect (pairing refused, changed certificate) is never repeated | 8 client tests incl. "mutation not replayed" for input switch, text and power |
+| Pointer host compared with the configured name, so hostname-added TVs rejected every key | Compared with the control socket's peer address as well as the configured name | Hostname accepted when the peer matches; other address still rejected |
+| New pointer connection for every key | Pointer socket reused for 5 s, then replaced; one resend on a fresh socket after a failed write on a reused one | 4 pointer tests. The 5 s window is an unmeasured guess: tune on a real TV |
+| Documentation and PR text out of step | Stale local commit hashes replaced by the pushed ones, contradictory "HTTP 403" status removed, stale "recorded below" sentence fixed, draft `lg-webos-pr.md` removed | n/a |
+| Smaller items | Denied input list no longer fails Apply; `devices.json` metadata allowlist; saved port used for LG calls; platform lookup cached; Home package limited to 12 wallpapers / 24 MB; CLI PATH extended on macOS/Linux; docstrings restored after `_require_android`; dead `mute` endpoint and duplicate branch removed; unknown-theme test tightened | covered by the suites below |
+
+Results after these changes: Python discovery **175 passed** (150 before; the 147 quoted
+above predates the EXDEV tests), TV Guard CLI 5 passed, repository JavaScript runner 21
+passed, LG Manager DOM smoke and Android Guard smoke passed, `compileall` and
+`git diff --check` clean.
+
+Not part of this pass: splitting the unrelated device-store (EXDEV) and native-card test
+fixes into their own pull request; real-TV and target-OS acceptance; the Windows CI job is
+informational (`continue-on-error`) because it has not been run yet.

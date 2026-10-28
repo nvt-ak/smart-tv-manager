@@ -66,7 +66,7 @@ redeploys; this is not background/live widget refresh. Hardware checks remain re
 - LG01–LG07: implemented and covered by automated tests. See [QA evidence](lg-webos-qa.md).
 - LG08: external Home watcher deferred; Quick Access and system-Home limitations documented.
 - LG09: automated Android regression passed; hardware and target-OS builds remain open.
-- LG10: local branch/commits, documentation and PR body prepared; remote branch/PR
-  blocked by GitHub integration HTTP 403 (write permission unavailable).
+- LG10: branch `feat/lg-webos-support` and pull request #1 are published; the QA
+  evidence and review follow-ups are recorded in [lg-webos-qa.md](lg-webos-qa.md).
 - Release gate: real LG TV and macOS/Windows acceptance remain mandatory before a
   compatibility/release claim. No automatic merge or publication.

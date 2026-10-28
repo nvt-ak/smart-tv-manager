@@ -9,7 +9,15 @@ thấy yêu cầu. Manager ưu tiên kết nối TLS cổng 3001. TV cũ có th�
 
 Khóa ghép cặp và dấu vân tay chứng chỉ nằm riêng trong thư mục dữ liệu ứng dụng
 `webos/`, không đi vào theme, gói cài Home hoặc devices.json. Nếu chứng chỉ TV
-thay đổi, xác minh đúng TV trước khi xóa khóa endpoint tương ứng để ghép cặp lại.
+thay đổi (ví dụ sau khi cập nhật firmware), xác minh đúng TV rồi bấm nút **Quên ghép
+cặp** (biểu tượng ngắt liên kết) trên thẻ thiết bị LG, sau đó kết nối lại và chấp nhận
+yêu cầu trên TV. Xóa TV khỏi danh sách cũng xóa khóa và dấu vân tay của nó.
+
+Khi TV ngủ, kết nối đã lưu có thể chết. Manager tự kết nối lại một lần nếu lệnh chưa
+được ghi ra socket, hoặc nếu đó là lệnh chỉ đọc (danh sách ứng dụng/input, âm lượng).
+Lệnh có tác dụng phụ (mở ứng dụng, chuyển HDMI, nhập văn bản, tắt nguồn) không bao giờ
+bị gửi lại tự động sau khi có thể đã tới TV. Phím điều hướng dùng lại một kênh phím
+trong vài giây liên tiếp rồi mở kênh mới; khoảng này là ước lượng, chưa đo trên TV thật.
 
 Remote, nhập văn bản, mở ứng dụng và chuyển HDMI dùng giao thức LG. Nút nguồn
 chỉ **tắt** TV; bật lại bằng remote LG. Quét LAN chỉ tìm cổng đang mở, chưa chứng
@@ -21,13 +29,19 @@ chối API metadata. Trạng thái cổng mở không có nghĩa TV đã cho ph�
 1. Cài Developer Mode từ kho LG Apps, đăng nhập tài khoản LG Developer, bật
    Developer Mode rồi bật Key Server. Theo dõi và gia hạn session trên TV.
 2. Cài Node.js 20 trở lên và webOS CLI chính thức: `npm install -g @webos-tools/cli`.
-3. Dùng `ares-setup-device` tạo profile, ví dụ `lgtv`, với đúng IP TV,
-   cổng SSH 9922 và username `prisoner`.
+3. Dùng `ares-setup-device` tạo profile, ví dụ `lgtv`, với đúng **địa chỉ IP** TV
+   (không dùng hostname: Manager so sánh IP của profile với TV đang chọn và sẽ từ chối
+   profile không khớp), cổng SSH 9922 và username `prisoner`.
 4. Dùng `ares-novacom --device lgtv --getkey` và passphrase hiển thị trên TV.
    Kiểm tra kết nối profile theo hướng dẫn CLI của LG.
 5. Trong Manager chọn TV LG, vào Home, nhập đúng tên profile CLI rồi chọn theme
    và widget như thường lệ. Manager đối chiếu IP profile với TV đang chọn trước
    khi cài đặt; profile sai TV sẽ bị từ chối.
+
+Trên macOS, ứng dụng mở từ Finder không có PATH của shell. Manager tự thêm
+`/opt/homebrew/bin`, `/usr/local/bin`, `~/.npm-global/bin`, `~/.volta/bin` và
+`~/.local/bin` khi gọi CLI. Nếu CLI nằm nơi khác (ví dụ nvm), tạo symlink vào một trong
+các thư mục đó hoặc mở Manager từ terminal. Gói Home nhận tối đa 12 ảnh nền, tổng 24 MB.
 
 Home app có ID `com.smtvmanager.home`. Bốn profile aurora/hanoi/hanoi2/hanoi3 lấy
 cấu hình, wallpaper và công tắc widget từ catalog hiện có; hình học được port
