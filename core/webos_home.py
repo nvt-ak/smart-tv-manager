@@ -19,6 +19,13 @@ import paths
 from core import theme_widgets
 
 APP_ID = 'com.smtvmanager.home'
+# The .ipk is copied onto the TV, whose app storage is small. The theme catalog caps images at
+# 100 files of 10 MB each, far more than a Home package should carry.
+MAX_WALLPAPERS = 12
+MAX_WALLPAPER_BYTES = 24 * 1024 * 1024
+# Where npm usually puts global CLIs. An app started from Finder/launcher does not inherit the
+# shell PATH, so `ares-*` would look missing even though it is installed.
+EXTRA_CLI_DIRS = ('/opt/homebrew/bin', '/usr/local/bin', '~/.npm-global/bin', '~/.volta/bin', '~/.local/bin')
 
 
 class WebOsHomeError(Exception):
@@ -59,6 +66,11 @@ def build_bundle(theme, destination, apps=None, inputs=None, widget_data=None, w
         if not asset.is_relative_to(root) or not asset.is_file() or asset.suffix.lower() not in {'.jpg','.jpeg','.png','.webp'}:
             raise ValueError('Wallpaper must be an image inside the selected theme')
         verified.append(asset)
+    total = sum(asset.stat().st_size for asset in verified)
+    if len(verified) > MAX_WALLPAPERS or total > MAX_WALLPAPER_BYTES:
+        raise ValueError(
+            f'Too many or too large wallpapers for a webOS Home package ({len(verified)} files, '
+            f'{total // (1024 * 1024)} MB; limit {MAX_WALLPAPERS} files, {MAX_WALLPAPER_BYTES // (1024 * 1024)} MB)')
     clean_apps = []
     for app in apps or []:
         if not isinstance(app, dict) or not app.get('id') or app.get('hidden') or app['id'] == APP_ID:
@@ -121,6 +133,20 @@ def cli_argv(argv, windows=None):
     return [executable, *argv[1:]]
 
 
+def cli_env(base=None, windows=None):
+    """Environment for the webOS CLI; on POSIX, appends npm's usual global bin dirs to PATH."""
+    env = dict(os.environ if base is None else base)
+    if os.name == 'nt' if windows is None else windows:
+        return env
+    entries = [e for e in env.get('PATH', '').split(os.pathsep) if e]
+    for directory in EXTRA_CLI_DIRS:
+        directory = os.path.expanduser(directory)
+        if os.path.isdir(directory) and directory not in entries:
+            entries.append(directory)
+    env['PATH'] = os.pathsep.join(entries)
+    return env
+
+
 def deploy(bundle_path, device_name, runner=None, expected_host=None):
     """Use an already configured Developer Mode CLI device; bounded argv only."""
     runner = runner or subprocess.run
@@ -131,7 +157,7 @@ def deploy(bundle_path, device_name, runner=None, expected_host=None):
         raise WebOsHomeError('Missing webOS Home bundle')
     def run(argv, timeout):
         try:
-            result = runner(cli_argv(argv),capture_output=True,text=True,timeout=timeout,check=False)
+            result = runner(cli_argv(argv),capture_output=True,text=True,timeout=timeout,check=False,env=cli_env())
         except FileNotFoundError as exc:
             raise WebOsHomeError('Install webOS CLI (@webos-tools/cli) and configure a Developer Mode device') from exc
         except subprocess.TimeoutExpired as exc:

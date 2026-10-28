@@ -5,7 +5,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+import os
 
 from core import webos_home
 from core.cleanyourtv_themes import CleanyourtvThemes
@@ -43,6 +44,20 @@ class HomeBundleTests(unittest.TestCase):
             (root/'existing').mkdir()
             with self.assertRaises(ValueError):
                 webos_home.build_bundle(theme,root/'existing')
+
+    def test_oversized_wallpaper_sets_are_rejected_before_anything_is_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            theme_root = root / 'theme'; theme_root.mkdir()
+            images = []
+            for n in range(3):
+                image = theme_root / f'{n}.jpg'; image.write_bytes(b'x' * 10); images.append(str(image))
+            theme = {'id': 'big', 'path': str(theme_root), 'config': {}, 'wallpapers': images}
+            for name, value in (('MAX_WALLPAPER_BYTES', 25), ('MAX_WALLPAPERS', 2)):
+                with patch.object(webos_home, name, value):
+                    with self.assertRaisesRegex(ValueError, 'Too many or too large'):
+                        webos_home.build_bundle(theme, root / 'out')
+                self.assertFalse((root / 'out').exists())
 
     def test_android_mapping_never_rebrands_smarttube_as_youtube(self):
         apps=[{'id':'youtube.leanback.v4','title':'YouTube'}, {'id':'netflix','title':'Netflix'}]
@@ -114,3 +129,25 @@ class WindowsCliTests(unittest.TestCase):
         with patch.object(webos_home.shutil, 'which', return_value=None):
             with self.assertRaisesRegex(webos_home.WebOsHomeError, 'CLI'):
                 webos_home.cli_argv(['ares-package', 'bundle'], windows=True)
+
+
+class CliEnvTests(unittest.TestCase):
+    def test_posix_env_gains_existing_global_bin_dirs_without_reordering_path(self):
+        with tempfile.TemporaryDirectory() as extra, \
+                patch.object(webos_home, 'EXTRA_CLI_DIRS', (extra, '/does/not/exist')):
+            env = webos_home.cli_env({'PATH': '/usr/bin'}, windows=False)
+            self.assertEqual(env['PATH'], os.pathsep.join(['/usr/bin', extra]))
+            again = webos_home.cli_env(env, windows=False)
+            self.assertEqual(again['PATH'], env['PATH'])  # never duplicated
+
+    def test_windows_env_is_left_alone(self):
+        self.assertEqual(webos_home.cli_env({'PATH': r'C:\tools'}, windows=True)['PATH'], r'C:\tools')
+
+    def test_deploy_runs_the_cli_with_the_extended_environment(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(webos_home, 'cli_env', return_value={'PATH': 'marker'}):
+            bundle = Path(tmp) / 'bundle'; bundle.mkdir(); (bundle / 'appinfo.json').write_text('{}')
+            runner = Mock(return_value=subprocess.CompletedProcess([], 1, '', 'stop here'))
+            with self.assertRaises(webos_home.WebOsHomeError):
+                webos_home.deploy(bundle, 'tv', runner=runner)
+            self.assertEqual(runner.call_args.kwargs['env'], {'PATH': 'marker'})
