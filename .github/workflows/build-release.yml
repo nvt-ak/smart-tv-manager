@@ -133,6 +133,8 @@ jobs:
             echo "| **macOS** | \`SmartTVManager-macos.dmg\` | Mở DMG → kéo **SmartTV Manager** vào Applications. Bản unsigned: **Right-click → Open** lần đầu. |"
             echo "| **Windows** | \`SmartTVManager-windows-x64.zip\` | Giải nén → chạy \`SmartTVManager/SmartTVManager.exe\`. Cần [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/). |"
             echo ""
+            echo "**Lưu ý:** Android TV/Google TV (ADB 5555) là nền tảng chính. LG webOS là bản thử nghiệm, chưa kiểm chứng trên TV LG thật; Home theme LG cần Developer Mode và webOS CLI (xem \`docs/lg-webos.md\`). Windows: nếu gặp \`Failed to resolve Python.Runtime.Loader.Initialize\`, Unblock file zip rồi giải nén lại vào đường dẫn ngắn; log tại \`%LOCALAPPDATA%\\\\SmartTVManager\\\\startup-error.log\`."
+            echo ""
             echo "Build từ tag \`${{ github.ref_name }}\` — workflow [build-release.yml](https://github.com/${{ github.repository }}/actions/workflows/build-release.yml)."
           } >> release-notes.md
 

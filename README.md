@@ -1,10 +1,25 @@
 # SmartTV Manager
 
-Hỗ trợ LG webOS (remote, ứng dụng/HDMI và Home theme/widget snapshot): xem [hướng dẫn LG](docs/lg-webos.md). Cần kiểm chứng TV thật trước khi phát hành.
+Desktop app (Python + pywebview) để quản lý TV từ máy tính: quét LAN, remote, quản lý app, cài APK, theme Home (Gathin launcher) và, từ bản 1.10.0, cả TV LG webOS.
 
-Desktop app (Python + pywebview): quét Android TV trên LAN, kết nối ADB (cổng 5555), remote, quản lý app, cài APK, theme Home (Gathin launcher).
+## Thiết bị hỗ trợ
 
-ADB key riêng tại `~/.smarttv-manager/adbkey` — **không** dùng chung với CLI `cleanyourtv`; lần đầu kết nối TV vẫn cần chấp nhận «Allow USB debugging». Nếu bạn đã dùng bản cũ, dữ liệu từ `~/.tv-remote-hub/` được **copy sang** `~/.smarttv-manager/` lần chạy đầu.
+| Nền tảng | Cổng | Tính năng | Mức kiểm chứng |
+|----------|------|-----------|----------------|
+| **Android TV / Google TV** | ADB 5555 | Remote, quản lý/gỡ app, cài APK, Smart Clean, TV Guard, theme Home (Gathin launcher) | Thử trên TCL Google TV (Android 11); máy khác dùng ADB chuẩn nên nhiều khả năng chạy |
+| **LG webOS** (từ 1.10.0) | 3001 (TLS), 3000 (TV đời cũ) | Remote, nhập văn bản, mở app, chuyển HDMI, tắt nguồn, Home theme/widget dạng snapshot | **Chưa kiểm chứng trên TV LG thật** — coi là bản thử nghiệm |
+
+LG **không** hỗ trợ: APK, Smart Clean, Android shell/screenshot ADB, TV Guard, đổi launcher mặc định.
+
+### Lưu ý khi dùng bản 1.10.0
+
+- **Quét mạng** dò một lượt cả 5555 (Android) và 3001/3000 (LG). Loại TV chỉ là gợi ý theo cổng mở; thiết bị mở cả hai nhóm cổng sẽ cho bạn chọn nền tảng. TV dùng cổng khác: nhập `IP:cổng` và chọn nền tảng thủ công.
+- **LG ghép cặp:** lần đầu phải chấp nhận yêu cầu trên TV (bật LG Connect Apps nếu không thấy). Sau cập nhật firmware TV mà không kết nối được, bấm **Quên ghép cặp** rồi ghép lại.
+- **LG Home theme** cần Developer Mode trên TV, Node.js 20+ và `npm install -g @webos-tools/cli`; profile CLI phải dùng **địa chỉ IP** đúng TV đang chọn. Mỗi lần Apply là một snapshot, muốn cập nhật dữ liệu thì Apply lại. Developer Mode hết hạn thì app có thể bị LG gỡ. Chi tiết: [hướng dẫn LG](docs/lg-webos.md).
+- **Android:** lần đầu vẫn cần chấp nhận «Allow USB debugging» trên TV.
+- **Windows:** nếu thấy `Failed to resolve Python.Runtime.Loader.Initialize`, xem mục build bên dưới (app tự gỡ chặn file tải về từ 1.10.0).
+
+ADB key riêng tại `~/.smarttv-manager/adbkey` — **không** dùng chung với CLI `cleanyourtv`. Nếu bạn đã dùng bản cũ, dữ liệu từ `~/.tv-remote-hub/` được **copy sang** `~/.smarttv-manager/` lần chạy đầu.
 
 ---
 

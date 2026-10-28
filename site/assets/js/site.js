@@ -49,7 +49,7 @@
     dl_all: "Tất cả bản phát hành", dl_src: "Mã nguồn trên GitHub",
     faq_h: "Hỏi đáp",
     q1: "Có an toàn không?", a1: "App chạy trên máy tính của bạn và nói chuyện với TV qua mạng nội bộ bằng ADB. Nó không thu thập dữ liệu. App chỉ kết nối GitHub để tải launcher và các nguồn giá công khai cho widget, khi bạn dùng các tính năng đó. Vô hiệu hoá một app có thể hoàn tác. Gỡ cài đặt thì không, nên app luôn hỏi trước.",
-    q2: "Dùng được với TV nào?", a2: "App được viết và thử trên TCL Google TV chạy Android 11. Quản lý app và cài APK dùng ADB thông thường nên các TV Android TV hoặc Google TV khác nhiều khả năng dùng được. Gán phím remote được chuẩn bị cho remote TCL. Launcher cần Android 8 trở lên.",
+    q2: "Dùng được với TV nào?", a2: "App được viết và thử trên TCL Google TV chạy Android 11. Quản lý app và cài APK dùng ADB thông thường nên các TV Android TV hoặc Google TV khác nhiều khả năng dùng được. Gán phím remote được chuẩn bị cho remote TCL. Launcher cần Android 8 trở lên. TV LG webOS được hỗ trợ ở bản đầu (remote, app, HDMI, theme Home), chưa kiểm chứng trên TV LG thật; cài APK và Smart Clean chỉ dành cho Android.",
     q3: "Có cần root TV không?", a3: "Không. Bạn chỉ cần bật gỡ lỗi USB hoặc gỡ lỗi mạng.",
     q4: "Làm sao hoàn tác thay đổi?", a4: "Bật lại app đã tắt trong danh sách app, dùng “Đặt lại launcher gốc” để trả màn hình chính ban đầu, và khôi phục bản sao lưu cấu hình launcher trước đó.",
     q5: "Widget chỉ dành cho Việt Nam?", a5: "Widget vàng và xăng dầu có sẵn dùng nguồn dữ liệu Việt Nam, tính bằng VND. Quản lý app, cài APK và theme dùng được ở mọi nơi.",
