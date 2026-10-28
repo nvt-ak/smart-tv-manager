@@ -1,7 +1,10 @@
 """LG second-screen control, independent of ADB and the Developer Mode installer.
 
-One lock owns each socket's request/response stream. Requests are never automatically
-replayed after failure (a launch or power operation may already have reached the TV).
+One lock owns each socket's request/response stream. A cached socket can go stale while
+the TV sleeps, so one transparent retry on a fresh connection is allowed in exactly two
+cases: the frame could not be written at all (the TV never saw it), or the request is
+read-only. A request that may already have reached the TV (launch, power, input switch,
+text) is never replayed after a failure.
 WSS uses trust-on-first-pairing certificate pinning because LG certificates are not
 public-CA verifiable. Plain WS is only used when explicitly selecting port 3000.
 """
@@ -29,6 +32,11 @@ class WebOsCommandError(WebOsError):
     """TV explicitly refused a command; the transport is still usable."""
 
 
+def identity_for(host, port):
+    """Key-store identity of one TV endpoint; must match WebOsClient.identity."""
+    return f'{str(host).strip().lower()}:{int(port)}'
+
+
 class WebOsKeyStore:
     def __init__(self, directory=None):
         self.directory = directory or os.path.join(user_data_dir(), 'webos')
@@ -36,6 +44,15 @@ class WebOsKeyStore:
 
     def _path(self, identity):
         return os.path.join(self.directory, hashlib.sha256(identity.encode()).hexdigest() + '.json')
+
+    def delete(self, identity):
+        """Forget the pairing key and pinned certificate; True when a record existed."""
+        with self._lock:
+            try:
+                os.unlink(self._path(identity))
+                return True
+            except FileNotFoundError:
+                return False
 
     def load(self, identity):
         with self._lock:
@@ -73,9 +90,21 @@ BUTTONS = {
     'red': 'RED', 'green': 'GREEN', 'yellow': 'YELLOW', 'blue': 'BLUE',
     **{str(n): str(n) for n in range(10)},
 }
+# Requests without side effects: safe to resend on a fresh connection after a failure.
+READ_ONLY_URIS = frozenset({
+    'ssap://system/getSystemInfo',
+    'ssap://com.webos.applicationManager/listLaunchPoints',
+    'ssap://tv/getExternalInputList',
+    'ssap://audio/getVolume',
+    'ssap://com.webos.service.networkinput/getPointerInputSocket',
+})
+# A reused pointer socket older than this is replaced: a write to a socket the TV already
+# closed can succeed locally and silently drop the key press, and nothing is read back.
+# Conservative guess, not yet measured on a real TV.
+POINTER_REUSE_SECONDS = 5.0
 ENDPOINTS = {
     'volume_up': 'audio/volumeUp', 'volume_down': 'audio/volumeDown',
-    'mute': 'audio/toggleMute', 'play': 'media.controls/play',
+    'play': 'media.controls/play',
     'pause': 'media.controls/pause', 'stop': 'media.controls/stop',
     'rewind': 'media.controls/rewind', 'fast_forward': 'media.controls/fastForward',
     'channel_up': 'tv/channelUp', 'channel_down': 'tv/channelDown',
@@ -108,11 +137,13 @@ class WebOsClient:
         self.host, self.port = host, port
         self.secure = port != 3000 if secure is None else bool(secure)
         self.timeout = max(0.1, float(timeout))
-        self.identity = f'{host.lower()}:{port}'
+        self.identity = identity_for(host, port)
         self.key_store = key_store if key_store is not None else WebOsKeyStore()
         self.connector = connector or _connect
         self._injected = connector is not None
         self._socket = None
+        self._pointer = None
+        self._pointer_used = 0.0
         self._lock = threading.RLock()
         self._serial = 0
         self._fingerprint = None
@@ -139,17 +170,21 @@ class WebOsClient:
             raise WebOsError('LG không cung cấp chứng chỉ TLS.')
         return hashlib.sha256(cert).hexdigest()
 
+    def _alive(self):
+        return self._socket is not None and bool(getattr(self._socket, 'connected', True))
+
     def connect(self):
         with self._lock:
-            if self._socket is not None:
+            if self._alive():
                 return {'connected': True}
+            self.close()  # drops a socket the library already knows is dead
             try:
                 saved = self.key_store.load(self.identity)
                 self._socket = self._open(self.url)
                 self._fingerprint = self._certificate(self._socket) if self.secure else None
                 pinned = saved.get('certificate_sha256')
                 if pinned and pinned != self._fingerprint:
-                    raise WebOsError('Chứng chỉ LG đã thay đổi. Xác minh TV trước khi xoá khóa ghép cặp cũ.')
+                    raise WebOsError('Chứng chỉ LG đã thay đổi. Xác minh đúng TV rồi bấm «Quên ghép cặp» trên thẻ thiết bị để ghép lại.')
                 payload = {'forcePairing': False, 'pairingType': 'PROMPT', 'manifest': {
                     'manifestVersion': 1, 'appVersion': '1.0', 'permissions': list(PERMISSIONS)}}
                 if saved.get('client_key'):
@@ -200,22 +235,40 @@ class WebOsClient:
         if not isinstance(uri, str) or not uri.startswith('ssap://'):
             raise WebOsError('SSAP URI không hợp lệ.')
         with self._lock:
-            try:
-                self.connect()
-                self._serial += 1
-                rid = f'request_{self._serial}'
-                self._socket.send(json.dumps({'type': 'request', 'id': rid, 'uri': uri, 'payload': payload or {}}, ensure_ascii=False))
-                return self._receive(rid).get('payload', {})
-            except WebOsCommandError:
-                raise
-            except Exception as exc:
-                self.close()
-                if isinstance(exc, WebOsError):
+            for attempt in (0, 1):
+                reused = self._alive()  # same test connect() uses to skip reconnecting
+                written = False
+                try:
+                    self.connect()
+                    self._serial += 1
+                    rid = f'request_{self._serial}'
+                    self._socket.send(json.dumps({'type': 'request', 'id': rid, 'uri': uri, 'payload': payload or {}}, ensure_ascii=False))
+                    written = True
+                    return self._receive(rid).get('payload', {})
+                except WebOsCommandError:
                     raise
-                raise WebOsError(f'LG không phản hồi: {exc}') from exc
+                except Exception as exc:
+                    self.close()
+                    # Only a socket that was already open can be stale; a failed fresh
+                    # connect (pairing refused, changed certificate) must not be repeated.
+                    if attempt == 0 and reused and (not written or uri in READ_ONLY_URIS):
+                        continue
+                    if isinstance(exc, WebOsError):
+                        raise
+                    raise WebOsError(f'LG không phản hồi: {exc}') from exc
+
+    def _close_pointer(self):
+        transport, self._pointer = self._pointer, None
+        if transport:
+            try:
+                transport.close()
+            except Exception:
+                pass
 
     def close(self):
         with self._lock:
+            # The pointer path belongs to the control session, so both go together.
+            self._close_pointer()
             transport, self._socket = self._socket, None
             if transport:
                 try:
@@ -283,36 +336,72 @@ class WebOsClient:
             return self.request('ssap://' + ENDPOINTS[command])
         if command not in BUTTONS:
             raise WebOsError(f'Lệnh remote LG không hỗ trợ: {command}')
+        return self._send_button(BUTTONS[command])
+
+    def _peer_hosts(self):
+        """Addresses the authenticated control socket is actually connected to.
+
+        The TV answers with an IP URL even when the user added it by hostname, so the
+        configured name alone would reject every key press for such a TV.
+        """
+        hosts = {self.host.lower()}
+        try:
+            hosts.add(str(self._socket.sock.getpeername()[0]).split('%')[0].lower())
+        except (AttributeError, OSError, IndexError, TypeError, ValueError):
+            pass
+        return hosts
+
+    def _open_pointer(self):
+        payload = self.request('ssap://com.webos.service.networkinput/getPointerInputSocket')
+        path = payload.get('socketPath', '')
+        try:
+            parsed = urlsplit(path)
+            pointer_port = parsed.port
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise WebOsError('Địa chỉ pointer socket LG không hợp lệ.') from exc
+        # The authenticated SSAP service may return a plain WS input URL even
+        # when the control channel uses TLS. Honor that TV-local endpoint;
+        # never follow an off-TV URL or send registration credentials here.
+        if (parsed.hostname not in self._peer_hosts() or parsed.scheme not in ('wss', 'ws')
+                or pointer_port not in (self.port, 3000, 3001) or parsed.username or parsed.password):
+            raise WebOsError('Địa chỉ pointer socket LG không hợp lệ.')
+        pointer = None
+        try:
+            pointer = self._open(path)
+            if parsed.scheme == 'wss' and self.secure and self._certificate(pointer) != self._fingerprint:
+                raise WebOsError('Chứng chỉ pointer socket LG không khớp.')
+        except Exception as exc:
+            if pointer:
+                try:
+                    pointer.close()
+                except Exception:
+                    pass
+            if isinstance(exc, WebOsError):
+                raise
+            raise WebOsError(f'Không mở được kênh phím LG: {exc}') from exc
+        self._pointer = pointer
+        return pointer
+
+    def _send_button(self, name):
+        message = f'type:button\nname:{name}\n\n'
         with self._lock:
-            payload = self.request('ssap://com.webos.service.networkinput/getPointerInputSocket')
-            path = payload.get('socketPath', '')
-            try:
-                parsed = urlsplit(path)
-                pointer_port = parsed.port
-            except (ValueError, TypeError, AttributeError) as exc:
-                raise WebOsError('Địa chỉ pointer socket LG không hợp lệ.') from exc
-            # The authenticated SSAP service may return a plain WS input URL even
-            # when the control channel uses TLS. Honor that TV-local endpoint;
-            # never follow an off-TV URL or send registration credentials here.
-            if (parsed.hostname != self.host.lower() or parsed.scheme not in ('wss', 'ws')
-                    or pointer_port not in (self.port, 3000, 3001) or parsed.username or parsed.password):
-                raise WebOsError('Địa chỉ pointer socket LG không hợp lệ.')
-            pointer = None
-            try:
-                pointer = self._open(path)
-                if parsed.scheme == 'wss' and self.secure and self._certificate(pointer) != self._fingerprint:
-                    raise WebOsError('Chứng chỉ pointer socket LG không khớp.')
-                pointer.send(f'type:button\nname:{BUTTONS[command]}\n\n')
+            if self._pointer is not None and (
+                    time.monotonic() - self._pointer_used > POINTER_REUSE_SECONDS
+                    or not getattr(self._pointer, 'connected', True)):
+                self._close_pointer()
+            for attempt in (0, 1):
+                reused = self._pointer is not None
+                pointer = self._pointer or self._open_pointer()
+                try:
+                    pointer.send(message)
+                except Exception as exc:
+                    self._close_pointer()
+                    # A failed write means the key never reached the TV, so one resend on a
+                    # fresh socket cannot press it twice. Only a reused socket can be stale.
+                    if attempt == 0 and reused:
+                        continue
+                    raise WebOsError(f'Không gửi được phím LG: {exc}') from exc
+                self._pointer_used = time.monotonic()
                 return {'returnValue': True}
-            except Exception as exc:
-                if isinstance(exc, WebOsError):
-                    raise
-                raise WebOsError(f'Không gửi được phím LG: {exc}') from exc
-            finally:
-                if pointer:
-                    try:
-                        pointer.close()
-                    except Exception:
-                        pass
 
     remote_key = remote
