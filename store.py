@@ -41,8 +41,10 @@ def load():
 
 def _write_devices_file(devices):
     """Ghi devices.json — caller phải đang giữ `_lock`."""
-    os.makedirs(KEY_DIR, mode=0o700, exist_ok=True)
-    tmp = os.path.join(KEY_DIR, f"devices.{uuid.uuid4().hex}.tmp")
+    directory = os.path.dirname(os.path.abspath(PATH))
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    # os.replace is atomic only when the staging file shares the destination filesystem.
+    tmp = os.path.join(directory, f"devices.{uuid.uuid4().hex}.tmp")
     try:
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(devices, f, indent=2, ensure_ascii=False)

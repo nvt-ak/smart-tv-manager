@@ -18,6 +18,8 @@ Mọi thay đổi đáng chú ý của **SmartTV Manager** được ghi tại đ
 ### Changed
 - Giao diện chọn nền tảng theo thiết bị; LG ẩn APK, Smart Clean, TV Guard và tiện ích ADB không tương thích; thiết bị cũ tiếp tục là Android TV.
 
+### Fixed
+- Ghi danh sách thiết bị tạo file tạm cạnh file đích, tránh lỗi EXDEV khi thư mục lưu và thư mục mặc định nằm trên hai filesystem khác nhau (gồm GitHub Actions).
 
 ## [1.9.0] - 2026-10-27
 
