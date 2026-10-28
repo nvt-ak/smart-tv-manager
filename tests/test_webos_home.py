@@ -20,7 +20,7 @@ class HomeBundleTests(unittest.TestCase):
             original = copy.deepcopy(theme)
             with tempfile.TemporaryDirectory() as tmp:
                 result = Path(webos_home.build_bundle(theme, Path(tmp)/'app', apps=[{'id':'netflix','title':'Netflix'}], widget_data={'gold':None,'generated':'12:00'}, widget_switches={'show_weather':False}))
-                payload = json.loads((result/'runtime.json').read_text())
+                payload = json.loads((result/'runtime.json').read_text(encoding='utf-8'))
                 self.assertEqual(payload['theme_id'], theme['id'])
                 self.assertEqual(payload['config']['design_profile'], theme['config']['design_profile'])
                 self.assertFalse(payload['config']['show_weather'])
@@ -28,8 +28,8 @@ class HomeBundleTests(unittest.TestCase):
                 self.assertEqual(payload['apps'][0]['id'], 'netflix')
                 self.assertTrue(payload['wallpapers'])
                 self.assertTrue((result/payload['wallpapers'][0]).is_file())
-                self.assertEqual(json.loads((result/'appinfo.json').read_text())['id'], 'com.smtvmanager.home')
-                self.assertNotIn('client-key', (result/'runtime.js').read_text())
+                self.assertEqual(json.loads((result/'appinfo.json').read_text(encoding='utf-8'))['id'], 'com.smtvmanager.home')
+                self.assertNotIn('client-key', (result/'runtime.js').read_text(encoding='utf-8'))
             self.assertEqual(theme, original)
 
     def test_reject_asset_outside_theme_and_existing_destination(self):
@@ -67,6 +67,13 @@ class HomeBundleTests(unittest.TestCase):
 
 
 class HomeDeployTests(unittest.TestCase):
+    def setUp(self):
+        # These tests inject a fake runner. Without this, cli_argv resolves the real CLI on
+        # Windows (npm .cmd shim -> node) and fails when it is not installed.
+        patcher = patch.object(webos_home, 'cli_argv', side_effect=lambda argv, windows=None: argv)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def bundle(self, root):
         result=root/'bundle'; result.mkdir(); (result/'appinfo.json').write_text('{}'); return result
 
@@ -145,7 +152,8 @@ class CliEnvTests(unittest.TestCase):
 
     def test_deploy_runs_the_cli_with_the_extended_environment(self):
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(webos_home, 'cli_env', return_value={'PATH': 'marker'}):
+                patch.object(webos_home, 'cli_env', return_value={'PATH': 'marker'}), \
+                patch.object(webos_home, 'cli_argv', side_effect=lambda argv, windows=None: argv):
             bundle = Path(tmp) / 'bundle'; bundle.mkdir(); (bundle / 'appinfo.json').write_text('{}')
             runner = Mock(return_value=subprocess.CompletedProcess([], 1, '', 'stop here'))
             with self.assertRaises(webos_home.WebOsHomeError):
